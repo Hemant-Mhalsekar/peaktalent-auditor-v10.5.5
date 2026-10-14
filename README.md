@@ -19,7 +19,7 @@ Pick one of the three options. All three run the same engine (`src/content.js`).
 
 ### Chrome, Edge or Brave (recommended)
 
-1. Download and unzip `peaktalent-auditor-chrome-v10.5.5.zip`, or use the `extension/` folder from this project.
+1. Download and unzip `peaktalent-auditor-chrome-v11.0.1.zip`, or use the `extension/` folder from this project.
 2. Open `chrome://extensions` (Edge: `edge://extensions`, Brave: `brave://extensions`).
 3. Turn on **Developer mode** (top right).
 4. Click **Load unpacked** and choose the unzipped folder (the one that contains `manifest.json`).
@@ -47,10 +47,9 @@ The old bookmarklet loaded the script from a `file:///` path. Browsers block tha
 
 ## Using it
 
-When a review screen is detected, a small bar appears (open the browser console to confirm the version: it prints `[PeakTalent] Precision Engine v10.5.5 is active.`) at the top right of the page. Drag it anywhere; it remembers its position. Use **Stop** or **Resume** on the bar to pause the auditor.
+When a review screen is detected, a small bar appears (open the browser console to confirm the version: it prints `[PeakTalent] Precision Engine v11.0.1 is active.`) at the top right of the page. Drag it anywhere; it remembers its position. Use **Stop** or **Resume** on the bar to pause the auditor.
 
 - **Suggested labels** are underlined in the right document using the platform's label colours.
-- **Label mistakes** get a red outline. Hover over one to see the reason and the fix.
 
 | Shortcut | Action |
 | --- | --- |
@@ -58,9 +57,18 @@ When a review screen is detected, a small bar appears (open the browser console 
 | <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>H</kbd> | Hide / show the floating bar |
 | <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>D</kbd> | Print diagnostics in the browser console (for bug reports) |
 
-In the Chrome extension, the toolbar popup shows the suggestion and mistake counts for the current tab and has a **Re-audit this page** button.
+In the Chrome extension, the toolbar popup shows the suggestion count for the current tab and has a **Re-audit this page** button.
 
 ---
+
+## Label check (mistakes)
+
+After every change in the right document (you add, change or remove a label) the auditor checks every label you placed:
+
+1. If the auditor suggests a label for exactly that text, your label must be that label.
+2. Otherwise the guideline rules decide: unchanged text gets no label; a replaced name, company, address, credential or code gets no label; a replaced ordinary word is Overscrubbed (only the changed part); an entity label must have that entity's format (e-mail, https link, IP, phone, plate, @username, 9-18 digit account, complete address, date of birth).
+
+A wrong label gets a **red dashed outline** and a small tag above it, **"your label -> correct label"** (for example `Date -> Overscrubbed` or `Date -> No label`). Hover it for the reason. The bar shows **"N Mistakes"**; click it for a list of all wrong labels (click one to jump to it). The check never changes the document's text.
 
 ## Labels and colours
 
@@ -89,7 +97,7 @@ These follow the PeakTalent platform palette. Business Name and IP Address share
 - **Phone numbers:** only Indian formats are recognised. Check other formats, such as `+1 (555) 234-8901`, by hand.
 - **12-digit numbers:** a 12-digit number is treated as Aadhaar or a cloud Account ID (Credentials). A 12-digit **bank** account number will also be suggested as Credentials; re-label it as Account Number.
 - **Renamed software:** a renamed software or framework name (for example `Hexo` → `Rhoossol`) is only flagged as Overscrubbed when the engine can tell it is a common word. Unknown product names are left for you to judge.
-- **Long documents:** documents longer than about 60,000 characters use *large-document mode*: only the part on screen (plus 150 lines above and below) is analysed and highlighted, and the audit follows your scrolling. Suggestions further away appear when you scroll to them, and the mistake check only covers labels in that part. Hover over the bar's status text to see which lines are being audited.
+- **Long documents:** documents longer than about 60,000 characters use *large-document mode*: only the part on screen (plus 150 lines above and below) is analysed and highlighted, and the audit follows your scrolling. Suggestions further away appear when you scroll to them. Hover over the bar's status text to see which lines are being audited.
 - **Names vs ordinary words:** the engine decides with a built-in list of ~22,000 common English words. A rare English word used as a heading may be treated as a name, and a name that is also a common word ("Grace", "Hope") may be treated as an ordinary word.
 - **Business names:** detection is offline and rule-based (known brands, company suffixes, vendor tables, employer phrases such as "working at"). An unusual brand name with no such clue may not be suggested.
 - **Screen detection:** this depends on PeakTalent's page layout. If the platform's layout changes, the bar may show "not on a review screen" until the detector is updated.
@@ -123,7 +131,7 @@ To add a rule, first add a failing case to `tests/run.js` using synthetic data, 
 ### Test results
 
 <!-- TEST-RESULTS:START (generated by scripts/build.js — do not edit by hand) -->
-**266 / 266 checks passing** on engine v10.5.5 (run on 2026-10-09).
+**266 / 266 checks passing** on engine v11.0.1 (run on 2026-10-14).
 
 | Suite | Passing |
 | --- | --- |

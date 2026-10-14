@@ -29,9 +29,7 @@ if (haveJsdom) {
   try {
     execFileSync(process.execPath, [rel('tests', 'dom.js')], { stdio: 'inherit', cwd: root });
     execFileSync(process.execPath, [rel('tests', 'dom_large.js')], { stdio: 'inherit', cwd: root });
-    execFileSync(process.execPath, [rel('tests', 'dom_audit.js')], { stdio: 'inherit', cwd: root });
-    execFileSync(process.execPath, [rel('tests', 'dom_labels_deep.js')], { stdio: 'inherit', cwd: root });
-    execFileSync(process.execPath, [rel('tests', 'dom_labels.js')], { stdio: 'inherit', cwd: root });
+    execFileSync(process.execPath, [rel('tests', 'dom_labelcheck.js')], { stdio: 'inherit', cwd: root });
   }
   catch (e) { console.error('\nBuild stopped: DOM tests failed.'); process.exit(1); }
 } else {

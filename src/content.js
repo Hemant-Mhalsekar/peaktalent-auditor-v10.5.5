@@ -15,7 +15,7 @@
 
     'use strict';
 
-    const PT_VERSION = "10.5.5";
+    const PT_VERSION = "11.0.1";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -36,11 +36,9 @@
     const LARGE_DOC_CHARS = 120000;      // above this, show "Analysing..." and yield one frame first
     let __ptYieldedOnce = false;
     let __ptViewportInfo = null;          // set while auditing a long document in viewport mode
-    let __ptLastAudit = null;             // last mistake-check results, printed by Alt+Shift+D
-    let __ptLastError = null;
-    let __ptAuditScrubbedNames = new Set();   // scrubbed-name words of the current page, for the mistake check             // last audit error, printed by Alt+Shift+D
+    let __ptLastError = null;             // last run error, shown by Diagnose
+    let __ptcMistakes = [];               // label-check results (wrong labels) for the current page
     let lastRunMs = 0, lastRunEnd = 0;   // adaptive pacing (see triggerUpdate / heartbeat)
-    let currentWrongLabelEl = null;
     let cachedLeftPane = null;
     let cachedRightPane = null;
     let isModifyingDOM = false;
@@ -84,6 +82,8 @@
         t.parentNode.replaceChild(document.createTextNode(t.textContent), t);
     }
     for (const parent of touchedParents) { try { parent.normalize(); } catch (e) {} }
+    // (v10.7.0) the mistake check was removed; these lines only clear marks left on the page by older versions.
+    for (const b of document.querySelectorAll(".pt-mistake-box")) b.remove();
     for (const w of document.querySelectorAll(".pt-wrong-label, [data-pt-wrong]")) {
         w.classList.remove("pt-wrong-label");
         w.removeAttribute("data-pt-wrong");
@@ -93,6 +93,56 @@
     const styleEl = document.createElement("style");
     styleEl.id = "pt-precision-styles";
     styleEl.innerHTML = `
+        /* ---- Label check (v11.0.0) ---- */
+        [data-ptc="wrong"] {
+            outline: 2px dashed #ef4444 !important;
+            outline-offset: 2px !important;
+            border-radius: 3px !important;
+            position: relative !important;
+            cursor: help !important;
+        }
+        [data-ptc="wrong"]::before {
+            content: attr(data-ptc-your) " \\2192  " attr(data-ptc-expected) !important;
+            position: absolute !important;
+            left: -2px !important;
+            bottom: calc(100% + 4px) !important;
+            white-space: nowrap !important;
+            font: 600 10.5px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+            color: #fff !important;
+            background: #dc2626 !important;
+            padding: 0 6px !important;
+            border-radius: 4px !important;
+            box-shadow: 0 1px 4px rgba(0,0,0,.25) !important;
+            z-index: 2147483000 !important;
+            pointer-events: none !important;
+            text-decoration: none !important;
+        }
+        [data-ptc-flash] { animation: ptcflash 0.45s ease-in-out 3 !important; }
+        @keyframes ptcflash { 50% { outline-color: #facc15; box-shadow: 0 0 0 6px rgba(250, 204, 21, .45); } }
+        #ptc-card {
+            position: fixed; z-index: 2147483646; display: none; max-width: 340px; padding: 10px 12px;
+            background: #111827; color: #f9fafb; border: 1px solid #374151; border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,.35); font: 12.5px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            pointer-events: none;
+        }
+        #ptc-card.ptc-show { display: block; }
+        #ptc-card .ptc-h { font-weight: 700; color: #fca5a5; margin-bottom: 6px; }
+        #ptc-card .ptc-row { display: flex; gap: 10px; justify-content: space-between; }
+        #ptc-card .ptc-row span { color: #9ca3af; }
+        #ptc-card .ptc-why, #ptc-list .ptc-why { color: #d1d5db; margin-top: 6px; font-size: 12px; }
+        .ptc-bad { color: #fca5a5; } .ptc-good { color: #86efac; }
+        #ptc-list {
+            position: fixed; z-index: 2147483645; right: 20px; top: 70px; width: min(380px, 92vw); max-height: 60vh; overflow: auto;
+            background: #111827; color: #f9fafb; border: 1px solid #374151; border-radius: 12px;
+            box-shadow: 0 12px 36px rgba(0,0,0,.4); font: 12.5px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+        #ptc-list[hidden] { display: none; }
+        #ptc-list .ptc-head { position: sticky; top: 0; display: flex; justify-content: space-between; align-items: center; padding: 9px 12px; background: #1f2937; border-bottom: 1px solid #374151; }
+        #ptc-list .ptc-head button { background: transparent; border: 0; color: #e5e7eb; font-size: 15px; cursor: pointer; padding: 0 6px; }
+        #ptc-list .ptc-item { padding: 9px 12px; border-bottom: 1px solid #1f2937; cursor: pointer; }
+        #ptc-list .ptc-item:hover { background: #1f2937; }
+        #ptc-list .ptc-item b { display: block; margin-bottom: 2px; }
+        #ptc-list .ptc-empty { padding: 14px 12px; color: #86efac; }
         #pt-floating-bar {
             position: fixed !important;
             top: 14px;
@@ -245,54 +295,6 @@
         .pt-username  { border-bottom: 2.5px dotted #2F54EB !important; background-color: rgba(47, 84, 235, 0.12) !important; color: inherit !important; }
         .pt-vehicle   { border-bottom: 2.5px dotted #73D13D !important; background-color: rgba(115, 209, 61, 0.12) !important; color: inherit !important; }
         .pt-overscrub { border-bottom: 2.5px dotted #FF7875 !important; background-color: rgba(255, 120, 117, 0.12) !important; color: inherit !important; }
-        [data-pt-wrong="true"] {
-            outline: 2px solid #ef4444 !important;
-            outline-offset: 3px !important;
-            border-radius: 3px !important;
-            box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.25) !important;
-            cursor: help !important;
-            position: relative !important;
-        }
-        [data-pt-wrong="true"]::after {
-            content: "\u26A0 MISTAKE" !important;
-            position: absolute !important;
-            top: -18px !important;
-            left: 0 !important;
-            background: #ef4444 !important;
-            color: #fff !important;
-            font-size: 8px !important;
-            font-weight: 900 !important;
-            font-family: -apple-system, monospace !important;
-            padding: 1px 4px !important;
-            border-radius: 2px !important;
-            white-space: nowrap !important;
-            z-index: 2147483647 !important;
-            pointer-events: none !important;
-            line-height: 14px !important;
-            letter-spacing: 0.3px !important;
-        }
-        #pt-error-tooltip {
-            position: fixed !important;
-            z-index: 2147483647 !important;
-            background: #0f172a !important;
-            color: #fca5a5 !important;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
-            font-size: 11px !important;
-            font-weight: 600 !important;
-            padding: 4px 10px !important;
-            border-radius: 6px !important;
-            border: 1px solid #ef4444 !important;
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6) !important;
-            pointer-events: none !important;
-            white-space: nowrap !important;
-            opacity: 0;
-            visibility: hidden;
-            transition: opacity 0.12s ease, visibility 0.12s ease;
-        }
-        #pt-error-tooltip.pt-tooltip-visible {
-            opacity: 1 !important;
-            visibility: visible !important;
-        }
     `;
     document.head.appendChild(styleEl);
 
@@ -322,13 +324,7 @@
         btn.disabled = false;
 
         const toAnnotateCount = document.querySelectorAll(".pt-tag").length;
-        const mistakeElements = Array.from(document.querySelectorAll(".pt-wrong-label, [data-pt-wrong='true']"));
-        const uniqueMistakes = new Set();
-        for (const mel of mistakeElements) {
-            const root = mel.closest(".ant-tag, [data-annotation], [data-label], mark") || mel;
-            uniqueMistakes.add(root);
-        }
-        const mistakeCount = uniqueMistakes.size;
+        const mistakeCount = __ptcMistakes.filter(m => m.el && m.el.isConnected).length;
         const bar = document.getElementById("pt-floating-bar");
         if (bar) {
             bar.style.borderColor = mistakeCount > 0 ? "#ef4444" : "rgba(255, 255, 255, 0.12)";
@@ -339,23 +335,18 @@
             btn.className = "btn-stop";
             btn.textContent = "\u23F9 Stop";
             btn.title = "Click to pause auto-annotation";
-
+            dot.className = "pt-status-dot active";
+            dot.style.backgroundColor = "#10b981";
+            dot.style.boxShadow = "0 0 8px #10b981";
             if (mistakeCount > 0) {
-                dot.className = "pt-status-dot paused";
                 dot.style.backgroundColor = "#ef4444";
                 dot.style.boxShadow = "0 0 10px #ef4444";
-                text.style.color = "#f87171";
-                text.textContent = `\uD83C\uDFAF ${toAnnotateCount} to Annotate \u00B7 \u26A0\uFE0F ${mistakeCount} Mistake${mistakeCount > 1 ? 's' : ''}`;
-                text.title = "\u26A0\uFE0F Click to scroll to the first mistake!";
+                text.style.color = "#fecaca";
+                text.textContent = `\uD83C\uDFAF ${toAnnotateCount} to Annotate \u00B7 \u26A0\uFE0F ${mistakeCount} Mistake${mistakeCount > 1 ? "s" : ""}`;
+                text.title = "Click to list the wrong labels";
                 text.style.cursor = "pointer";
-                text.onclick = () => {
-                    const firstErr = document.querySelector(".pt-wrong-label, [data-pt-wrong='true']");
-                    if (firstErr) firstErr.scrollIntoView({ behavior: "smooth", block: "center" });
-                };
+                text.onclick = (ev) => { ev.stopPropagation(); toggleMistakeList(); };
             } else {
-                dot.className = "pt-status-dot active";
-                dot.style.backgroundColor = "#10b981";
-                dot.style.boxShadow = "0 0 8px #10b981";
                 text.style.color = "#ffffff";
                 text.textContent = `\uD83C\uDFAF ${toAnnotateCount} to Annotate`;
                 text.title = "";
@@ -367,8 +358,7 @@
             dot.style.backgroundColor = "#94a3b8";
             dot.style.boxShadow = "none";
             text.style.color = "#94a3b8";
-            const mis = mistakeCount > 0 ? ` \u00B7 \u26A0\uFE0F ${mistakeCount} Mistake${mistakeCount > 1 ? 's' : ''}` : '';
-            text.textContent = `\u23F8 Paused \u2014 ${toAnnotateCount} to Annotate${mis}`;
+            text.textContent = `\u23F8 Paused \u2014 ${toAnnotateCount} to Annotate${mistakeCount ? ` \u00B7 \u26A0\uFE0F ${mistakeCount} Mistake${mistakeCount > 1 ? "s" : ""}` : ""}`;
             btn.className = "btn-start";
             btn.textContent = "\u25B6 Start";
             btn.title = "Click to resume auto-annotation";
@@ -480,68 +470,235 @@
         }
         updatePillState();
     }
-    function ensureErrorTooltip() {
-        let tip = document.getElementById("pt-error-tooltip");
-        if (!tip) {
-            tip = document.createElement("div");
-            tip.id = "pt-error-tooltip";
-            document.body.appendChild(tip);
-        }
-        return tip;
-    }
     ensurePill();
-    ensureErrorTooltip();
 
 
-    ptOn(document, "mouseover", (e) => {
-        const target = e.target.closest(".pt-wrong-label");
-        const tip = ensureErrorTooltip();
-        if (!target) {
-            if (currentWrongLabelEl && !e.target.closest("#pt-error-tooltip")) {
-                tip.classList.remove("pt-tooltip-visible");
-                currentWrongLabelEl = null;
+    // ======================================================================================================
+    // LABEL CHECK (v11.0.0) - tells you when a label you applied is wrong, and which label is right.
+    //
+    // 1. FIND your labels: every element inside the right document whose label can be read - from its
+    //    attributes / title, or from its colour matched against the label chips at the top of the screen
+    //    (the live dashboard draws labels as <mark role="button"> with a coloured background + underline).
+    // 2. DECIDE the correct label for exactly that text (judgeLabel):
+    //      a. the auditor's own suggestion for that text            -> that label
+    //      b. text that is the same on the left (unchanged)          -> a valid entity of that type, or NO label
+    //      c. text that is not on the left (it was replaced)         -> Overscrubbed when the original was an
+    //         ordinary word, NO label when it replaced a name / company / address / credential / code
+    //      d. an Overscrubbed label that also covers unchanged text  -> Overscrubbed on the changed part only
+    // 3. SHOW it: red dashed outline, a badge "Date -> Overscrubbed" above the word, a card with the reason on
+    //    hover, the count on the bar, and a list of all mistakes (click one to jump to it).
+    // ======================================================================================================
+    const PTC_NONE = "No label";
+    function judgeLabel(T, L, ctx) {
+        const { leftText, rightText, lookup, scrubbed, ordinary } = ctx;
+        const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const lineOf = (txt, s) => { const i = (txt || "").indexOf(s); if (i < 0) return ""; const a = txt.lastIndexOf("\n", i) + 1; const b = txt.indexOf("\n", i); return txt.slice(a, b < 0 ? txt.length : b); };
+        const rLine = lineOf(rightText, T);
+        const wrong = (expected, why) => ({ expected, why });
+        const inLeft = (() => {
+            if (!leftText || leftText.indexOf(T) < 0) return false;
+            if (T.length >= 5) return true;
+            return new RegExp("(?:^|[^\\p{L}\\p{N}_])" + escRe(T) + "(?![\\p{L}\\p{N}_])", "u").test(leftText);
+        })();
+        const words = T.split(/[\s\-_/.,:;()]+/).filter(Boolean);
+        const sugg = (w) => lookup.get(w) || lookup.get(w.toLowerCase());
+
+        // a. our own suggestion for exactly this text
+        const own = sugg(T);
+        if (own && own.label) {
+            return own.label === L ? null : wrong(own.label, `This text should be labeled ${own.label}.`);
+        }
+
+        // d / c for Overscrubbed
+        if (L === "Overscrubbed") {
+            if (inLeft) return wrong(PTC_NONE, "This text is identical in the left document - nothing was changed, so nothing was overscrubbed.");
+            if (words.length && words.every(w => scrubbed.has(w))) return wrong(PTC_NONE, "This replaced a name, company, address, credential or code - that is correct redaction, not overscrubbing.");
+            const changedParts = words.filter(w => { const m = sugg(w); return m && m.label === "Overscrubbed"; });
+            const unchanged = words.filter(w => w.length >= 3 && /[A-Za-z]/.test(w) && !sugg(w) && new RegExp("(?:^|[^A-Za-z0-9])" + escRe(w) + "(?![A-Za-z0-9])").test(leftText || ""));
+            if (changedParts.length && unchanged.length) return wrong("Overscrubbed: " + changedParts.join(", "), `The label also covers unchanged text (${unchanged.slice(0, 3).join(", ")}). Label only the changed part.`);
+            if (/https?:\/\/\S*$/.test(rLine.slice(0, Math.max(0, rLine.indexOf(T))))) return wrong(PTC_NONE, "This is inside a changed link - changed links get no label.");
+            if (new RegExp("[\\w.+-]*" + escRe(T) + "[\\w.+-]*@|@[\\w.-]*" + escRe(T)).test(rLine)) return wrong(PTC_NONE, "This is part of a changed e-mail address - correct redaction.");
+            if (credentialValuesInLine(rLine).some(c => c.value.indexOf(T) >= 0)) return wrong(PTC_NONE, "This is a changed credential value - correct redaction.");
+            if (rLine.length <= 120 && looksLikeAddressPart(rLine)) return wrong(PTC_NONE, "This is part of a changed address - correct redaction.");
+            return null;
+        }
+
+        // c. entity label on replaced text
+        if (!inLeft) {
+            if (words.length && words.every(w => scrubbed.has(w))) return wrong(PTC_NONE, `This replaced a real value (name, company, address, credential or code). Replaced values get no label - not ${L}.`);
+            if (words.some(w => ordinary.has(w) || (sugg(w) && sugg(w).label === "Overscrubbed"))) return wrong("Overscrubbed", `An ordinary word was replaced here, so it is overscrubbed - not ${L}.`);
+            return wrong(PTC_NONE, `This text is not in the left document (it was replaced). Replaced values are never ${L}: use Overscrubbed if the original was an ordinary word, otherwise no label.`);
+        }
+
+        // b. entity label on unchanged text
+        const isEmail = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/.test(T);
+        const strong = isEmail ? "Email Address" : /^https:\/\/\S+$/i.test(T) ? "URL/Link" : isIpAddressFormat(T) ? "IP Address" :
+            /^@[A-Za-z_][\w.]{1,29}$/.test(T) ? "Person Username" : isVehiclePlateFormat(T) ? "Vehicle Number Plate" :
+            (isContactNumberFormat(T) && !isDefaultOrPlaceholderPhone(T)) ? "Contact Number" : null;
+        if (strong && strong !== L && !(L === "Credentials" && strong === "Contact Number")) return wrong(strong, `This is a ${strong}.`);
+        const keyLike = /^["']?[A-Za-z_][\w.-]*["']?$/.test(T) && new RegExp('["\']?' + escRe(T) + '["\']?\\s*[:=]').test(rLine);
+        if (keyLike && !/^@/.test(T)) return wrong(PTC_NONE, `This is a field name / key, not a ${L}.`);
+        if (isFieldLabelOrHeader(T)) return wrong(PTC_NONE, `This is a field label or column header, not a ${L}.`);
+        const plain = T.replace(/[^\p{L}\s'-]/gu, " ").replace(/\s+/g, " ").trim();
+        const ordinaryWord = plain && plain === T.replace(/\s+/g, " ").trim() && isOrdinaryPhrase(plain);
+        const digits = T.replace(/\D/g, "");
+        switch (L) {
+            case "Email Address": return isEmail ? null : wrong(PTC_NONE, "This is not an e-mail address.");
+            case "URL/Link":
+                if (/^http:\/\//i.test(T) || /^www\./i.test(T)) return wrong(PTC_NONE, "Only https:// links are labeled.");
+                return /^https:\/\/\S+$/i.test(T) ? null : wrong(PTC_NONE, "This is not a link.");
+            case "IP Address": return isIpAddressFormat(T) ? null : wrong(PTC_NONE, "This is not a valid IP address.");
+            case "Contact Number": return (isContactNumberFormat(T) && !isDefaultOrPlaceholderPhone(T)) ? null : wrong(PTC_NONE, "This is not a phone number.");
+            case "Vehicle Number Plate": return isVehiclePlateFormat(T) ? null : wrong(PTC_NONE, "This is not a valid Indian number plate.");
+            case "Person Username": return /^@[A-Za-z_][\w.]{1,29}$/.test(T) ? null : wrong(PTC_NONE, "This is not an @username.");
+            case "Account Number": return (/^\d[\d -]{7,22}\d$/.test(T) && digits.length >= 9 && digits.length <= 18) ? null : wrong(PTC_NONE, "This is not a bank account number (9-18 digits).");
+            case "Date": {
+                if (!isDateFormat(T)) return wrong(ordinaryWord ? PTC_NONE : PTC_NONE, "This is not a date.");
+                const ctxTxt = (rLine + " " + lineOf(leftText, T)).toLowerCase();
+                return /\b(?:dob|d\.o\.b|date\s*of\s*birth|birth\s*date|birthday|born|date_of_birth|birth_date)\b/.test(ctxTxt) ? null : wrong(PTC_NONE, "Only dates of birth are labeled.");
             }
-            return;
+            case "Address": return isCompleteAddress(T) ? null : wrong(PTC_NONE, "Not a complete address (a city, street or PIN alone is not labeled).");
+            case "Credentials":
+                if (ordinaryWord) return wrong(PTC_NONE, "This is an ordinary word, not a credential.");
+                return null;
+            case "Person Name":
+                if (ordinaryWord || isLanguageWord(plain)) return wrong(PTC_NONE, "This is an ordinary word, place or language, not a person's name.");
+                if (/\d/.test(T)) return wrong(PTC_NONE, "This is not a person's name.");
+                if (KNOWN_BUSINESS_NAMES.has(T.toLowerCase())) return wrong("Business Name", "This is a company name.");
+                if (TECH_TOOLS.has(T.toLowerCase())) return wrong(PTC_NONE, "This is a software / technology name.");
+                return null;
+            case "Business Name":
+                if (ordinaryWord) return wrong(PTC_NONE, "This is an ordinary word, not a company name.");
+                if (/\bbank\b/i.test(T)) return wrong(PTC_NONE, "Bank names are not labeled as Business Name.");
+                if (TECH_TOOLS.has(T.toLowerCase())) return wrong(PTC_NONE, "This is a software / technology name.");
+                if (isPersonName(T, rLine) && !KNOWN_BUSINESS_NAMES.has(T.toLowerCase())) return wrong("Person Name", "This is a person's name.");
+                return null;
+            default: return null;
         }
+    }
 
-        const msg = target.getAttribute("data-error-msg");
-        if (!msg) return;
+    // Text of a label element, without our own suggestion spans' markup.
+    function labelText(el) {
+        const clone = el.cloneNode(true);
+        for (const own of clone.querySelectorAll(".pt-tag")) own.replaceWith(own.ownerDocument.createTextNode(own.textContent));
+        for (const x of clone.querySelectorAll("svg, i, [class*='close'], [class*='anticon']")) x.remove();
+        return (clone.textContent || "").replace(/\s+/g, " ").replace(/^["'`\s]+|["'`\s]+$/g, "").trim();
+    }
+    const PTC_ATTRS = ["data-ptc", "data-ptc-your", "data-ptc-expected", "data-ptc-why"];
+    function setAttrIfChanged(el, name, value) { if (el.getAttribute(name) !== value) el.setAttribute(name, value); }
+    function clearPtc(el) { for (const a of PTC_ATTRS) if (el.hasAttribute(a)) el.removeAttribute(a); }
 
-        currentWrongLabelEl = target;
-        tip.textContent = msg;
-        tip.classList.add("pt-tooltip-visible");
-
-        const rect = target.getBoundingClientRect();
-        const tipWidth = tip.offsetWidth || 180;
-        const tipHeight = tip.offsetHeight || 24;
-
-        // Centered horizontally, clamped to viewport margins
-        let left = rect.left + (rect.width / 2) - (tipWidth / 2);
-        left = Math.max(10, Math.min(window.innerWidth - tipWidth - 10, left));
-
-        // Place above if room, otherwise below
-        let top = rect.top - tipHeight - 6;
-        if (top < 10) {
-            top = rect.bottom + 6;
+    function runLabelCheck(rightPane, leftText, rightText, targets, scopeEls) {
+        const lookup = new Map();
+        for (const t of targets) { lookup.set(t.text, t); if (!lookup.has(t.text.toLowerCase())) lookup.set(t.text.toLowerCase(), t); }
+        const ctx = { leftText, rightText, lookup, scrubbed: targets.scrubbedNames || new Set(), ordinary: targets.ordinaryWords || new Set() };
+        const SEL = "mark, span, u, ins, b, strong, em, a, [data-label], [data-entity], [data-category], [data-annotation]";
+        const pool = [];
+        if (scopeEls) { for (const s of scopeEls) { if (s.matches && s.matches(SEL)) pool.push(s); for (const x of s.querySelectorAll(SEL)) pool.push(x); } }
+        else for (const x of rightPane.querySelectorAll(SEL)) pool.push(x);
+        const labeled = new Map();   // element -> label
+        for (const el of pool) {
+            // (a label drawn INSIDE one of our suggestion spans still counts: the editor may wrap the selection there)
+            if (labeled.has(el) || el.classList.contains("pt-tag") || el.closest("#pt-floating-bar")) continue;
+            const len = (el.textContent || "").length;
+            if (len < 1 || len > 250) continue;
+            const L = detectAssignedCategory(el);
+            if (L) labeled.set(el, L);
         }
-
-        tip.style.left = left + "px";
-        tip.style.top = top + "px";
-    }, { passive: true });
-
-    ptOn(document, "mouseout", (e) => {
-        if (currentWrongLabelEl && (!e.relatedTarget || !currentWrongLabelEl.contains(e.relatedTarget))) {
-            const tip = document.getElementById("pt-error-tooltip");
-            if (tip) tip.classList.remove("pt-tooltip-visible");
-            currentWrongLabelEl = null;
+        const mistakes = [];
+        const seen = new Set();
+        for (const [el, L] of labeled) {
+            // the outermost label element wins (a label drawn as nested elements is judged once)
+            let anc = el.parentElement, nested = false;
+            while (anc && anc !== rightPane) { if (labeled.has(anc)) { nested = true; break; } anc = anc.parentElement; }
+            if (nested) { clearPtc(el); continue; }
+            seen.add(el);
+            const T = labelText(el);
+            if (T.length < 2) { clearPtc(el); continue; }
+            let verdict = null;
+            try { verdict = judgeLabel(T, L, ctx); } catch (e) { verdict = null; }
+            if (verdict) {
+                setAttrIfChanged(el, "data-ptc", "wrong");
+                setAttrIfChanged(el, "data-ptc-your", L);
+                setAttrIfChanged(el, "data-ptc-expected", verdict.expected);
+                setAttrIfChanged(el, "data-ptc-why", verdict.why);
+                mistakes.push({ el, text: T, your: L, expected: verdict.expected, why: verdict.why });
+            } else {
+                setAttrIfChanged(el, "data-ptc", "ok");
+                setAttrIfChanged(el, "data-ptc-your", L);
+                for (const a of ["data-ptc-expected", "data-ptc-why"]) if (el.hasAttribute(a)) el.removeAttribute(a);
+            }
         }
-    }, { passive: true });
+        // elements that are no longer labels (label removed) lose our marks
+        for (const el of rightPane.querySelectorAll("[data-ptc]")) if (!seen.has(el) && (!scopeEls || scopeEls.some(s => s.contains(el)))) clearPtc(el);
+        __ptcMistakes = mistakes;
+        renderMistakeList();
+        return mistakes;
+    }
 
-    ptOn(window, "scroll", () => {
-        const tip = document.getElementById("pt-error-tooltip");
-        if (tip) tip.classList.remove("pt-tooltip-visible");
-        currentWrongLabelEl = null;
+    // ---------- UI: hover card, mistake list, navigation ----------
+    function ptcCard() {
+        let c = document.getElementById("ptc-card");
+        if (!c) { c = document.createElement("div"); c.id = "ptc-card"; document.body.appendChild(c); }
+        return c;
+    }
+    const escHtml = (s) => String(s).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+    ptOn(document, "mouseover", (e) => {
+        const el = e.target && e.target.closest ? e.target.closest("[data-ptc='wrong']") : null;
+        const card = document.getElementById("ptc-card");
+        if (!el) { if (card && !e.target.closest("#ptc-card")) card.classList.remove("ptc-show"); return; }
+        const c = ptcCard();
+        c.innerHTML = '<div class="ptc-h">\u26A0 Wrong label</div>' +
+            '<div class="ptc-row"><span>Text</span><b>' + escHtml(labelText(el).slice(0, 80)) + '</b></div>' +
+            '<div class="ptc-row"><span>Your label</span><b class="ptc-bad">' + escHtml(el.getAttribute("data-ptc-your")) + '</b></div>' +
+            '<div class="ptc-row"><span>Correct</span><b class="ptc-good">' + escHtml(el.getAttribute("data-ptc-expected")) + '</b></div>' +
+            '<div class="ptc-why">' + escHtml(el.getAttribute("data-ptc-why") || "") + '</div>';
+        const r = el.getBoundingClientRect();
+        c.classList.add("ptc-show");
+        const w = c.offsetWidth || 280, h = c.offsetHeight || 120;
+        let left = Math.max(8, Math.min(window.innerWidth - w - 8, r.left));
+        let top = r.bottom + 8; if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 26);
+        c.style.left = left + "px"; c.style.top = top + "px";
     }, { passive: true });
+    let __ptcIndex = -1;
+    function focusMistake(i) {
+        if (!__ptcMistakes.length) return;
+        __ptcIndex = ((i % __ptcMistakes.length) + __ptcMistakes.length) % __ptcMistakes.length;
+        const m = __ptcMistakes[__ptcIndex];
+        if (!m.el.isConnected) return;
+        m.el.scrollIntoView({ behavior: "smooth", block: "center" });
+        m.el.setAttribute("data-ptc-flash", "1");   // an attribute, not a class: the page's own classes are never touched
+        setTimeout(() => m.el.removeAttribute("data-ptc-flash"), 1400);
+    }
+    function renderMistakeList() {
+        const panel = document.getElementById("ptc-list");
+        if (!panel || panel.hidden) return;
+        const rows = __ptcMistakes.map((m, i) => '<div class="ptc-item" data-i="' + i + '"><b>' + escHtml(m.text.slice(0, 40)) + '</b>' +
+            '<span class="ptc-bad">' + escHtml(m.your) + '</span> \u2192 <span class="ptc-good">' + escHtml(m.expected) + '</span>' +
+            '<div class="ptc-why">' + escHtml(m.why) + '</div></div>').join("");
+        panel.querySelector(".ptc-body").innerHTML = rows || '<div class="ptc-empty">No label mistakes on this page.</div>';
+    }
+    function toggleMistakeList() {
+        let panel = document.getElementById("ptc-list");
+        if (!panel) {
+            panel = document.createElement("div");
+            panel.id = "ptc-list";
+            panel.hidden = true;
+            panel.innerHTML = '<div class="ptc-head"><b>Label mistakes</b><span><button data-a="prev">\u2039</button><button data-a="next">\u203A</button><button data-a="close">\u2715</button></span></div><div class="ptc-body"></div>';
+            panel.addEventListener("click", (e) => {
+                const a = e.target.getAttribute && e.target.getAttribute("data-a");
+                if (a === "close") { panel.hidden = true; return; }
+                if (a === "next") return focusMistake(__ptcIndex + 1);
+                if (a === "prev") return focusMistake(__ptcIndex - 1);
+                const item = e.target.closest(".ptc-item");
+                if (item) focusMistake(+item.getAttribute("data-i"));
+            });
+            document.body.appendChild(panel);
+        }
+        panel.hidden = !panel.hidden;
+        renderMistakeList();
+    }
+
     // Long documents: the analysed window follows scrolling (pane scroll events are caught in the capture phase).
     ptOn(document, "scroll", () => {
         if (!__ptViewportInfo) return;
@@ -737,6 +894,96 @@
         { name: "Overscrubbed", classes: [/ant-tag-pink/i, /ant-tag-salmon/i, /pt-overscrub/i, /\b(?:overscrub|scrub)\b/i, /\bpink\b/i, /\bsalmon\b/i], keywords: [/overscrub/i, /\bscrub\b/i], colors: ["#ff7875", "255,120,117", "#ffccc7", "255,204,199"] }
     ];
 
+
+    // ---- Platform palette (label chip colours), learned from the page and cached for 3 s ----
+    const LABEL_NAMES = ["Account Number", "Address", "Business Name", "Contact Number", "Credentials", "Date", "Email Address",
+        "IP Address", "Overscrubbed", "Person Name", "URL/Link", "Person Username", "Vehicle Number Plate"];
+    let __ptPalette = { t: 0, list: [] };
+    function parseRgb(s) {
+        const m = /rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)(?:[,\s/]+([\d.]+%?))?\s*\)/.exec(s || "");
+        if (!m) return null;
+        let a = m[4] == null ? 1 : (m[4].endsWith("%") ? parseFloat(m[4]) / 100 : parseFloat(m[4]));
+        if (a <= 0.02) return null;
+        const blend = (v) => Math.round(a * +v + (1 - a) * 255);          // as seen on a white page
+        return [blend(m[1]), blend(m[2]), blend(m[3])];
+    }
+    const isNeutral = (c) => { const mx = Math.max(...c), mn = Math.min(...c); return mx - mn < 14 || mn > 248 || mx < 40; };
+    function learnPalette() {
+        const now = Date.now();
+        if (now - __ptPalette.t < 3000 && __ptPalette.list.length) return __ptPalette.list;
+        const list = [];
+        try {
+            const { leftPane, rightPane } = getPanes();
+            const all = document.querySelectorAll("span, div, button, label, li, a");
+            for (const el of all) {
+                if (el.childElementCount > 3) continue;
+                const txt = (el.textContent || "").trim();
+                if (!LABEL_NAMES.includes(txt)) continue;
+                if ((leftPane && leftPane.contains(el)) || (rightPane && rightPane.contains(el)) || el.closest("#pt-floating-bar")) continue;
+                // the chip, its colour dot and its parent
+                const parts = [el, el.parentElement, ...el.querySelectorAll("*")].filter(Boolean);
+                for (const pEl of parts) {
+                    const cs = getComputedStyle(pEl);
+                    for (const v of [cs.backgroundColor, cs.borderTopColor, cs.color]) {
+                        const rgb = parseRgb(v);
+                        if (rgb && !isNeutral(rgb)) list.push({ name: txt, rgb });
+                    }
+                }
+            }
+        } catch (e) {}
+        __ptPalette = { t: now, list };
+        return list;
+    }
+    function matchPlatformPalette(els) {
+        const pal = learnPalette();
+        if (!pal.length || typeof getComputedStyle !== "function") return null;
+        // Strongest (most saturated) colour of each label = its base colour; tints are that colour over white.
+        const base = new Map();
+        const sat = (c) => Math.max(...c) - Math.min(...c);
+        for (const p of pal) { const b = base.get(p.name); if (!b || sat(p.rgb) > sat(b)) base.set(p.name, p.rgb); }
+        return __matchColours(els, pal, base);
+    }
+    function __tintError(rgb, P) {
+        // rgb should equal P drawn over white with ONE opacity a:  rgb[k] = 255 - a * (255 - P[k])  for every channel.
+        const as = [];
+        for (let k = 0; k < 3; k++) { const span = 255 - P[k]; if (span > 25) as.push((255 - rgb[k]) / span); }
+        if (as.length < 2) return 1;
+        const lo = Math.min(...as), hi = Math.max(...as);
+        if (lo < 0.03 || hi > 1.08) return 1;
+        // (v11.0.0) every channel must fit, including the ones near 255 - otherwise a very light colour with two
+        // equal channels (Overscrubbed 255,227,227) "explained" any tint, e.g. Business Name's teal.
+        const a = as.reduce((s, x) => s + x, 0) / as.length;
+        for (let k = 0; k < 3; k++) if (Math.abs(rgb[k] - (255 - a * (255 - P[k]))) > 8) return 1;
+        return hi - lo;
+    }
+    function __bestColour(values, pal, base) {
+        let best = null, bestScore = 1e9;
+        for (const v of values) {
+            const rgb = parseRgb(v);
+            if (!rgb || isNeutral(rgb)) continue;
+            for (const p of pal) { const d = Math.hypot(rgb[0] - p.rgb[0], rgb[1] - p.rgb[1], rgb[2] - p.rgb[2]); if (d < bestScore) { bestScore = d; best = p.name; } }
+            for (const [name, P] of base) { const sc = __tintError(rgb, P) * 250; if (sc < bestScore) { bestScore = sc; best = name; } }
+        }
+        return bestScore <= 24 ? best : null;
+    }
+    function __matchColours(els, pal, base) {
+        const values = [];
+        for (const e of els) {
+            if (!e || e.nodeType !== 1 || (e.classList && e.classList.contains("pt-tag"))) continue;
+            let cs; try { cs = getComputedStyle(e); } catch (x) { continue; }
+            const colours = [cs.backgroundColor];
+            // (v10.6.3) the live dashboard draws the underline as a linear-gradient background image
+            for (const m of (cs.backgroundImage || "").match(/rgba?\([^)]*\)/g) || []) colours.push(m);
+            if (parseFloat(cs.borderBottomWidth) > 0) colours.push(cs.borderBottomColor);
+            if (parseFloat(cs.borderTopWidth) > 0) colours.push(cs.borderTopColor);
+            if (/underline/.test(cs.textDecorationLine || cs.textDecoration || "")) colours.push(cs.textDecorationColor);
+            if (!e.hasAttribute("data-pt-wrong") && cs.boxShadow && cs.boxShadow !== "none") colours.push(cs.boxShadow);
+            if (!e.hasAttribute("data-pt-wrong") && cs.outlineStyle && cs.outlineStyle !== "none" && parseFloat(cs.outlineWidth) > 0) colours.push(cs.outlineColor);
+            for (const v of colours) values.push(v);
+        }
+        return __bestColour(values, pal, base);
+    }
+
     function detectAssignedCategory(el) {
         if (!el || el.nodeType !== 1) return null;
         // Our own suggestion spans carry data-label / pt-* classes too. They must never be read as the
@@ -798,6 +1045,14 @@
                     if (tc.toLowerCase() === cat.name.toLowerCase()) return cat.name;
                 }
             }
+        }
+
+        // Layer 3B (v10.6.0): the platform's OWN palette, learned from the label chips at the top of the review
+        // screen ("Account Number", "Overscrubbed", ...). A label drawn on the text uses its chip's colour as a
+        // background, underline or border, so it is matched by colour distance - whatever the platform's markup.
+        {
+            const hit = matchPlatformPalette(allElements);
+            if (hit) return hit;
         }
 
         // Layer 4: Check computed & inline border / background colors (space-normalized)
@@ -2744,12 +2999,12 @@
         // Keyed by the texts themselves (native string hashing is much faster than hashing in JS).
         const byRight = __ptTargetsCache.get(leftText);
         const cached = byRight && byRight.get(rightText);
-        if (cached) { const copy = cached.map(t => Object.assign({}, t)); copy.scrubbedNames = cached.scrubbedNames; return copy; }
+        if (cached) { const copy = cached.map(t => Object.assign({}, t)); copy.scrubbedNames = cached.scrubbedNames; copy.ordinaryWords = cached.ordinaryWords; return copy; }
         const result = extractDynamicTargetsUncached(leftText, rightText);
         if (__ptTargetsCache.size >= 3) __ptTargetsCache.delete(__ptTargetsCache.keys().next().value);
         const m = byRight || new Map();
         if (m.size >= 3) m.delete(m.keys().next().value);
-        const stored = result.map(t => Object.assign({}, t)); stored.scrubbedNames = result.scrubbedNames;
+        const stored = result.map(t => Object.assign({}, t)); stored.scrubbedNames = result.scrubbedNames; stored.ordinaryWords = result.ordinaryWords;
         m.set(rightText, stored);
         __ptTargetsCache.set(leftText, m);
         return result;
@@ -3254,6 +3509,9 @@
             return text.slice(s, e === -1 ? text.length : e);
         }
 
+        // Words of a replacement that is CORRECT redaction (company, address, credential, reference code):
+        // remembered so the mistake check can flag a reviewer's Overscrubbed label on them.
+        function markRedacted(diff) { for (const w of cleanWord(diff.changed || "").split(/[\s\-_/.,:;]+/)) if (w) __ptScrubbedNameWords.add(w); }
         function processDiffs(diffs, docContext) {
             // Rule: "and path can be changed r no need to be labeled"
             if (isVectorOrPathData("", docContext)) return;
@@ -3279,7 +3537,7 @@
                 // User rule: "here the bussiness name r changed to other form its correct it should not be labelled at all"
                 if (!origOrdinary && isBusinessName(diff.changed, diff.original, fullContext) || isBusinessName(diff.original, diff.changed, fullContext) ||
                     isTokenInBusinessContext(cleanWord(diff.changed), rightText) || isTokenInBusinessContext(cleanWord(diff.original), leftText) ||
-                    KNOWN_BUSINESS_NAMES.has((diff.original || "").toLowerCase().trim()) || KNOWN_BUSINESS_NAMES.has((diff.changed || "").toLowerCase().trim())) continue;
+                    KNOWN_BUSINESS_NAMES.has((diff.original || "").toLowerCase().trim()) || KNOWN_BUSINESS_NAMES.has((diff.changed || "").toLowerCase().trim())) { markRedacted(diff); continue; }
 
                 // User rule: "jesus is person name" / scrubbed person names should not be marked as overscrubbed
                 if (!origOrdinary && (isPersonName(diff.original, fullContext) || isPersonName(diff.changed, fullContext) ||
@@ -3300,11 +3558,11 @@
                 // A scrubbed address ("Plot no. 13, Near Shanti Mandir, ..." -> "937 Garnthwaite Road") is correct
                 // redaction: no label at all (not Address, not Overscrubbed).
                 if (looksLikeAddressPart(diff.original) || looksLikeAddressPart(diff.changed) ||
-                    isInAddressBlock(cleanWord(diff.original), leftText) || isInAddressBlock(cleanWord(diff.changed), rightText)) continue;
+                    isInAddressBlock(cleanWord(diff.original), leftText) || isInAddressBlock(cleanWord(diff.changed), rightText)) { markRedacted(diff); continue; }
                 // A changed reference code (GSTIN, invoice / order ID) was correctly scrubbed: no label.
-                if (looksLikeIdCode(cleanWord(diff.original)) && looksLikeIdCode(cleanWord(diff.changed))) continue;
+                if (looksLikeIdCode(cleanWord(diff.original)) && looksLikeIdCode(cleanWord(diff.changed))) { markRedacted(diff); continue; }
                 // A changed value on a credential line ("Password - x", "PAN: y") was correctly scrubbed: no label.
-                if (isOnCredentialValue(diff.changed, rightText) || isOnCredentialValue(diff.original, leftText)) continue;
+                if (isOnCredentialValue(diff.changed, rightText) || isOnCredentialValue(diff.original, leftText)) { markRedacted(diff); continue; }
 
                 const cl = classifyDiff(diff.original, diff.changed, fullContext);
                 if (cl && cl.label === "Overscrubbed" && origOrdinaryForOverscrub(diff.original)) {
@@ -4022,6 +4280,7 @@
         const __result = Array.from(targetMap.values()).sort((a, b) => b.text.length - a.text.length);
         // Words that replaced a NAME (scrubbed names) travel with the result (also through the cache) for the mistake check.
         __result.scrubbedNames = new Set([...__ptScrubbedNameWords, ...__ptNameCellWords]);
+        __result.ordinaryWords = new Set(__ptOrdinaryOrigins);
         return __result;
 
     }
@@ -4207,292 +4466,6 @@
         return fp;
     }
 
-    function auditPlatformAnnotation(pm, cleanTxt, assignedCategory, leftText, rightText, targetMapLookup, isElementInsideUrl) {
-        if (!cleanTxt || cleanTxt.length < 2) return null;
-
-        const displayTxt = cleanTxt.replace(/[\[\]\(\)\{\}<>]+/g, ' ').replace(/\s+/g, ' ').trim() || cleanTxt;
-
-        const parentCtx = pm.parentElement ? pm.parentElement.textContent : "";
-        if (isDefaultOrPlaceholderLink(cleanTxt) || isDefaultOrPlaceholderEmail(cleanTxt) || isDefaultOrPlaceholderPhone(cleanTxt) || isVectorOrPathData(cleanTxt, parentCtx)) {
-            return `\u26A0\uFE0F Mistake: '${displayTxt}' is a placeholder or vector/path data! Action: Placeholder data and vector coordinates must NOT be labeled \u2014 remove this label.`;
-        }
-
-        // Consistency first (v10.4.5): when the auditor itself suggests a label for exactly this text, the
-        // reviewer's label is judged against that suggestion. Before, the mistake check used separate rules and
-        // could call the auditor's own suggestion a mistake ("Galeonorb" suggested as Overscrubbed, then flagged
-        // as "a correctly scrubbed business name" once the reviewer applied Overscrubbed).
-        {
-            const own = targetMapLookup.get(cleanTxt) || targetMapLookup.get(cleanTxt.toLowerCase());
-            if (own && own.label) {
-                if (own.label === assignedCategory) return null;
-                return `\u26A0\uFE0F Mistake: '${displayTxt}' should be labeled ${own.label}, not ${assignedCategory}. Action: Change the label to ${own.label}.`;
-            }
-        }
-
-        // Universal Rule 1: Field labels, table headers, invoice titles (e.g. Tax Invoice, Resolution, Created, Updated, Components, Priority, Status, Assignee, Issue Type) must NEVER be labeled!
-        if (isFieldLabelOrHeader(cleanTxt, leftText + " " + rightText) || isFieldLabelOrHeader(displayTxt, leftText + " " + rightText) || /^tax\s*invoice/i.test(displayTxt)) {
-            const catStr = assignedCategory ? `NOT a ${assignedCategory}` : `must NOT be labeled`;
-            return `\u26A0\uFE0F Mistake: '${displayTxt}' is a table column header or field label, ${catStr}! Action: Remove this label.`;
-        }
-
-        // Bank names are strictly excluded from Business Name and entity annotations
-        if (/\bbank(?:ing)?\b/i.test(cleanTxt)) {
-            return `\u26A0\uFE0F Mistake: Bank names ('${displayTxt}') are NOT business names! Action: Remove this label.`;
-        }
-
-        // Universal Rule 2: Generic non-entity terms must NEVER be labeled!
-        if (hasNonEntityWord(cleanTxt) || hasNonEntityWord(displayTxt)) {
-            const catStr = assignedCategory ? `NOT a ${assignedCategory}` : `must NOT be labeled`;
-            return `\u26A0\uFE0F Mistake: '${displayTxt}' is a generic non-entity term, ${catStr}! Action: Remove this label.`;
-        }
-
-        let expectedObj = targetMapLookup.get(cleanTxt) || targetMapLookup.get(cleanTxt.toLowerCase());
-        if (!expectedObj && (cleanTxt.includes("-") || cleanTxt.includes("/") || cleanTxt.includes("_") || cleanTxt.includes(" "))) {
-            const subWords = cleanTxt.split(/[\-_/\s]+/).filter(w => w.length >= 2);
-            for (let s = 0; s < subWords.length; s++) {
-                const match = targetMapLookup.get(subWords[s]) || targetMapLookup.get(subWords[s].toLowerCase());
-                if (match) {
-                    expectedObj = match;
-                    break;
-                }
-            }
-        }
-
-        // ==========================================
-        // CASE 1: LABELED AS OVERSCRUBBED
-        // ==========================================
-        if (assignedCategory === "Overscrubbed") {
-            // Rule 0 (v10.5.4): a scrubbed NAME is correct redaction, never Overscrubbed.
-            if (cleanTxt.split(/\s+/).every(w => __ptAuditScrubbedNames.has(w))) {
-                return `\u26A0\uFE0F Mistake: '${cleanTxt}' replaced a person's name - that is correct redaction. Action: Scrubbed names must NOT be labeled Overscrubbed \u2014 remove this label.`;
-            }
-            // Rule 1: Cannot exist unchanged in original left document
-            if (leftText && leftText.includes(cleanTxt) && cleanTxt.length >= 2) {
-                return `\u26A0\uFE0F Mistake: '${cleanTxt}' is unchanged (found identically on left pane)! Action: Overscrubbed is ONLY for synthetic scrubber replacements \u2014 remove this label.`;
-            }
-
-            // Rule 2: Cannot be inside a changed URL or link
-            if (isElementInsideUrl(pm) || isInsideChangedUrl(cleanTxt, leftText, rightText) || isPartOfUrl(cleanTxt)) {
-                return `\u26A0\uFE0F Mistake: '${cleanTxt}' is inside a changed URL/link! Action: URLs/links must NOT be labeled unless identical in both documents \u2014 remove this label.`;
-            }
-
-            // Rule 3: Passwords and credentials must not be labeled as Overscrubbed
-            if (isTokenInPasswordContext(cleanTxt, rightText) || isTokenInPasswordContext(cleanTxt, leftText) || isPasswordOrCredentialContext(cleanTxt) ||
-                /[!@#$%^&*()_+=\[\]{}|]/.test(cleanTxt) && cleanTxt.length >= 16 ||
-                /^[a-zA-Z0-9_\-]{24,128}$/.test(cleanTxt) && /[a-z]/.test(cleanTxt) && /[A-Z]/.test(cleanTxt) && /\d/.test(cleanTxt)) {
-                return `\u26A0\uFE0F Mistake: '${cleanTxt}' is a password/credential value! Action: Changed passwords and credentials must NOT be labeled as Overscrubbed \u2014 remove this label.`;
-            }
-
-            // Rule 4: Correctly scrubbed email address
-            if (isInsideAnyEmail(cleanTxt, rightText)) {
-                return `\u26A0\uFE0F Mistake: '${cleanTxt}' is inside a correctly scrubbed email address! Action: Scrubbed email addresses must NOT be labeled \u2014 remove this label.`;
-            }
-
-            // Rule 5: Correctly scrubbed business name
-            if (isTokenInCopyrightLine(cleanTxt, rightText) || isTokenInCopyrightLine(cleanTxt, leftText) ||
-                isTokenInTableVendor(cleanTxt, rightText) || isTokenInTableVendor(cleanTxt, leftText) ||
-                isTokenInBusinessContext(cleanTxt, rightText) || isTokenInBusinessContext(cleanTxt, leftText) ||
-                isBusinessName(cleanTxt, "", "") || isBusinessName("", cleanTxt, "")) {
-                return `\u26A0\uFE0F Mistake: '${cleanTxt}' is a correctly scrubbed business name! Action: Correctly scrubbed business names must NOT be labeled as Overscrubbed \u2014 remove this label.`;
-            }
-
-            // Rule 6: Correctly scrubbed person name
-            if (isTokenInNameContext(cleanTxt, rightText) || isTokenInNameContext(cleanTxt, leftText) ||
-                isPersonName(cleanTxt, rightText) || isPersonName(cleanTxt, leftText) ||
-                isChangedPiiOrBii(cleanTxt, leftText, rightText)) {
-                return `\u26A0\uFE0F Mistake: '${cleanTxt}' is a correctly scrubbed person name! Action: Correctly scrubbed person names must NOT be labeled as Overscrubbed \u2014 remove this label.`;
-            }
-
-            // Rule 7: Surrounding delimiters or unchanged subparts
-            if (/^[\-_/.:@#$*|]+|[\-_/.:@#$*|]+$/.test(cleanTxt)) {
-                return `\u26A0\uFE0F Mistake: Selection includes surrounding punctuation/delimiters! Action: Label ONLY the partial synthetic token itself without punctuation.`;
-            }
-            if (/[\-_/]/.test(cleanTxt)) {
-                const subParts = cleanTxt.split(/[\-_/]+/);
-                const unchanged = subParts.filter(p => p.length >= 2 && leftText.includes(p));
-                const changed = subParts.filter(p => p.length >= 2 && !leftText.includes(p));
-                if (unchanged.length > 0 && changed.length > 0) {
-                    return `\u26A0\uFE0F Mistake: Selection includes unchanged parts ('${unchanged.join(", ")}')! Action: Label ONLY the partial synthetic token ('${changed.join(", ")}') as Overscrubbed.`;
-                }
-            }
-
-            // Rule 8: If expected to be another category
-            if (expectedObj && expectedObj.label !== "Overscrubbed") {
-                return `\u26A0\uFE0F Incorrect label! You labeled: Overscrubbed. Action: Change label to '${expectedObj.label}'.`;
-            }
-
-            // Rule 9: If vector/path data
-            if (isVectorOrPathData(cleanTxt, "") || isPartOfUrl(cleanTxt) || isDefaultOrPlaceholderLink(cleanTxt)) {
-                return `\u26A0\uFE0F Mistake: '${cleanTxt}' is a URL, path, or vector data! Action: Paths, URLs, and vector data must NOT be labeled \u2014 remove this label.`;
-            }
-
-            return null; // Valid Overscrubbed
-        }
-
-        // ==========================================
-        // CASE 2: LABELED AS ANY REAL PII/BII CATEGORY
-        // (Person Name, Business Name, Date, Credentials, etc.)
-        // ==========================================
-        if (assignedCategory && assignedCategory !== "Overscrubbed") {
-            // General Rule: Must exist in left document (unscrubbed leak)
-            if (!leftText.includes(cleanTxt)) {
-                if (assignedCategory === "Business Name" && (isTokenInBusinessContext(cleanTxt, rightText) || isBusinessName(cleanTxt, "", ""))) {
-                    return `\u26A0\uFE0F Mistake: '${cleanTxt}' is a scrubbed/synthetic company name (not on left)! Action: Only real business names identical in BOTH left & right documents may be labeled \u2014 remove this label.`;
-                }
-                if (assignedCategory === "Person Name" && (isTokenInNameContext(cleanTxt, rightText) || isPersonName(cleanTxt, rightText))) {
-                    return `\u26A0\uFE0F Mistake: '${cleanTxt}' is a scrubbed/synthetic person name (not on left)! Action: Only real person names identical in BOTH left & right documents may be labeled \u2014 remove this label.`;
-                }
-                return `\u26A0\uFE0F Mistake: '${cleanTxt}' does not exist identically in both documents! Action: Only entities identical in BOTH left & right documents may be labeled \u2014 remove this label.`;
-            }
-
-            // Check against expected category if target is known
-            if (expectedObj) {
-                const expectedName = expectedObj.label;
-                const isMatching = (assignedCategory.toLowerCase() === expectedName.toLowerCase() || 
-                   (expectedName.toLowerCase().includes("cred") && assignedCategory.toLowerCase().includes("cred")) ||
-                   (expectedName.toLowerCase().includes("overscrub") && assignedCategory.toLowerCase().includes("overscrub")));
-
-                if (!isMatching) {
-                    return `\u26A0\uFE0F Incorrect label! You labeled: ${assignedCategory}. Action: Change label to '${expectedName}'.`;
-                }
-            }
-
-            // Category-Specific Validations:
-
-            // 2A. DATE: Strictly Date of Birth (DOB) only!
-            if (assignedCategory === "Date") {
-                if (!isDateFormat(cleanTxt)) {
-                    return `\u26A0\uFE0F Mistake: '${cleanTxt}' is NOT a valid date! Action: Remove this label.`;
-                }
-                const isDOB = /(?:date\s*of\s*birth|dob|d\.o\.b|birth\s*date|born|birthday)\b/i.test(parentCtx) ||
-                              /(?:date\s*of\s*birth|dob|d\.o\.b|birth\s*date|born|birthday)\b/i.test(leftText);
-                if (!isDOB) {
-                    return `\u26A0\uFE0F Mistake: '${cleanTxt}' is NOT a Date of Birth! Action: Remove this label \u2014 only Date of Birth (DOB) may be labeled as Date.`;
-                }
-            }
-
-            // 2B. BUSINESS NAME: Bank names, field labels, and non-business entities are NOT business names!
-            if (assignedCategory === "Business Name") {
-                if (/\bbank(?:ing)?\b/i.test(cleanTxt)) {
-                    return `\u26A0\uFE0F Mistake: Bank names ('${cleanTxt}') are NOT business names! Action: Remove this label.`;
-                }
-                if (isFieldLabelOrHeader(cleanTxt) || hasNonEntityWord(cleanTxt) || isInfraOrServerTerm(cleanTxt)) {
-                    return `\u26A0\uFE0F Mistake: '${cleanTxt}' is a field label or generic term, NOT a Business Name! Action: Remove this label.`;
-                }
-                const isBiz = isBusinessName(cleanTxt, cleanTxt, parentCtx) || 
-                              isTokenInBusinessContext(cleanTxt, rightText) || 
-                              isTokenInBusinessContext(cleanTxt, leftText) ||
-                              KNOWN_BUSINESS_NAMES.has(cleanTxt.toLowerCase());
-                if (!isBiz && (!expectedObj || expectedObj.label !== "Business Name")) {
-                    return `\u26A0\uFE0F Mistake: '${cleanTxt}' is NOT a Business Name! Action: Only verified company/business names may be labeled as Business Name \u2014 remove this label.`;
-                }
-            }
-
-            // 2C. PERSON NAME: Field labels, non-entity words, and non-person entities are NOT person names!
-            if (assignedCategory === "Person Name") {
-                if (isFieldLabelOrHeader(cleanTxt) || hasNonEntityWord(cleanTxt)) {
-                    return `\u26A0\uFE0F Mistake: '${cleanTxt}' is a field label or generic term, NOT a Person Name! Action: Remove this label.`;
-                }
-                const isPerson = isPersonName(cleanTxt, parentCtx) || 
-                                 isTokenInNameContext(cleanTxt, rightText) || 
-                                 isTokenInNameContext(cleanTxt, leftText) ||
-                                 looksLikeHumanName(cleanTxt) || 
-                                 KNOWN_GIVEN_NAMES.has(cleanTxt.toLowerCase());
-                if (!isPerson && (!expectedObj || expectedObj.label !== "Person Name")) {
-                    return `\u26A0\uFE0F Mistake: '${cleanTxt}' is NOT a Person Name! Action: Only verified person names may be labeled as Person Name \u2014 remove this label.`;
-                }
-            }
-
-            // 2D. CONTACT NUMBER: Must match valid contact number format!
-            if (assignedCategory === "Contact Number") {
-                if (!isContactNumberFormat(cleanTxt)) {
-                    return `\u26A0\uFE0F Mistake: '${cleanTxt}' is NOT a valid Contact Number! Action: Only valid contact numbers may be labeled \u2014 remove this label.`;
-                }
-            }
-
-            // 2E. EMAIL ADDRESS: Must match valid email address format!
-            if (assignedCategory === "Email Address") {
-                if (!isEmailAddressFormat(cleanTxt)) {
-                    return `\u26A0\uFE0F Mistake: '${cleanTxt}' is NOT a valid Email Address! Action: Only valid email addresses may be labeled \u2014 remove this label.`;
-                }
-            }
-
-            // 2F. IP ADDRESS: Must match valid IP address format!
-            if (assignedCategory === "IP Address") {
-                if (!isIpAddressFormat(cleanTxt)) {
-                    return `\u26A0\uFE0F Mistake: '${cleanTxt}' is NOT a valid IP Address! Action: Only valid IP addresses may be labeled \u2014 remove this label.`;
-                }
-            }
-
-            // 2G. VEHICLE NUMBER PLATE: Must match valid vehicle plate format!
-            if (assignedCategory === "Vehicle Number Plate") {
-                if (!isVehiclePlateFormat(cleanTxt)) {
-                    return `\u26A0\uFE0F Mistake: '${cleanTxt}' is NOT a valid Vehicle Number Plate! Action: Only real-world vehicle number plates may be labeled \u2014 remove this label.`;
-                }
-            }
-
-            // 2H. ACCOUNT NUMBER: Must match valid account number format!
-            if (assignedCategory === "Account Number") {
-                if (!isAccountNumberFormat(cleanTxt)) {
-                    return `\u26A0\uFE0F Mistake: '${cleanTxt}' is NOT a valid Account Number! Action: Only valid bank/account numbers may be labeled \u2014 remove this label.`;
-                }
-            }
-
-            // 2I. ADDRESS: Complete address only (premise + street + city/pincode)
-            if (assignedCategory === "Address") {
-                if (!isCompleteAddress(cleanTxt)) {
-                    return `\u26A0\uFE0F Mistake: Incomplete address ('${cleanTxt}')! Action: Address requires complete format (premise + street + city/pincode) identical in both documents \u2014 remove this label.`;
-                }
-            }
-
-            // 2J. PERSON USERNAME: Explicit @handles only, never node IDs or hashes
-            if (assignedCategory === "Person Username") {
-                if (!/^@[a-zA-Z0-9_.-]{2,}$/.test(cleanTxt)) {
-                    return `\u26A0\uFE0F Mistake: '${cleanTxt}' is an ID/hash, NOT a Person Username! Action: Only explicit social/chat @handles may be labeled as Person Username \u2014 remove this label.`;
-                }
-            }
-
-            // 2K. CREDENTIALS: Strict value-only
-            if (assignedCategory === "Credentials") {
-                if (/(?:password|client\s*secret|api\s*key|access\s*token)\s*[:=]/i.test(cleanTxt)) {
-                    return `\u26A0\uFE0F Mistake: Selection includes field label! Action: Label ONLY the credential value itself.`;
-                }
-                const isCred = isCredentialsFormat(cleanTxt) || isPasswordOrCredentialContext(parentCtx) || isTokenInPasswordContext(cleanTxt, rightText) || isTokenInPasswordContext(cleanTxt, leftText);
-                if (!isCred && (!expectedObj || expectedObj.label !== "Credentials")) {
-                    return `\u26A0\uFE0F Mistake: '${cleanTxt}' is NOT a Credential! Action: Only passwords, secrets, tokens, and verified credentials may be labeled \u2014 remove this label.`;
-                }
-            }
-
-            // 2L. URL/LINK: Cannot be inside a changed URL and must be valid URL
-            if (assignedCategory === "URL/Link") {
-                if (!isWebUrl(cleanTxt) && !cleanTxt.startsWith("https://") && !cleanTxt.startsWith("http://")) {
-                    return `\u26A0\uFE0F Mistake: '${cleanTxt}' is NOT a valid URL/link! Action: Only valid URLs/links may be labeled \u2014 remove this label.`;
-                }
-                if (isElementInsideUrl(pm) && !leftText.includes(cleanTxt)) {
-                    return `\u26A0\uFE0F Mistake: '${cleanTxt}' is inside a changed URL/link! Action: URLs/links must NOT be labeled unless identical in both documents \u2014 remove this label.`;
-                }
-            }
-
-            return null; // Valid!
-        }
-
-        // ==========================================
-        // CASE 3: NO CATEGORY DETECTED ON ANNOTATED ELEMENT
-        // ==========================================
-        if (!assignedCategory) {
-            if (expectedObj) {
-                return `\u26A0\uFE0F Mistake: Missing or unrecognized category label on '${cleanTxt}'! Action: Label as '${expectedObj.label}'.`;
-            }
-            if (isTokenInBusinessContext(cleanTxt, rightText) || isTokenInNameContext(cleanTxt, rightText) || isChangedPiiOrBii(cleanTxt, leftText, rightText)) {
-                return `\u26A0\uFE0F Mistake: '${cleanTxt}' is a correctly scrubbed entity (not an overscrub)! Action: Remove this label.`;
-            }
-            if (leftText.includes(cleanTxt) && !isBusinessName(cleanTxt, cleanTxt, parentCtx) && !isPersonName(cleanTxt, leftText) && !isDateFormat(cleanTxt)) {
-                return `\u26A0\uFE0F Mistake: '${cleanTxt}' is not a valid PII/BII entity! Action: Remove this label.`;
-            }
-        }
-
-        return null;
-    }
 
 
     function paneSnapshot(leftPane, rightPane) {
@@ -4584,8 +4557,6 @@
         if (!onScreen) {
             ensurePill();
             updatePillState();
-            const tip = document.getElementById("pt-error-tooltip");
-            if (tip) tip.classList.remove("pt-tooltip-visible");
             cachedLeftPane = null;
             cachedRightPane = null;
             lastAnnotatedSnapshot = "";
@@ -4635,15 +4606,20 @@
         isModifyingDOM = true;
         try {
             // Clean up existing tags cleanly
+            // (v11.0.0) UNWRAP our old suggestion spans: move their children out, then drop the span. The old code
+            // replaced each span with plain text, which deleted anything inside it - including a label the editor
+            // had drawn inside our span. Only the touched parents are normalised, not the whole document.
             const existingTags = rightPane.querySelectorAll(".pt-tag");
-            for (let i = 0; i < existingTags.length; i++) {
+            const touched = new Set();
+            for (let i = existingTags.length - 1; i >= 0; i--) {
                 const t = existingTags[i];
-                const textNode = document.createTextNode(t.textContent);
-                if (t.parentNode) {
-                    t.parentNode.replaceChild(textNode, t);
-                }
+                const parent = t.parentNode;
+                if (!parent) continue;
+                while (t.firstChild) parent.insertBefore(t.firstChild, t);
+                parent.removeChild(t);
+                touched.add(parent);
             }
-            try { rightPane.normalize(); } catch (e) {}
+            for (const p of touched) { try { if (p.isConnected) p.normalize(); } catch (e) {} }
 
             // Size check without layout: long documents use viewport mode.
             const rightTC = rightPane.textContent || "";
@@ -4672,298 +4648,16 @@
                 }
             } else {
                 // Read each pane's text ONCE per run (innerText forces a layout of the whole document).
-                leftText = leftPane.innerText || leftPane.textContent || "";
-                rightText = rightPane.innerText || rightPane.textContent || "";
+                // innerText keeps line breaks; where it is unavailable, rebuild lines from the block elements.
+                leftText = leftPane.innerText != null ? leftPane.innerText : readPaneLines(leftPane).text;
+                rightText = rightPane.innerText != null ? rightPane.innerText : readPaneLines(rightPane).text;
                 targets = extractDynamicTargets(leftPane, rightPane, { left: leftText, right: rightText });
                 applyAllTargetsInSinglePass(rightPane, targets);
                 __ptViewportInfo = null;
             }
 
-            // Clean up any old mistake indications from previous pass across the entire audit container
-            const auditRoot = (rightPane.closest("[class*='col'], [class*='pane'], [class*='document'], [class*='editor']") || rightPane.parentElement || rightPane);
-            const oldWrongLabels = auditRoot.querySelectorAll(".pt-wrong-label, [data-pt-wrong='true']");
-            for (let i = 0; i < oldWrongLabels.length; i++) {
-                const wl = oldWrongLabels[i];
-                wl.classList.remove("pt-wrong-label");
-                wl.removeAttribute("data-pt-wrong");
-                wl.removeAttribute("data-error-msg");
-                wl.removeAttribute("title");
-                if (wl.style && wl.style.removeProperty) {
-                    wl.style.removeProperty("outline");
-                    wl.style.removeProperty("outline-offset");
-                    wl.style.removeProperty("border");
-                    wl.style.removeProperty("border-radius");
-                    wl.style.removeProperty("box-shadow");
-                    wl.style.removeProperty("background-color");
-                }
-            }
-
-            // Step: Inspect already-annotated elements (PeakTalent's manual/platform annotations)
-            // 1. If correctly annotated: hide extension suggestion so it does not clash
-            // 2. If wrongly annotated: show prominent red error indication (pt-wrong-label)
-            const targetMapLookup = new Map();
-            __ptAuditScrubbedNames = (targets && targets.scrubbedNames) || new Set();
-            for (const tg of targets) {
-                targetMapLookup.set(tg.text, tg);
-                targetMapLookup.set(tg.text.toLowerCase(), tg);
-            }
-
-            // Helper to check whether an annotated DOM element is strictly inside a URL/link
-            function isElementInsideUrl(el) {
-                if (!el) return false;
-                if (el.tagName === 'A' || el.closest('a')) return true;
-                const parent = el.parentElement;
-                if (!parent) return false;
-                const parentText = parent.textContent || '';
-                const elText = el.textContent || '';
-                const idx = parentText.indexOf(elText);
-                if (idx !== -1) {
-                    let start = idx;
-                    while (start > 0 && !/\s/.test(parentText[start - 1])) start--;
-                    let end = idx + elText.length;
-                    while (end < parentText.length && !/\s/.test(parentText[end])) end++;
-                    const surroundingWord = parentText.slice(start, end);
-                    if (/^https?:\/\/|www\./i.test(surroundingWord) || /\.[a-z]{2,}(?:\/|$)/i.test(surroundingWord)) {
-                        return true;
-                    }
-                }
-                return false;
-            }
-
-            // -- MISTAKE AUDIT: Collect platform-annotated elements --
-            // Broad collection, but filtered strictly by:
-            //   1. Element height <= 40px  (paragraphs are tall; annotation pills are small)
-            //   2. Text length <= 50 chars (tokens are short; paragraphs are long)
-            //   3. detectAssignedCategory() returns non-null (layout divs never pass this)
-            // This catches BOTH ant-tag pills AND inline annotation spans created when
-            // user selects text in the document and assigns a label.
-
-            // First pass: clear ALL previous mistake indicators
-            const auditContainer = (rightPane.closest("[class*='col'], [class*='pane'], [class*='document'], [class*='editor']") || rightPane.parentElement || rightPane);
-            const prevWrong = Array.from(auditContainer.querySelectorAll("[data-pt-wrong='true']"));
-            for (const pw of prevWrong) {
-                pw.removeAttribute("data-pt-wrong");
-                pw.removeAttribute("data-error-msg");
-                if (pw.style && pw.style.removeProperty) {
-                    pw.style.removeProperty("outline");
-                    pw.style.removeProperty("outline-offset");
-                    pw.style.removeProperty("box-shadow");
-                    pw.style.removeProperty("border-radius");
-                    pw.style.removeProperty("position");
-                    pw.style.removeProperty("cursor");
-                }
-            }
-
-            // Broad candidate scan (like original, but we filter hard in the loop below)
-            const seenMarks = new Set();
-            const heightOf = new Map();
-            const allPlatformMarks = [];
-            // All DOM WRITES of the audit are queued and applied after the loop. Interleaving reads
-            // (offsetHeight, getComputedStyle) with writes forced a full re-layout of the document for every
-            // annotation, which froze the browser on long documents.
-            const pendingWrites = [];
-            const auditLog = [];
-            const candidateSelector = (
-                "span, mark, b, strong, u, em, ins, font, " +
-                "[class*='ant-tag'], [class*='ann-'], [class*='annotation'], " +
-                "[class*='highlight'], [class*='label-chip'], [class*='badge'], " +
-                "[class*='token'], [data-annotation], [data-label], " +
-                "[data-category], [data-entity], [data-val], [data-name]"
-            );
-            // Viewport mode: only audit annotations inside the analysed window (keeps work proportional to the screen).
-            let candidateEls;
-            if (windowEls) {
-                candidateEls = [];
-                for (const el of windowEls) for (const x of el.querySelectorAll(candidateSelector)) candidateEls.push(x);
-            } else {
-                candidateEls = auditContainer.querySelectorAll(candidateSelector);
-            }
-            for (const el of candidateEls) {
-                if (seenMarks.has(el)) continue;
-                if (el.classList && el.classList.contains("pt-tag")) continue;
-                if (el.id === "pt-floating-bar" || (el.closest && el.closest("#pt-floating-bar"))) continue;
-                if (leftPane && (el === leftPane || leftPane.contains(el))) continue;
-                if (el === rightPane || el.contains(rightPane)) continue;
-                // Quick size pre-filter before expensive detectAssignedCategory call
-                const elTxtLen = (el.textContent || "").length;
-                // (v10.5.4) addresses and links can be long; 80 characters skipped them entirely.
-                if (elTxtLen > 250 || elTxtLen < 1) continue;
-                const elH = el.offsetHeight || el.clientHeight || 0;
-                if (elH > 50) continue;
-                seenMarks.add(el);
-                heightOf.set(el, elH);
-                allPlatformMarks.push(el);
-            }
-
-            // Mistake audit loop
-            const mistakeCount_local = { n: 0 };
-            for (let i = 0; i < allPlatformMarks.length; i++) {
-                const pm = allPlatformMarks[i];
-
-                // -- Hard guards: skip non-annotation elements --
-                if (!pm || !pm.isConnected) continue;
-                if (pm.classList.contains("pt-tag")) continue;
-                if (pm.id === "pt-floating-bar" || pm.closest("#pt-floating-bar")) continue;
-                if (leftPane && (pm === leftPane || leftPane.contains(pm))) continue;
-                if (pm === rightPane || pm.contains(rightPane)) continue;
-                if (pm.closest("button, [role='button']")) continue;
-                if (pm.closest("header, .header, [class*='toolbar'], [class*='nav'], [class*='topbar']")) continue;
-
-                // Skip block-level container tags
-                if (/^(TABLE|TBODY|THEAD|TR|TD|TH|PRE|CODE|SECTION|ARTICLE|HEADER|MAIN|UL|OL|LI|BUTTON|NAV|FOOTER|BODY|HTML|P|H1|H2|H3|H4|H5|H6)$/i.test(pm.tagName)) continue;
-
-                // Skip large containers (too big to be a single annotation token)
-                const elHeight = heightOf.has(pm) ? heightOf.get(pm) : (pm.offsetHeight || pm.clientHeight || 0);
-                if (elHeight > 40) continue;
-
-                // -- Extract clean text of just this token (strip child badges) --
-                let cleanTxt = "";
-                try {
-                    const clone = pm.cloneNode(true);
-                    // Remove category badge sub-elements and icons
-                    // Our own suggestion spans are UNWRAPPED (keep their text): the reviewer often labels a word
-                    // that we had highlighted, so the label element contains our span. Removing it dropped the text.
-                    for (const own of clone.querySelectorAll(".pt-tag")) own.replaceWith(own.ownerDocument.createTextNode(own.textContent));
-                    const toRemove = clone.querySelectorAll(
-                        "svg, i, [class*='anticon'], [class*='close'], [class*='ant-tag-close']"
-                    );
-                    for (let b = 0; b < toRemove.length; b++) toRemove[b].remove();
-                    // Remove child elements whose text is purely a category label
-                    const childEls = clone.querySelectorAll("*");
-                    for (let b = 0; b < childEls.length; b++) {
-                        const ct = (childEls[b].textContent || "").trim();
-                        if (/^(?:Business Name|Person Name|Account Number|Contact Number|Credentials|Date|Email Address|IP Address|URL\/Link|Person Username|Vehicle Number Plate|Address|Overscrubbed|[\u00D7\u2715xX])$/i.test(ct)) {
-                            childEls[b].remove();
-                        }
-                    }
-                    cleanTxt = (clone.textContent || "").trim();
-                } catch (e) {
-                    cleanTxt = (pm.textContent || "").trim();
-                }
-
-                // Normalize whitespace
-                cleanTxt = cleanTxt.replace(/[\r\n\t]+/g, " ").replace(/\s{2,}/g, " ").trim();
-                // Strip leading/trailing punctuation artifacts
-                cleanTxt = cleanTxt.replace(/^[\u00D7\u2715xX"'`\s,;:|]+|[\u00D7\u2715xX"'`\s,;:|]+$/g, "").trim();
-                // Remove category label words that leaked into text
-                for (const cat of CATEGORY_MAP) {
-                    cleanTxt = cleanTxt.replace(new RegExp("\\b" + cat.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b", "gi"), "").trim();
-                }
-                cleanTxt = cleanTxt.replace(/^[\u00D7\u2715xX\s,;:|]+|[\u00D7\u2715xX\s,;:|]+$/g, "").trim();
-
-                // Must have meaningful text
-                if (!cleanTxt || cleanTxt.length < 2) continue;
-
-                // CRITICAL: Skip if text is too long to be a single annotation token
-                // Annotation tokens are single words or short phrases (max ~50 chars)
-                if (cleanTxt.length > 220) continue;
-
-                // Skip if it contains a newline (multi-line = not a token)
-                if (/\n/.test(cleanTxt)) continue;
-
-                // Skip if it's just a category badge label itself
-                if (/^(?:Business Name|Person Name|Account Number|Contact Number|Credentials|Date|Email Address|IP Address|URL\/Link|Person Username|Vehicle Number Plate|Address|Overscrubbed)$/i.test(cleanTxt)) continue;
-
-                // Skip known UI labels
-                if (/^(?:Annotate\s*here|Reference(?:\s*read-only)?|read-only|close|copy|view|raw|apply|save|cancel|submit|\u00D7|\u2715)$/i.test(cleanTxt)) continue;
-
-                // -- Require an assignedCategory: skip elements the platform hasn't labeled --
-                const assignedCategory = detectAssignedCategory(pm);
-                if (!assignedCategory) continue; // NOT annotated by platform \u2192 skip
-
-                // Skip placeholder/default values (no audit needed)
-                const parentCtxText = pm.parentElement ? (pm.parentElement.textContent || "") : "";
-                if (isDefaultOrPlaceholderLink(cleanTxt) || isDefaultOrPlaceholderEmail(cleanTxt) || isDefaultOrPlaceholderPhone(cleanTxt)) continue;
-                if (isVectorOrPathData(cleanTxt, parentCtxText)) continue;
-
-                // -- Build expected label from our own analysis --
-                const txt = cleanTxt;
-                let expectedObj = targetMapLookup.get(txt) || targetMapLookup.get(txt.toLowerCase());
-                if (!expectedObj && (cleanTxt.includes("-") || cleanTxt.includes("/") || cleanTxt.includes("_") || cleanTxt.includes(" "))) {
-                    const subWords = cleanTxt.split(/[\-_/\s]+/).filter(w => w.length >= 2);
-                    const allOverscrub = subWords.length > 0 && subWords.every(sw => {
-                        const m = targetMapLookup.get(sw) || targetMapLookup.get(sw.toLowerCase());
-                        return m && m.label === "Overscrubbed";
-                    });
-                    if (allOverscrub) {
-                        expectedObj = { label: "Overscrubbed" };
-                    } else {
-                        for (const sw of subWords) {
-                            const m = targetMapLookup.get(sw) || targetMapLookup.get(sw.toLowerCase());
-                            if (m) { expectedObj = m; break; }
-                        }
-                    }
-                }
-
-                // -- Run the audit --
-                const errorReason = auditPlatformAnnotation(pm, cleanTxt, assignedCategory, leftText, rightText, targetMapLookup, isElementInsideUrl);
-                auditLog.push({ text: cleanTxt, yourLabel: assignedCategory, suggested: expectedObj ? expectedObj.label : "(none)", verdict: errorReason ? "MISTAKE: " + errorReason : "ok" });
-
-                // -- Find the single outermost annotation container to decorate --
-                // Walk up from pm to find the outermost ant-tag wrapper (if any), stopping at rightPane
-                let targetEl = pm;
-                {
-                    let walk = pm.parentElement;
-                    while (walk && walk !== rightPane && walk !== auditContainer && walk !== document.body) {
-                        // Only elevate to parent if parent is a recognized annotation container
-                        if (/\bant-tag\b|\bann-\b|\bannotation\b|\btoken\b|\blabel-chip\b|\bbadge\b/i.test(walk.className || "")) {
-                            // Only if the parent's text is essentially the same token (not a larger block)
-                            const parentTxt = (walk.textContent || "").replace(/Business Name|Person Name|Account Number|Contact Number|Credentials|Date|Email Address|IP Address|URL\/Link|Person Username|Vehicle Number Plate|Address|Overscrubbed|[\u00D7\u2715xX]/gi, "").replace(/\s+/g, " ").trim();
-                            if (parentTxt.length <= 60) {
-                                targetEl = walk;
-                            }
-                        }
-                        walk = walk.parentElement;
-                    }
-                }
-
-                if (errorReason) pendingWrites.push(() => {
-                    // Remove overlapping extension suggestions inside this element
-                    const childPt = targetEl.querySelectorAll(".pt-tag");
-                    for (let j = 0; j < childPt.length; j++) {
-                        const cp = childPt[j];
-                        if (cp.parentNode) cp.parentNode.replaceChild(document.createTextNode(cp.textContent), cp);
-                    }
-
-                    // Apply mistake indicator via data attribute (CSS handles outline + ::after badge)
-                    targetEl.setAttribute("data-pt-wrong", "true");
-                    targetEl.setAttribute("data-error-msg", errorReason);
-                    // Also set inline styles for reliability (overrides Ant Design styles)
-                    if (targetEl.style && targetEl.style.setProperty) {
-                        targetEl.style.setProperty("outline", "2px solid #ef4444", "important");
-                        targetEl.style.setProperty("outline-offset", "3px", "important");
-                        targetEl.style.setProperty("box-shadow", "0 0 0 4px rgba(239,68,68,0.25)", "important");
-                        targetEl.style.setProperty("border-radius", "3px", "important");
-                        targetEl.style.setProperty("position", "relative", "important");
-                        targetEl.style.setProperty("cursor", "help", "important");
-                    }
-                    mistakeCount_local.n++;
-                }); else pendingWrites.push(() => {
-                    // Valid annotation - clean any old mistake markers
-                    targetEl.removeAttribute("data-pt-wrong");
-                    targetEl.removeAttribute("data-error-msg");
-                    pm.removeAttribute("data-pt-wrong");
-                    pm.removeAttribute("data-error-msg");
-                    for (const el of [targetEl, pm]) {
-                        if (el.style && el.style.removeProperty) {
-                            el.style.removeProperty("outline");
-                            el.style.removeProperty("outline-offset");
-                            el.style.removeProperty("box-shadow");
-                            el.style.removeProperty("border-radius");
-                            el.style.removeProperty("position");
-                            el.style.removeProperty("cursor");
-                        }
-                    }
-                    // Remove any extension suggestion tags inside valid annotation
-                    const childPt = targetEl.querySelectorAll(".pt-tag");
-                    for (let j = 0; j < childPt.length; j++) {
-                        const cp = childPt[j];
-                        if (cp.parentNode) cp.parentNode.replaceChild(document.createTextNode(cp.textContent), cp);
-                    }
-                });
-            }
-            for (const w of pendingWrites) { try { w(); } catch (e) {} }
-            __ptLastAudit = { at: new Date().toLocaleTimeString(), candidates: allPlatformMarks.length, labelsChecked: auditLog };
+            // Label check: judge every label you applied (see LABEL CHECK above).
+            try { runLabelCheck(rightPane, leftText, rightText, targets, windowEls); } catch (e) { __ptLastError = String(e && e.stack || e); }
 
             // Save snapshot with platform annotation fingerprint after pass (using reflow-free textContent)
             lastAnnotatedSnapshot = paneSnapshot(leftPane, rightPane);
@@ -5024,21 +4718,31 @@
             } else if (m.type === "childList" && m.addedNodes.length > 0) {
                 for (let j = 0; j < m.addedNodes.length; j++) {
                     const n = m.addedNodes[j];
-                    if (n.nodeType === 1 && !n.classList.contains("pt-tag") && n.id !== "pt-floating-bar" && !n.closest("#pt-floating-bar")) {
+                    if (n.nodeType === 1 && !n.classList.contains("pt-tag") && !n.classList.contains("pt-mistake-box") && n.id !== "pt-floating-bar" && n.id !== "pt-diag-panel" && !n.closest("#pt-floating-bar, #pt-diag-panel")) {
                         shouldUpdate = true;
                         break;
                     }
                 }
             } else if (m.type === "attributes") {
                 const target = m.target;
-                if (target && !target.classList.contains("pt-tag") && target.id !== "pt-floating-bar" && !target.closest("#pt-floating-bar")) {
+                if (target && !target.classList.contains("pt-tag") && !target.classList.contains("pt-mistake-box") && target.id !== "pt-floating-bar" && !target.closest("#pt-floating-bar")) {
                     shouldUpdate = true;
                     break;
                 }
             }
             if (shouldUpdate) break;
         }
-        if (shouldUpdate) triggerUpdate(120);
+        if (shouldUpdate) {
+            // (v10.6.1) A change INSIDE the right document (you applied, changed or removed a label) always re-runs
+            // the mistake check. Labels drawn with CSS classes only did not change the change-detection snapshot,
+            // so the check was skipped and no red outline appeared.
+            const rp = cachedRightPane;
+            if (rp && mutations.some(m => m.target && (m.target === rp || rp.contains(m.target)) &&
+                !(m.target.classList && m.target.classList.contains("pt-tag")))) {
+                lastAnnotatedSnapshot = "";
+            }
+            triggerUpdate(120);
+        }
     });
     observer.observe(document.body, { 
         childList: true, 
@@ -5079,21 +4783,44 @@
     }
     // Alt+Shift+D: print what the auditor sees, for bug reports (no document text leaves the browser).
     function printDiagnostics() {
+        const lines = [];
+        const fmt = (v) => typeof v === 'string' ? v : (() => { try { return JSON.stringify(v); } catch (x) { return String(v); } })();
+        const out = (...a) => { console.log(...a); lines.push(a.map(fmt).join(' ')); };
         const { leftPane, rightPane } = getPanes();
-        console.log("[PeakTalent] v" + PT_VERSION + " diagnostics");
-        console.log("  review screen detected:", isAnnotationReviewScreen(), "| panes found:", !!leftPane, !!rightPane,
+        const ident = (el) => el ? (el.tagName + (el.id ? "#" + el.id : "") + (typeof el.className === "string" && el.className ? "." + el.className.trim().split(/\s+/).slice(0, 4).join(".") : "")) : "none";
+        out("[PeakTalent] v" + PT_VERSION + " diagnostics");
+        out("  review screen detected:", isAnnotationReviewScreen(), "| panes found:", !!leftPane, !!rightPane,
                     "| right text length:", rightPane ? (rightPane.textContent || "").length : 0,
                     "| large-document mode:", __ptViewportInfo ? JSON.stringify(__ptViewportInfo) : "no",
                     "| last run:", lastRunMs + " ms");
-        if (__ptLastError) console.log("  last audit error:", __ptLastError);
-        if (!__ptLastAudit) { console.log("  no mistake check has run yet"); return; }
-        console.log("  mistake check at " + __ptLastAudit.at + ": " + __ptLastAudit.candidates + " candidate elements, " + __ptLastAudit.labelsChecked.length + " of your labels recognised");
-        if (__ptLastAudit.labelsChecked.length && console.table) console.table(__ptLastAudit.labelsChecked);
-        if (rightPane) {
-            const styled = Array.from(rightPane.querySelectorAll("span[style], mark, [data-label], [class*='annotation']")).filter(e => !e.classList.contains("pt-tag")).slice(0, 15);
-            console.log("  first annotation-like elements in the right pane (tag / class / style / detected label):");
-            for (const e of styled) console.log("   ", e.tagName, "|", e.className, "|", e.getAttribute("style"), "|", detectAssignedCategory(e), "|", (e.textContent || "").slice(0, 30));
-        }
+        out("  panes: left =", ident(leftPane), "| right =", ident(rightPane));
+        out("  suggestions on screen:", document.querySelectorAll(".pt-tag").length);
+        if (__ptLastError) out("  last error:", __ptLastError);
+        return lines.join("\n");
+    }
+    // A panel with the diagnostics text and a Copy button (nothing is sent anywhere).
+    function showDiagnostics() {
+        const text = printDiagnostics() || "";
+        let panel = document.getElementById("pt-diag-panel");
+        if (panel) panel.remove();
+        panel = document.createElement("div");
+        panel.id = "pt-diag-panel";
+        panel.setAttribute("style", "position:fixed;z-index:2147483646;right:24px;top:80px;width:min(760px,90vw);height:min(70vh,640px);background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.5);display:flex;flex-direction:column;font:12px/1.4 ui-monospace,Menlo,monospace");
+        panel.innerHTML = '<div style="display:flex;gap:8px;align-items:center;padding:8px 10px;border-bottom:1px solid #334155"><b style="flex:1">PeakTalent auditor - diagnostics</b><button id="pt-diag-copy" style="cursor:pointer">Copy</button><button id="pt-diag-close" style="cursor:pointer">Close</button></div>';
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.readOnly = true;
+        ta.setAttribute("style", "flex:1;margin:0;padding:10px;background:#0f172a;color:#e2e8f0;border:0;resize:none;font:inherit;white-space:pre");
+        panel.appendChild(ta);
+        document.body.appendChild(panel);
+        document.getElementById("pt-diag-close").onclick = () => panel.remove();
+        document.getElementById("pt-diag-copy").onclick = () => {
+            ta.select();
+            let ok = false;
+            try { ok = document.execCommand("copy"); } catch (e) {}
+            if (!ok && navigator.clipboard) navigator.clipboard.writeText(text).catch(() => {});
+            document.getElementById("pt-diag-copy").textContent = "Copied";
+        };
     }
     function toggleBarVisibility() {
         const bar = document.getElementById("pt-floating-bar");
@@ -5104,7 +4831,7 @@
         const k = (e.code || "").replace("Key", "").toUpperCase() || (e.key || "").toUpperCase();
         if (k === "A") { e.preventDefault(); forceRescan(); }
         else if (k === "H") { e.preventDefault(); toggleBarVisibility(); }
-        else if (k === "D") { e.preventDefault(); printDiagnostics(); }
+        else if (k === "D") { e.preventDefault(); showDiagnostics(); }
     }, { capture: true });
 
     // Toolbar popup "Re-Audit" button (Chrome / Edge / Brave extension only).
@@ -5115,7 +4842,7 @@
             else if (msg && msg.action === "status") {
                 sendResponse({ ok: true, onReviewScreen: isAnnotationReviewScreen(), active: !!window.__pt_auto_active,
                                tags: document.querySelectorAll("span.pt-tag").length,
-                               mistakes: document.querySelectorAll(".pt-wrong-label, [data-pt-wrong='true']").length });
+                               mistakes: __ptcMistakes.length });
             }
         };
         chrome.runtime.onMessage.addListener(__ptMessageListener);
