@@ -1,5 +1,108 @@
 # Changelog
 
+## 11.0.1 - October 2026
+
+- **Diagnose button removed from the floating bar** (as requested). The bar now shows only the status and Stop / Start. The diagnostics panel is still available with the keyboard shortcut **Alt+Shift+D** for bug reports.
+
+## 11.0.0 - October 2026
+
+**New label check (mistake indication), rebuilt from scratch** for the live dashboard's own label markup (`<mark role="button">` with a coloured background and underline, as shown by its Diagnose report).
+
+Logic - after **every** annotation (add, change, remove), every label you placed is judged:
+1. the auditor's own suggestion for exactly that text decides the correct label (e.g. a word that should be **Overscrubbed** but is labeled **Date** -> "Date -> Overscrubbed");
+2. otherwise the guideline rules: unchanged text -> No label; replaced name / company / address / credential / code -> No label; replaced ordinary word -> Overscrubbed (changed part only); an Overscrubbed label that also covers unchanged text -> "Overscrubbed: <changed part>"; entity labels must have their format (e-mail, https link, IP, phone, plate, @username, 9-18 digit account, complete address, date of birth only) and must not be ordinary words, languages, field names or JSON keys.
+
+UI:
+- red dashed outline + a tag above the word: **your label -> correct label**;
+- hover card: text, your label, correct label, reason;
+- bar: "N to Annotate - N Mistakes" (red); click it for the list of mistakes, click an item to jump to it (prev / next buttons);
+- the extension popup shows the mistake count again.
+
+Fixes found while building it:
+- **A label drawn inside one of the auditor's suggestion spans was deleted** when suggestions were refreshed (spans were replaced by plain text). Spans are now unwrapped, keeping everything inside them, and only the touched elements are normalised.
+- A very light label colour (Overscrubbed, 255/227/227) "matched" other labels' tints (Business Name was read as Overscrubbed). Colour matching now requires every colour channel to fit.
+- The check never adds text to the document (the tag is drawn with CSS), never changes the page's own classes or styles (it uses its own attributes), and is invisible to the change detection (no feedback loop).
+
+Tests: `tests/dom_labelcheck.js` - 44 real-page checks with the live markup: all 13 labels correct (no mistake) and wrong (mistake naming the correct label), 9 kinds of text that must stay unlabeled, the reported Overscrubbed-labeled-as-Date case, re-check after changing the label (fixed -> mark disappears, changed again -> flagged again), removing a label, partial Overscrubbed labels, a label inside a suggestion span, several labels at once, the mistake list, and that the document text is never modified.
+
+## 10.7.0 - October 2026
+
+**The mistake check was removed completely**, as requested. The auditor now only suggests labels (the dotted underlines and the "N to Annotate" count).
+
+Removed:
+- the red outline / "MISTAKE" tag on labels and its hover tooltip;
+- the "Mistakes" count on the floating bar and in the extension popup;
+- the rules that judged your labels, the reading of labels painted without elements (CSS highlights, overlay boxes), and the learning of labels from the platform's label dialog;
+- the mistake-check test suites (8 files).
+
+Kept:
+- all suggestion logic, unchanged (all suggestion suites pass with the same results);
+- the reading of your existing labels for one purpose only: a word you already labeled correctly does not get a second suggestion drawn inside it;
+- the Diagnose button, now a short report (version, panes, suggestion count, last error);
+- clean-up of red marks that older versions may have left on an open page.
+
+New test: `tests/dom_nomistakes.js` (5 checks).
+
+## 10.6.3 - October 2026
+
+**Root cause found** thanks to the Diagnose report from the live dashboard ("exclusive" labeled Date, no red outline):
+
+- The report showed the auditor **did** recognise the label ("exclusive" -> Date, from its colour) but the mistake check said "241 candidate elements, **0 of your labels recognised**".
+- PeakTalent draws every label as a **clickable `<mark role="button">`**. The mistake check had a rule "skip anything inside a button" (meant for toolbar buttons), so it skipped **every** label on the page. That is why no mistake was ever flagged.
+
+Fixes:
+- Button / toolbar checks now apply only to elements **outside** the right document. Every `<mark>` label inside the document is checked.
+- The dashboard draws the underline as a `linear-gradient` background image; those colours are now read too, so very light label colours (Overscrubbed) are recognised reliably.
+- The Diagnose report now lists **why** candidates were skipped (by reason), so a problem like this is visible immediately.
+
+Test: `tests/dom_marks.js` rebuilds the live markup exactly as reported (`<mark role="button">`, inline translucent background + gradient underline, palette from the chips). "exclusive" as Date -> red outline; "exclusive" as Overscrubbed -> red outline; "Beagenhydra" as Person Name -> red outline; correct Overscrubbed marks -> no outline. v10.6.2 fails 3 of these 5; v10.6.3 passes all 5.
+
+## 10.6.2 - October 2026
+
+Reported again with v10.6.1 installed: "exclusive" labeled **Date** shows no red outline. The decision rules flag it; the auditor still cannot see how the live dashboard draws that label. This release adds a way to know your label that does not depend on the page's markup at all, plus a one-click diagnostics report.
+
+- **Labels learned from the platform's label dialog.** When you click **Apply** in "Change label for “exclusive”" (or pick a label name from a label menu), the auditor records which label you chose for which words and checks it with the same rules. A wrong label gets a red box over the words. This works however the dashboard paints labels.
+- **The auditor no longer overwrites the platform's own label styling.** Earlier versions removed `title`, background, border, shadow and outline from label elements when clearing old mistake marks, and wrote inline outline styles onto them. That could erase the label's own colour (so the next pass could not recognise it) and its tooltip. Only the auditor's own attributes are touched now; the red outline comes from the auditor's stylesheet.
+- **Diagnose button** on the floating bar (also Alt+Shift+D): opens a panel with a **Copy** button. The report shows the panes found, the label colours read from the chips, every word recognised as labeled and the verdict, CSS highlights, labels learned from the dialog, and the page structure around them. Copy it and paste it in a message for any page where a mistake is not flagged. Nothing is sent anywhere.
+
+Tests: `tests/dom_dialog.js` (5: the exact screenshot flow - dialog + Apply on "exclusive" as Date -> red box; correct label -> none; label picked from a menu; diagnostics report contents). All earlier suites pass.
+
+## 10.6.1 - October 2026
+
+Reported: "exclusive" (unchanged on both sides) labeled **Date**, but no red mistake outline.
+
+The decision rules already treat this as a mistake (in tests every label on unchanged text is flagged). What can fail on the live page is **finding your label at all**, so this release makes that robust against every way an editor can draw a label:
+
+- **Labels drawn with CSS classes** (colour in a stylesheet, no inline style or data attribute): recognised by the chip-colour palette. Changing a label (e.g. Overscrubbed -> Date) only swaps a class, which did not change the auditor's "has anything changed" snapshot, so the check was skipped. Now **any change inside the right document forces the mistake check to run again**.
+- **Labels painted without an element around the words**:
+  - the CSS Custom Highlight API (`CSS.highlights`), used by modern editors: the highlight's name ("date", "annotation-overscrubbed", ...) or its colour gives the label, its ranges give the text;
+  - coloured boxes positioned over the text: found by colour, the words under them read from the page.
+  A wrongly labeled range gets a **red box drawn over the words** (it follows scrolling), counted in the bar's "Mistakes".
+- Two filters that could hide labels from the check were too broad: any ancestor whose class contained "nav" (also matches "canvas", "unavailable") skipped every label; labels taller than 40 px (wrapping onto a second line) were skipped. Fixed.
+- **Alt+Shift+D** now also lists the CSS highlights on the page and every label found without an element.
+
+Tests: `tests/dom_classlabels.js` (4: class-only labels, label change by class swap), `tests/dom_rangelabels.js` (5: CSS highlights and overlay boxes, wrong -> red box, correct -> none). All earlier suites pass.
+
+## 10.6.0 - October 2026
+
+**The mistake check (red outline) was rebuilt from scratch.** Reported case: in a package.json that is identical on both sides, the reviewer labeled the JSON key "dependencies" and no red outline appeared.
+
+Two parts were rewritten:
+
+1. **Reading your label from the page.** The old code only knew Ant Design colours and a few attribute names. The PeakTalent dashboard draws labels in its own colours, so labels drawn only with colour (no data attribute) were not recognised and never checked. The auditor now **learns the label colours from the label chips at the top of the review screen** (Account Number, Address, ... Vehicle Number Plate) and matches each labeled word's background / underline / border to them, including lighter tints. Works whatever markup the platform uses.
+
+2. **Deciding whether the label is wrong** - 300 lines of overlapping special cases replaced by these rules, in order:
+   - If the auditor suggests a label for exactly this text, your label must be that label ("should be labeled X, not Y").
+   - **Overscrubbed** is wrong when: the text is identical on the left (nothing changed); it replaced a name, company, address, credential or reference code (correct redaction); the label also covers unchanged text ("Galeonorb-Ins/VDRs" -> label only "Galeonorb"); it is inside a changed link or e-mail.
+   - **Any other label** is wrong when: the text is not on the left (a replacement value gets no label); it is a field name / JSON key / column header; it is an ordinary word, place or language; it has the format of a different label (an e-mail labeled Credentials, a phone labeled Account Number); it does not have the label's format (IP, phone, plate, @username, https link, 9-18 digit account, complete address, date of birth only); a person's name labeled Business Name; a bank or software name labeled Business Name.
+   - Otherwise the label is accepted - no false alarms when unsure.
+
+Also:
+- Pane text is rebuilt with line breaks where the browser does not provide them.
+- **Alt+Shift+D** now also prints the label colours learned from the chips and, for each coloured/underlined word in the right document, which label the auditor read. If a label is ever not recognised, that output shows why.
+
+Tests: new `tests/dom_palette.js` (26 checks: every label drawn only with colour, as underline and as background, on the "dependencies" key). `tests/dom_labels_deep.js` grew to 43 checks with the new rules. All earlier suites pass unchanged.
+
 ## 10.5.5 - October 2026
 
 Second deep per-label campaign: a new, independent set of 238 label checks (`tests/labels_deep.js`) and 33 real-page mistake checks (`tests/dom_labels_deep.js`), written from scratch on different documents than 10.5.4's suites. They found 9 more problems, all fixed:

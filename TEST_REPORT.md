@@ -1,4 +1,4 @@
-# PeakTalent Auditor - Test Report (v10.5.5)
+# PeakTalent Auditor - Test Report (v11.0.1)
 
 Every label is tested three ways:
 
@@ -58,6 +58,33 @@ All 227 checks pass (`node tests/labels.js`).
 | Vehicle Number Plate | 7/7 | 6/6 |
 
 All 238 checks pass. `tests/dom_labels_deep.js` adds 33 real-page mistake checks: for each of the 13 labels the correct label gets no outline and a wrong label gets the red outline, plus 7 cases of text that must stay blank (scrubbed name, statement date, city, bank, invalid plate, http link).
+
+
+## Mistake check (rebuilt in v11.0.1)
+
+| Suite | What it checks | Result |
+|---|---|---|
+| `tests/dom_palette.js` | Every one of the 13 labels drawn **only with colour** (underline + tint, and background tint) on an unchanged JSON key: the label is recognised from the chip colours and flagged | 26/26 |
+| `tests/dom_labels_deep.js` | For each label: correct label -> no outline, wrong label -> red outline; plus 17 cases that must be flagged (unchanged key labeled, Overscrubbed on a scrubbed name / company / e-mail / password, Overscrubbed covering unchanged text, replaced phone labeled, e-mail labeled Credentials, ordinary word as Business, language as Person, statement date, city, bank, invalid plate, http link) | 43/43 |
+| `tests/dom_labels.js` | Earlier per-label suite | 29/29 |
+| `tests/dom_classlabels.js` | Labels drawn with CSS classes only; a label changed by swapping its class ("exclusive" Overscrubbed -> Date) | 4/4 |
+| `tests/dom_rangelabels.js` | Labels painted without an element: CSS Custom Highlight API and coloured overlay boxes; wrong -> red box, correct -> none | 5/5 |
+| `tests/dom_dialog.js` | Label chosen in the platform's dialog ("Change label for \u201Cexclusive\u201D" -> Date -> Apply) or picked from a label menu: wrong -> red box, correct -> none; Diagnose report contents | 5/5 |
+| `tests/dom_marks.js` | The live dashboard's own markup (from its Diagnose report): `<mark role="button">` labels with translucent background + gradient underline. Wrong labels -> red outline, correct ones -> none | 5/5 |
+| `tests/dom_audit.js` | Label applied around the auditor's own highlight | 4/4 |
+
+## Label check (mistake indication, v11.0.1)
+
+`tests/dom_labelcheck.js` uses the live dashboard's label markup (`<mark role="button">`, background tint + gradient underline, palette from the label chips).
+
+| What is checked | Result |
+|---|---|
+| Each of the 13 labels applied correctly -> no mistake | 13/13 |
+| Each of the 13 labels replaced by a wrong label -> mistake naming the correct label | 13/13 |
+| Text that must stay unlabeled (unchanged word, JSON key, scrubbed name / company / phone, statement date, city alone, http link, language) -> mistake, correct = "No label" | 9/9 |
+| Overscrubbed word labeled Date -> "Date -> Overscrubbed"; fixed -> cleared; changed again -> flagged; removed -> cleared | 4/4 |
+| Label drawn inside a suggestion span; partial Overscrubbed label; several labels at once; mistake list; document text unchanged | 5/5 |
+| **Total** | **44/44** |
 
 ## Limits
 

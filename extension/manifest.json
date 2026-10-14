@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PeakTalent PII/BII Annotation Auditor",
-  "version": "10.5.5",
+  "version": "11.0.1",
   "description": "Highlights PII/BII, credentials and overscrubbed text on PeakTalent review screens and flags labels that break the SOP. Works fully offline.",
   "action": {
     "default_popup": "popup.html",

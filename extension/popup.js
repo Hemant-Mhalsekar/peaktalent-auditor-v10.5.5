@@ -32,9 +32,9 @@ async function refresh() {
   if (!res.onReviewScreen) { setStatus('', 'Waiting for a side-by-side review screen'); return; }
   $('stats').hidden = false;
   $('tags').textContent = res.tags;
-  $('mistakes').textContent = res.mistakes;
+  $('mistakes').textContent = res.mistakes || 0;
   if (!res.active) setStatus('warn', 'Paused (use the bar on the page to resume)');
-  else if (res.mistakes > 0) setStatus('bad', res.mistakes + ' label mistake' + (res.mistakes === 1 ? '' : 's') + ' to fix');
+  else if (res.mistakes > 0) setStatus('bad', res.mistakes + ' wrong label' + (res.mistakes === 1 ? '' : 's') + ' - hover the red outlines');
   else setStatus('ok', 'Auditing this document');
 }
 
