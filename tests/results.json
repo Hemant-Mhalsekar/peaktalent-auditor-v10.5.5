@@ -1,0 +1,96 @@
+{
+  "generated": "2026-10-09T18:31:17.271Z",
+  "total": 266,
+  "passed": 266,
+  "failed": 0,
+  "suites": {
+    "Credentials": {
+      "pass": 26,
+      "fail": 0
+    },
+    "AWS IAM": {
+      "pass": 7,
+      "fail": 0
+    },
+    "System IDs": {
+      "pass": 3,
+      "fail": 0
+    },
+    "Clean docs": {
+      "pass": 1,
+      "fail": 0
+    },
+    "Overscrubbed form": {
+      "pass": 12,
+      "fail": 0
+    },
+    "Business": {
+      "pass": 16,
+      "fail": 0
+    },
+    "Context": {
+      "pass": 7,
+      "fail": 0
+    },
+    "Identity": {
+      "pass": 12,
+      "fail": 0
+    },
+    "Person": {
+      "pass": 3,
+      "fail": 0
+    },
+    "Mixed": {
+      "pass": 20,
+      "fail": 0
+    },
+    "Real tasks": {
+      "pass": 15,
+      "fail": 0
+    },
+    "Credential rule": {
+      "pass": 76,
+      "fail": 0
+    },
+    "Code": {
+      "pass": 7,
+      "fail": 0
+    },
+    "Statement": {
+      "pass": 2,
+      "fail": 0
+    },
+    "Attendees": {
+      "pass": 13,
+      "fail": 0
+    },
+    "Address rule": {
+      "pass": 8,
+      "fail": 0
+    },
+    "Robustness": {
+      "pass": 1,
+      "fail": 0
+    },
+    "Formats": {
+      "pass": 18,
+      "fail": 0
+    },
+    "Privacy": {
+      "pass": 2,
+      "fail": 0
+    },
+    "Runtime": {
+      "pass": 5,
+      "fail": 0
+    },
+    "Review form": {
+      "pass": 9,
+      "fail": 0
+    },
+    "Performance": {
+      "pass": 3,
+      "fail": 0
+    }
+  }
+}

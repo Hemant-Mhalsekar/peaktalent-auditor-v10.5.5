@@ -1,0 +1,266 @@
+# PeakTalent PII, BII & Credentials Standard Annotation Guidelines
+**Document ID:** PT-SOP-ANN-2026-V10.4  
+**Version:** 10.4.0  
+**Effective Date:** October 2026  
+**Status:** Approved Standard Operating Procedure (SOP)  
+**Applicability:** All PeakTalent Data Annotators, QA Reviewers, and Automated Verification Engines
+
+---
+
+## Table of Contents
+1. [Executive Summary & Core Directives](#1-executive-summary--core-directives)
+2. [Annotation Decision Tree](#2-annotation-decision-tree)
+3. [Label Color System & Taxonomy](#3-label-color-system--taxonomy)
+4. [Universal 15-Category Credentials Specification](#4-universal-15-category-credentials-specification)
+5. [Strict Entity Annotation Rules](#5-strict-entity-annotation-rules)
+   - 5.1 [Credentials (Value-Only Rule)](#51-credentials-value-only-rule)
+   - 5.2 [Person Name](#52-person-name)
+   - 5.3 [Business Name](#53-business-name)
+   - 5.4 [Vehicle Number Plate](#54-vehicle-number-plate)
+   - 5.5 [Address](#55-address)
+   - 5.6 [Overscrubbed (Partial Isolation Rule)](#56-overscrubbed-partial-isolation-rule)
+   - 5.7 [Date (DOB Strictly Only)](#57-date-dob-strictly-only)
+   - 5.8 [Person Username & System IDs](#58-person-username--system-ids)
+   - 5.9 [Other Categories (Contact, Email, IP, URL)](#59-other-categories-contact-email-ip-url)
+6. [Comprehensive Do's and Don'ts Matrix](#6-comprehensive-dos-and-donts-matrix)
+7. [Automated Verification & QA Protocols](#7-automated-verification--qa-protocols)
+
+---
+
+## 1. Executive Summary & Core Directives
+
+This document establishes the official operational standard for annotating and verifying Personally Identifiable Information (PII), Business Identifiable Information (BII), Credentials, and Overscrubbed text on the **PeakTalent AI Evaluation & Redaction Platform** (`dashboard.peaktalent.ai`).
+
+### Primary Rules of Engagement:
+1. **Left vs. Right Document Comparison**:
+   - Annotators evaluate documents in a side-by-side split screen (`left.docx`/`left.jsonl`/`left.pdf` vs. `right.docx`/`right.jsonl`/`right.pdf`).
+   - The **Left Document** represents the original source document.
+   - The **Right Document** represents the redacted or transformed target document.
+2. **Identity Invariance Requirement (Unscrubbed Rule)**:
+   - Real-world entities such as **Person Names**, **Business Names**, **Addresses**, and **Credentials** must **only be labeled if they exist identically in both Left and Right documents**.
+   - If an entity was redacted, masked, or replaced with a synthetic placeholder (e.g. `Rahul Sharma` $\rightarrow$ `Melivn O`), it is considered scrubbed: **DO NOT label either the original or the replacement as Person Name or Business Name**.
+3. **Value-Only Credentials**:
+   - Structural field keys (e.g. `account_id`, `PolicyId`, `password`, `pin`) must **NEVER** be annotated.
+   - **Only the actual secret or credential value** (e.g. `243057143242`, `ANPAZKAPJZG4NVQDF6L6N`) is labeled as `Credentials`.
+4. **Delimiter-Aware Partial Overscrubbing**:
+   - When non-sensitive text or structural tokens are erroneously altered, **only annotate the specific synthetic/scrambled substring**, excluding adjoining delimiters, hyphens, slashes, or unchanged suffixes (e.g. annotate `hydragenzen` from `hydragenzen-10-17`, `beaexbright` from `job-beaexbright`).
+5. **No Hallucinated Infrastructure / Banking Entities**:
+   - Software packages, cloud components, and database resources (`Database@AWS`, `Amazon ODB`, `Node.js`) are **NEVER** Business Names.
+   - Table field labels (`Bank Name`, `Patient Name`, `Policy Holder`) and banking organizations (`AXIS BANK`, `HDFC Bank`) are strictly excluded from `Business Name`.
+
+---
+
+## 2. Annotation Decision Tree
+
+```mermaid
+flowchart TD
+    Start["Examine Token / Phrase in Right Document"] --> MatchLeft{"Does identical string exist in Left Document?"}
+    
+    MatchLeft -- "YES (Identical / Unscrubbed)" --> CheckType{"Determine Entity Category"}
+    MatchLeft -- "NO (Changed / Redacted / Replaced)" --> CheckOrig{"What was the original text on the Left?"}
+
+    CheckType -- "15-Category Credential Value" --> L_Cred["Label: Credentials (#FF7A45)\n(Ensure key is NOT selected)"]
+    CheckType -- "Human Name" --> L_Person["Label: Person Name (#1890FF)"]
+    CheckType -- "Legal Company / Brand" --> CheckBiz{"Is it a Bank or Software?"}
+    CheckBiz -- "Bank / Tech Tool / Header" --> L_SkipBiz["DO NOT LABEL (Exclude)"]
+    CheckBiz -- "Legitimate Enterprise" --> L_Biz["Label: Business Name (#13C2C2)"]
+    CheckType -- "Complete Street Address" --> L_Addr["Label: Address (#F5222D)"]
+    CheckType -- "Official Vehicle License Plate" --> L_Plate["Label: Vehicle Number Plate (#A0D911)"]
+    CheckType -- "Date of Birth (DOB)" --> L_DOB["Label: Date (#EB2F96)"]
+    CheckType -- "Other PII (Email, Phone, IP)" --> L_Other["Label respective category"]
+
+    CheckOrig -- "Was a Person Name or Business Name" --> SkipRedacted["DO NOT LABEL\n(Properly redacted PII/BII)"]
+    CheckOrig -- "Was Non-PII / Technical Prose / Common Word" --> CheckPartial{"Is it part of a delimited token?"}
+    
+    CheckPartial -- "Yes (e.g. 'job-beaexbright')" --> L_PartialOver["Isolate ONLY the scrubbed word\nLabel: Overscrubbed (#FF7875)"]
+    CheckPartial -- "No (Whole word replaced)" --> L_FullOver["Label: Overscrubbed (#FF7875)"]
+```
+
+---
+
+## 3. Label Color System & Taxonomy
+
+The PeakTalent UI enforces a strict 13-category color system. Annotations must conform to the following palette:
+
+| # | Label | Dot Color | Background | Border | Text Color | Definition & Scope |
+| :-: | :--- | :---: | :---: | :---: | :---: | :--- |
+| **1** | **Credentials** | 🍑 `#FF7A45` | `#FFF2E8` | `#FFBB96` | `#D4380D` | Passwords, tokens, API keys, IDs across the 15 universal categories. Value-only. |
+| **2** | **Person Name** | 🔵 `#1890FF` | `#E6F7FF` | `#91D5FF` | `#096DD9` | Verified real human names. Left == Right identical only. |
+| **3** | **Business Name** | 🟢 `#13C2C2` | `#E6FFFB` | `#87E8DE` | `#08979C` | Commercial brands, corporations, vendors. Excludes banks & tech tools. |
+| **4** | **Overscrubbed** | ⚠️ `#FF7875` | `#FFF1F0` | `#FFCCC7` | `#CF1322` | Non-PII text, prose, or code unnecessarily redacted or replaced. |
+| **5** | **Address** | 🔴 `#F5222D` | `#FFF1F0` | `#FFA39E` | `#CF1322` | Complete postal addresses (premise + street + city/PIN). Left == Right only. |
+| **6** | **Vehicle Number Plate** | 🍏 `#A0D911` | `#FCFFE6` | `#EAFF8F` | `#7CB305` | Valid Indian motor vehicle registration numbers with official state codes. |
+| **7** | **Date** | 🌸 `#EB2F96` | `#FFF0F6` | `#FFADD2` | `#C41D7F` | Strictly Date of Birth (DOB) only. General dates must NOT be labeled. |
+| **8** | **Contact Number** | 🟠 `#FA8C16` | `#FFF7E6` | `#FFD591` | `#D46B08` | Mobile, landline, toll-free, fax numbers. |
+| **9** | **Email Address** | 🌿 `#52C41A` | `#F6FFED` | `#B7EB8F` | `#389E0D` | Personal or commercial email addresses. |
+| **10** | **IP Address** | 🔷 `#13C2C2` | `#E6FFFB` | `#87E8DE` | `#08979C` | IPv4 and IPv6 network addresses. |
+| **11** | **URL/Link** | 🟡 `#FAAD14` | `#FFFBE6` | `#FFE58F` | `#D48806` | Web addresses, HTTP(S) links, endpoints. Excludes placeholders. |
+| **12** | **Person Username** | 🌌 `#2F54EB` | `#F0F5FF` | `#ADC6FF` | `#1D39C4` | Social media handles (`@handle`). Excludes database `node_id` or login keys. |
+| **13** | **Account Number** | 🟣 `#722ED1` | `#F9F0FF` | `#D3ADF7` | `#531DAB` | Bank account numbers specifically. Other IDs belong to Credentials. |
+
+---
+
+## 4. Universal 15-Category Credentials Specification
+
+The platform mandates that the following **15 categories are strictly classified as `Credentials`** when they are identical in both Left and Right documents:
+
+```
+┌────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                           UNIVERSAL 15-CATEGORY CREDENTIALS MATRIX                             │
+├────┬─────────────────────────────┬─────────────────────────────────┬───────────────────────────┤
+│ #  │ Category Name               │ Format & Specification          │ Canonical Example         │
+├────┼─────────────────────────────┼─────────────────────────────────┼───────────────────────────┤
+│ 1  │ Bank Branch Code            │ 11-character alphanumeric IFSC  │ HDFC0001234, SBIN0000456  │
+│ 2  │ Income Tax ID               │ 10-character PAN card format    │ ABCDE1234F, BKRPK9921M    │
+│ 3  │ Secret Keys & API Tokens    │ Secret keys, bearer, JWT, SSH   │ sk-proj-1234567890abcdef  │
+│ 4  │ Passwords, PINs & OTPs      │ Secret passwords, OTPs, PINs    │ superSecretPassword123    │
+│ 5  │ Aadhaar Card Number         │ 12-digit Indian national UID    │ 1234 5678 9012            │
+│ 6  │ Driving License Number      │ Indian State DL alphanumeric    │ DL14 20110012345          │
+│ 7  │ Voter ID Number             │ 10-character Election EPIC ID   │ WBF1234567, ABC1234567    │
+│ 8  │ Credit / Debit Card Number  │ 13-19 digit card no, CVV, expiry│ 4532 1234 5678 9012       │
+│ 9  │ UPI ID                      │ Virtual Payment Address (VPA)   │ user@okhdfcbank, pay@upi  │
+│ 10 │ Transaction ID              │ Bank UTR, blockchain tx hash    │ CB0111264256, 0x3a7b1c4e  │
+│ 11 │ Invocation ID               │ Cloud function execution UUID   │ c4a7d8e2-1b3c-4d5e-8f9a   │
+│ 12 │ SHA / SSH / Hash Key        │ SHA-1 (40 hex), SHA-256 (64 hex)│ 839aeeff4312171ac86bebf47 │
+│ 13 │ VPC ID                      │ Cloud Virtual Private Cloud ID  │ vpc-0a1b2c3d4e5f67890     │
+│ 14 │ Card ID                     │ Tokenized card reference        │ card_1J4iOz2eZvKYlo2CSm   │
+│ 15 │ Account ID                  │ 12-digit cloud account / IAM ID │ 243057143242, ANPAZKAPJZG │
+└────┴─────────────────────────────┴─────────────────────────────────┴───────────────────────────┘
+```
+
+> [!IMPORTANT]
+> **Strict Value-Only Rule for Credentials**:
+> When an entity appears inside JSON, YAML, code, or key-value format (e.g. `"_account_id": "243057143242"` or `"PolicyId": "ANPAZKAPJZG4NVQDF6L6N"`):
+> - **WRONG**: `"_account_id": "243057143242"` (Do NOT label the key or quotes)
+> - **CORRECT**: `"243057143242"` (Label ONLY the value)
+
+---
+
+## 5. Strict Entity Annotation Rules
+
+### 5.1 Credentials (Value-Only Rule)
+- **Condition**: Must be identical in both documents (Left == Right).
+- **Strict rule for every credential type**: the same value on both sides -> `Credentials`. A changed value was correctly scrubbed -> **no label at all** (not Credentials, not Overscrubbed).
+- **Key formats understood**: `Key: value`, `Key - value`, `Key = value`, `Key is value`, with optional quotes, e.g. `Password - customerdelivery2@admin123!`, `PAN: ABCDE1234F`, `OTP is 482913`. Only the value is labeled, never the key.
+- **Short values behind a key** (CVV `789`, PIN `4821`, expiry `11/28`) are Credentials only when they sit directly after their key (`"cvv": "789"`). A bare 3–4 digit number is never a credential.
+- **Card numbers**: grouped `4-4-4-4` numbers are accepted on format; ungrouped 13–19 digit numbers must pass the Luhn checksum.
+- **Bank UTR / transaction references** are recognised behind keys such as `UTR No:`, `Txn ID:`, `Transaction Ref:`.
+- **Account ID vs Account Number**: any 12-digit number identical on both sides is treated as Aadhaar / cloud Account ID (Credentials). A 12-digit **bank** account number therefore also lands in Credentials — re-label it as `Account Number` by hand.
+- **Exclusion**: Keys such as `account_id`, `_account_id`, `PolicyId`, `password`, `pin`, `otp`, `secret`, `api_key` must **never** receive an annotation badge.
+
+### 5.2 Person Name
+- **Condition**: Only mark if **unscrubbed** and identical on both sides (`Left == Right`).
+- **Compound Names**: PascalCase names (`OrlaKestrelbrook`) or single lowercase names (`srinadh`) that represent human names are protected from being marked as Overscrubbed.
+- **Changed Names**: When a real human name on the Left is replaced by another synthetic name or scrambled text on the Right, **leave it blank (do NOT annotate)**.
+- **Prose Guard**: The word "applicant" or "patient" occurring in prose sentences (e.g. `If the applicant is a potential member...`) does not make following words a Person Name. A name *field* needs a key form such as `Applicant: …` or `Author = …`.
+- **Never Person Names**: months and weekdays ("June"), places ("India", "West Indies"), and match titles ("India vs Pakistan").
+- **Name columns in tables**: in a spreadsheet column where several rows had a name replaced, an unchanged value (`kalaivani`, `bourniya.j`) is a Person Name, a replaced value is a scrubbed name (no label), and the unchanged part of a partly replaced name (`purav` in `purav mallick` -> `purav devivrenric`) is a Person Name.
+- **Same-shaped lines**: if one slide heading `# Furkan` was scrubbed, an unchanged heading of the same shape (`# Joaquim`) is a Person Name.
+- **Greetings are not part of a name**: in `Hi Rahul Sharma`, label only `Rahul Sharma`.
+- **Name lists**: in `distributed between Naazia, Vinita and Shrusti`, only the capitalised names in the comma-separated list count — not other words later in the sentence.
+
+### 5.3 Business Name
+- **Condition**: Must exist identically in both documents (`Left == Right`).
+- **Scrubbed Companies**: If a company name is changed (e.g. `Acme Corp` $\rightarrow$ `Vexave Logistics PLC`), **do not label either side**.
+- **Negative Constraints (Strict Exclusions)**:
+  - **Banking Organizations**: `AXIS BANK`, `HDFC Bank`, `State Bank of India` are excluded.
+  - **Table Headers & Field Names**: `Bank Name`, `Patient Name`, `Policy Holder`, `Company Name`, `Vendor` must never be annotated as Business Name.
+  - **Software / Cloud Infrastructure**: `Database@AWS`, `Amazon ODB`, `Cloud SQL`, `OAuth`, `Node.js`, `Kubernetes`, `Docker` are technical assets, not Business Names.
+  - **Legal entity types and placeholders**: `C Corporation`, `LLC`, `Sole Proprietorship`, and anything inside a form placeholder such as `[E.g., …]` or `[Insert company name]` are not Business Names.
+  - **Words inside links**: `github` inside `https://github.com/...` is part of the URL, not a Business Name.
+  - **A lone suffix word** (`Analytics`, `Solutions`, `Group`) is not a company on its own; it needs a name in front (`Acme Analytics`).
+
+### 5.4 Vehicle Number Plate
+- **Real-World Standard Enforced**: Must follow official Indian Motor Vehicles format:
+  `2-letter State/UT code` + `1–2 digits (optionally followed by one letter)` + `1–3 letters` + `4 digits`
+  or the Bharat Series (`BH` format: `22 BH 1234 AA`).
+- **Approved State / UT Codes (36 current)**:
+  `AN`, `AP`, `AR`, `AS`, `BR`, `CG`, `CH`, `DD`, `DL`, `GA`, `GJ`, `HP`, `HR`, `JH`, `JK`, `KA`, `KL`, `LA`, `LD`, `MH`, `ML`, `MN`, `MP`, `MZ`, `NL`, `OD`, `PB`, `PY`, `RJ`, `SK`, `TN`, `TR`, `TS`, `UK`, `UP`, `WB`.
+- **Legacy codes still accepted** (older plates are still on the road): `OR` (Odisha, before 2012), `UA` (Uttarakhand, before 2007), `DN` (Dadra & Nagar Haveli, before 2020).
+- **RTO code may include a letter** (Delhi style): `DL 3C AB 1234` is valid.
+- **Exclusions**:
+  - Synthetic or fictitious state prefixes (e.g. `UT 28 EZ 6570` - `UT` is invalid; `RV 05 KP 6908` - `RV` is invalid).
+  - Date redaction diffs (where date phrases are replaced with plate-like strings).
+  - Scrubbed plates (plates changed between Left and Right return `null`).
+
+### 5.5 Address
+- **Complete Postal Address Standard**: Must be a multi-part address containing:
+  1. Premise or Building indicator (e.g. `12`, `Plot 7`, `Flat 302`, `Tower B`)
+  2. Street or Locality (e.g. `MG Road`, `Sector 5`, `Outer Ring Road`)
+  3. City and/or PIN Code (e.g. `Pune 411001`, `Bengaluru 560100`)
+- **Negative Constraints**:
+  - Isolated city names (`Bengaluru`, `Pune`, `Mumbai`, `New Delhi`) are **NOT** addresses.
+  - Isolated street names (`MG Road`) or floor numbers (`3rd Floor`) are **NOT** addresses.
+- **Verification Requirement**: The complete address string must exist identically in **BOTH Left and Right panes**. If scrubbed or altered, do not annotate.
+- **Scrubbed address -> no label at all**: if any part of the address changed (street, plot number, PIN), do not label the address, its unchanged fragments (e.g. `Sector 127, Noida`), or the replacement text (`937 Garnthwaite Road`) - not Address, not Overscrubbed.
+- **Multi-line addresses**: when the whole block is identical on both sides, label each line of it as Address.
+
+### 5.6 Overscrubbed (Partial Isolation Rule)
+- **Definition**: Non-sensitive generic words, verbs, technical phrases, or structural elements that were unnecessarily altered during redaction.
+- **Canonical Examples**:
+  - `Council Member` $\rightarrow$ `Council Beagenhydra`: `Beagenhydra` is **`Overscrubbed`**.
+  - `potential Council` $\rightarrow$ `orbenorb Council`: `orbenorb` is **`Overscrubbed`**.
+  - `end-client` $\rightarrow$ `end-lyroranim`: `lyroranim` is **`Overscrubbed`**.
+  - `Provide a brief` $\rightarrow$ `Galearwren a brief`: `Galearwren` is **`Overscrubbed`**.
+- **Delimiter-Aware Boundary Rule**:
+  When a sub-component of a token is altered while punctuation/delimiters remain identical, **isolate and annotate ONLY the changed sub-token**:
+  - `"hydragenzen-10-17"` (from `"2012-10-17"`): Annotate **`hydragenzen`** only. (Do NOT include `-10-17`).
+  - `"ap-terovawren-2"` (from `"ap-northeast-2"`): Annotate **`terovawren`** only.
+  - `"job-beaexbright"` (from `"job-function"`): Annotate **`beaexbright`** only.
+- **The original decides**: if the original text is ordinary words ("Chance R", "Kickoff", "Cricket") or a place ("Ireland"), its replacement is Overscrubbed, even when the replacement looks like a name ("Yelanando N").
+- **Scrubbed names are not Overscrubbed**: if the original is a name ("Furkan", "Roni S"), its replacement is correct redaction -> no label.
+- **Renamed keys are Overscrubbed**: in config files, a renamed key (`API_KEY = …` → `BRYENA_STELWICK = …`) is Overscrubbed, even though the value next to it is a secret.
+- **Overscrubbing Exclusions**:
+  - If the original text was a genuine **Person Name** or **Business Name**, its replacement is NOT overscrubbed ("if it's scrubbed, no need to label anything").
+
+### 5.7 Date (DOB Strictly Only)
+- Only annotate as `Date` if it is explicitly a **Date of Birth** (accompanied by field indicators: `DOB`, `Date of Birth`, `Birth Date`, `Born On`) **and identical on both sides**. A DOB that was changed was correctly scrubbed — leave it blank.
+- General operational dates, statement dates, policy periods, transaction timestamps (`12-01-2026`, `22 Dec 2025 12:00 PM`) must **NOT** be annotated as `Date`.
+
+### 5.8 Person Username & System IDs
+- Only explicit social / platform handles beginning with `@` (e.g. `@rahul_92`) that are **identical on both sides** are annotated as `Person Username`. A changed handle was correctly scrubbed — leave it blank. Code annotations (`@Override`, `@media`, `@angular/core`) are not usernames.
+- Git commit hashes, API node IDs (`node_id`), base64 strings (`MDY6Q29tbWl0...`), login session keys, and numeric database IDs are **NOT** usernames and must **NOT** be annotated.
+
+### 5.9 Other Categories (Contact, Email, IP, URL)
+- **Contact Number**: Indian mobile numbers (10 digits starting 6–9, optional `+91`), and landlines with an STD code starting `0`. Must be identical on both sides. (The auditor does not yet recognise non-Indian formats such as `+1 (555) 234-8901`; check those by hand.)
+- **Email Address**: Valid `user@domain` addresses, identical on both sides. File names such as `icon@2x.png` are not emails.
+- **IP Address**: IPv4 (e.g. `192.168.1.1`) and IPv6 (e.g. `2001:db8::1`). MAC addresses (`00:1A:2B:3C:4D:5E`) are **not** IP addresses.
+- **URL / Link**: Only `https://` links identical on both sides are labeled (project rule). `http://` and bare `www.` links are left unlabeled. Placeholders (`https://example.com`, `localhost`) and footnote anchors (`#footnote-1`) are excluded.
+
+---
+
+## 6. Comprehensive Do's and Don'ts Matrix
+
+| Feature / Case | ❌ INCORRECT (Common Mistake) | ✅ CORRECT (Standard Procedure) | Rationale |
+| :--- | :--- | :--- | :--- |
+| **AWS Account ID in JSON** | Annotate `_account_id": "243057143242` | Annotate **`243057143242`** | Structural keys must never be annotated; only the secret value. |
+| **IAM Policy ID** | Annotate `PolicyId: ANPAZKAP...` | Annotate **`ANPAZKAP...`** | Value-only rule for credentials. |
+| **Scrubbed Human Name** | Label replacement `Melivn O` as Person Name | **Leave blank (do not label)** | Scrubbed entities must not be labeled as Person Name. |
+| **Compound Scrubbed Word** | Ignore `Beagenhydra` (thinking it's a name) | Label **`Beagenhydra`** as **`Overscrubbed`** | It replaced the common noun "Member" in "Council Member". |
+| **Hyphenated Token Diff** | Label full `hydragenzen-10-17` | Label **`hydragenzen`** as **`Overscrubbed`** | Common suffix `-10-17` was unchanged; isolate the scrubbed part. |
+| **Delimited Path Diff** | Label full `job-beaexbright/AmazonODB` | Label **`beaexbright`** as **`Overscrubbed`** | Delimiter isolation extracts only the synthetic token. |
+| **Bank Name in Table** | Label `AXIS BANK` as Business Name | **Leave blank (do not label)** | Banking organizations are strictly excluded from Business Name. |
+| **Table Column Header** | Label header `Bank Name` or `Patient Name` | **Leave blank (do not label)** | Form/table field headers are never entities. |
+| **Cloud Software Resource** | Label `Database@AWS` as Business Name | **Leave blank (do not label)** | Software and infrastructure components are not business names. |
+| **Invalid State Plate** | Label `UT 28 EZ 6570` as Vehicle Plate | **Leave blank (do not label)** | `UT` is not a recognized Indian state code; strictly invalid. |
+| **Single City Name** | Label `Bengaluru` or `Pune` as Address | **Leave blank (do not label)** | Single cities are not complete addresses. |
+| **Changed Full Address** | Label address when left $\neq$ right | **Leave blank (do not label)** | Address must exist identically in both Left and Right documents. |
+| **Statement Date** | Label `12-01-2026 00:00:00` as Date | **Leave blank (do not label)** | Only Date of Birth (DOB) may be labeled as Date. |
+
+---
+
+## 7. Automated Verification & QA Protocols
+
+Every document processed by the automated engine or human annotator must pass a 4-point QA check before submission:
+
+1. **Zero Key Contamination**:
+   - Inspect JSON/YAML payloads. Verify that no JSON keys (`password`, `account_id`, `PolicyId`, `pin`) possess an underline or label tag.
+2. **Double-Ended Identity Check**:
+   - Verify that all active `Person Name`, `Business Name`, `Address`, and `Credentials` annotations exist in verbatim form in the Left document pane.
+3. **Delimiter Cleanliness Check**:
+   - Ensure all `Overscrubbed` annotations are stripped of trailing hyphens, slashes, brackets, or commas.
+4. **State Code Authenticity Check**:
+   - Confirm every `Vehicle Number Plate` begins with an official 2-letter Indian State/UT code (or a legacy code listed in 5.4).
+
+> The browser auditor is an assistant, not an authority. It highlights likely labels and likely mistakes; the annotator makes the final call. Known gaps are listed in the README under *Known limitations*.
+
