@@ -1,4 +1,4 @@
-# PeakTalent Auditor - Test Report (v11.0.1)
+# PeakTalent Auditor - Test Report (v11.3.4)
 
 Every label is tested three ways:
 
@@ -60,7 +60,7 @@ All 227 checks pass (`node tests/labels.js`).
 All 238 checks pass. `tests/dom_labels_deep.js` adds 33 real-page mistake checks: for each of the 13 labels the correct label gets no outline and a wrong label gets the red outline, plus 7 cases of text that must stay blank (scrubbed name, statement date, city, bank, invalid plate, http link).
 
 
-## Mistake check (rebuilt in v11.0.1)
+## Mistake check (rebuilt in v11.3.4)
 
 | Suite | What it checks | Result |
 |---|---|---|
@@ -73,7 +73,7 @@ All 238 checks pass. `tests/dom_labels_deep.js` adds 33 real-page mistake checks
 | `tests/dom_marks.js` | The live dashboard's own markup (from its Diagnose report): `<mark role="button">` labels with translucent background + gradient underline. Wrong labels -> red outline, correct ones -> none | 5/5 |
 | `tests/dom_audit.js` | Label applied around the auditor's own highlight | 4/4 |
 
-## Label check (mistake indication, v11.0.1)
+## Label check (mistake indication, v11.3.4)
 
 `tests/dom_labelcheck.js` uses the live dashboard's label markup (`<mark role="button">`, background tint + gradient underline, palette from the label chips).
 
@@ -84,7 +84,59 @@ All 238 checks pass. `tests/dom_labels_deep.js` adds 33 real-page mistake checks
 | Text that must stay unlabeled (unchanged word, JSON key, scrubbed name / company / phone, statement date, city alone, http link, language) -> mistake, correct = "No label" | 9/9 |
 | Overscrubbed word labeled Date -> "Date -> Overscrubbed"; fixed -> cleared; changed again -> flagged; removed -> cleared | 4/4 |
 | Label drawn inside a suggestion span; partial Overscrubbed label; several labels at once; mistake list; document text unchanged | 5/5 |
-| **Total** | **44/44** |
+| Pane header ("Annotate here" chip, file name) never judged | 1/1 |
+| **Total** | **45/45** |
+
+`tests/dom_chrome_colours.js`: the same check when the page reports colours the way Chrome does (oklch, `rgb(r g b / a)`, `color(srgb ...)`), with unreadable chip colours (built-in colours), and with an unreadable label colour (learned from the label dialog): 11/11.
+
+`tests/dom_extension.js`: the Chrome extension build itself with a chrome.runtime stub - wrong label flagged, popup status shows the mistake, popup diagnostics answer: 3/3.
+
+
+## Mass test campaign (v11.3.4) - 2 lakh generated documents
+
+`tests/mass.js` generates documents from about 300 Indian and international names, about 50 companies and 25 brands, about 35 templates (greetings, sign-offs, name fields, chat lines, CSV / JSON rows, table cells, invoices, offer letters) and variants (identical, fully scrubbed, first or last name kept, ordinary words / software / places / languages / banks / people / companies in the wrong slot), plus all other labels (identical -> label, changed -> no label). Every document inside a run is different.
+
+8 runs of 25,000 with different seeds (101, 202, 303, 404, 505, 606, 707, 808): **200,000 / 200,000 correct (100%)**. The build runs 5,000 cases; `npm run test:mass` runs 2 lakh.
+
+| Category | Correct / total |
+|---|---|
+| Account Number: changed -> no label | 3,420 / 3,420 |
+| Account Number: identical -> Account Number | 4,596 / 4,596 |
+| Address: city alone -> not Address | 32 / 32 |
+| Address: identical complete address -> Address | 4,348 / 4,348 |
+| Business: bank names -> not Business Name | 40 / 40 |
+| Business: identical company -> Business Name | 14,105 / 14,105 |
+| Business: ordinary word in a company slot -> not Business Name | 1,438 / 1,438 |
+| Business: person name in a company slot -> not Business Name | 6,502 / 6,502 |
+| Business: scrubbed company -> no label | 13,830 / 13,830 |
+| Business: software/place/language in a company slot -> not Business Name | 1,757 / 1,757 |
+| Contact Number: changed -> no label | 3,369 / 3,369 |
+| Contact Number: identical -> Contact Number | 4,433 / 4,433 |
+| Credentials: changed -> no label | 3,330 / 3,330 |
+| Credentials: identical -> Credentials | 4,567 / 4,567 |
+| Date: identical date of birth -> Date | 4,583 / 4,583 |
+| Date: other dates -> not Date | 4,520 / 4,520 |
+| Email Address: changed -> no label | 3,498 / 3,498 |
+| Email Address: identical -> Email Address | 4,617 / 4,617 |
+| IP Address: changed -> no label | 3,300 / 3,300 |
+| IP Address: identical -> IP Address | 4,567 / 4,567 |
+| Overscrubbed: ordinary word replaced -> Overscrubbed | 6,755 / 6,755 |
+| Person Username: changed -> no label | 3,309 / 3,309 |
+| Person Username: identical -> Person Username | 4,386 / 4,386 |
+| Person: company in a name slot -> not Person Name | 6,261 / 6,261 |
+| Person: first name kept, surname scrubbed | 11,484 / 11,484 |
+| Person: fully scrubbed -> no label | 13,633 / 13,633 |
+| Person: identical full name -> Person Name | 17,331 / 17,331 |
+| Person: identical list of names -> every name Person Name | 6,959 / 6,959 |
+| Person: list mostly scrubbed -> no Overscrubbed on scrubbed names | 4,594 / 4,594 |
+| Person: ordinary word in a name slot -> not Person Name | 2,352 / 2,352 |
+| Person: ordinary word replaced -> Overscrubbed | 6,753 / 6,753 |
+| Person: software/place/month/language in a name slot -> not Person Name | 2,238 / 2,238 |
+| Person: surname kept, first name scrubbed | 7,008 / 7,008 |
+| URL/Link: changed -> no label | 3,392 / 3,392 |
+| URL/Link: identical -> URL/Link | 4,583 / 4,583 |
+| Vehicle Number Plate: changed -> no label | 3,376 / 3,376 |
+| Vehicle Number Plate: identical -> Vehicle Number Plate | 4,734 / 4,734 |
 
 ## Limits
 

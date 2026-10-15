@@ -1,5 +1,89 @@
 # Changelog
 
+## 11.3.4 - October 2026
+
+From the PROJECT.md screenshot (settings table):
+- **"Meta token" was a Business Name; only "Meta" is.** A brand followed or preceded by ordinary words is labeled as the brand alone ("Meta token" -> "Meta", "Google Ads account" -> "Google"). Full company names with a corporate suffix are never trimmed ("Evergreen Agro LLC", "Tata Consultancy Services").
+- **Scrubbed recipient handles were Overscrubbed:** "kartik.nayyar" -> "Jordan.Miller", "Rahul.chaturvedi" -> "Morgan.Bennett", "karthik.nair" -> "Casey.Wilson", "mubarak.shah" -> "Jamie.Parker". A dotted / underscored person handle replaced by another is a scrubbed name (no label). Constants like API_KEY -> BRYENA_STELWICK are still Overscrubbed.
+- The table is now a permanent test (`tests/matrix.js`, 69 documents). Fresh mass round: 25,000 / 25,000.
+
+## 11.3.3 - October 2026
+
+Person Name logic checked again on code files (Vue, PHP, JS, YAML, SQL, CSS, JSON manifests):
+
+- The Vue screenshot (`<input name="WEBSITE">`, `name="CHECKSUMHASH"`) gives no suggestions with v11.3.2 and later (fixed there; the screenshot was taken with an earlier version).
+- New mass-test categories for code files: identifiers and attribute names in 12 code patterns (HTML attributes, labels, env constants, JSON / YAML `name:`, PHP `use`, JS `import`, SQL columns, Vue `name:`, PHP methods, CSS classes) must never be Person or Business Name; real author names in comments / manifests (`// Author:`, `@author`, `"author":`, `Signed-off-by:`) must be Person Name; setting words behind key-like names (`id-token: write`) must not be Credentials.
+- The first round found one more problem, now fixed: **camelCase / PascalCase identifiers after `name:` were Person Names** (`name: 'userService'`, `name: checkoutForm`). Compound identifiers are never person names (real names with internal capitals - McDonald, MacArthur, DeSouza, VanDyke - still are).
+- Mass test after the fix: 20,000 + 25,000 new documents, 100% correct; code-file categories 859 / 859.
+
+## 11.3.2 - October 2026
+
+**Mistake check: real cause found.** The review screen is a modal window (`role="dialog"`). Since v11.2.1 a rule that skips the screen's own controls ("anything inside a dialog or header is a control") also matched that modal, so **every label in the document was skipped** - the bar showed "labels not readable" and no mistake was ever flagged. v11.0.1 did not have that rule, which is why it worked. Controls are now only skipped when they are outside the document (a `<button>`, or a menu / popover / header that does not contain the document). Test: the Chrome extension build inside a `role="dialog"` modal - v11.3.1 fails it, v11.3.2 passes.
+
+Wrong suggestions fixed:
+- **YAML permissions as Credentials**: "id-token: write", "pages: write" - "token" looked like a credential key. A plain dictionary word ("write", "read") is never a credential value.
+- **HTML attribute names as Person Name**: `<input name="WEBSITE">`, `name="CHECKSUMHASH"` - the value of a `name=` attribute is a field name; ALL-CAPS identifiers and snake_case words are never person names (unless a known name).
+- **"github" in "github-pages"** was a Business Name; brand names inside hyphenated identifiers are ignored.
+
+New permanent cases in `tests/matrix.js` (68 documents) for the YAML, Vue and PHP files from the screenshots.
+
+## 11.3.1 - October 2026
+
+- **"Annotate here" flagged as a wrong Person Name again** (title row of `right.gitkeep-...`). The chip contains an icon next to the words, so its text was not exactly "Annotate here" and the v11.2.1 rule missed it. Now nothing in a pane's title row is ever checked: short controls that contain "Annotate here" / "read-only" / "Submit for review", and every element in the row that holds the file name (`left.xxx-1a2b3c` / `right.xxx-1a2b3c`). Only labels inside the document text are judged. Nothing else changed.
+- Test extended with this exact title row (icon inside the chip): v11.3.0 fails it, v11.3.1 passes (label check 45/45).
+
+## 11.3.0 - October 2026
+
+The mistake check is made independent of how a browser reports colours, so it works the same in Chrome, Edge, Brave, Safari and Firefox:
+
+- **Built-in label colours.** The dashboard's 13 label colours (measured on the live page) are built in. Colours read from the label chips are used first; any chip that cannot be read falls back to the built-in colour, so labels are recognised even when no chip can be read.
+- **Labels learned from the dashboard's own label dialog.** When "Change label for "..."" opens on a label, or you click Apply, the auditor records which label is on which words. A label whose colour cannot be read at all is still checked.
+- **Chrome extension popup fixed.** Without a host permission Chrome hides the tab address from the popup, so the popup always said "Open a review task" and never showed the mistake count. The manifest now has `host_permissions` for dashboard.peaktalent.ai (and `activeTab`).
+- **"Copy diagnostics" button in the extension popup** (and Alt+Shift+D on the page): browser, extension or userscript, how many label colours were read from the chips, the raw colours of the first labels on the page, which label was read for each, and the verdict. If a label is ever not checked, this report shows why.
+- **Bar hint:** when labels are on the page but none could be read, the bar says "labels not readable" instead of silently showing no mistakes.
+- New tests: built-in colours when chips are unreadable, label learned from the dialog when the label has no readable colour, and the actual Chrome extension build run with a chrome.runtime stub (label check, popup status, popup diagnostics).
+
+## 11.2.3 - October 2026
+
+- **Mistake check did not work in the Chrome extension (it did in Safari).** The check recognises your labels by their colours, learned from the label chips. Safari reports colours as `rgb(...)`, but Chrome reports modern CSS colours in their own notation - `oklch(...)`, `rgb(235 47 150 / 0.18)`, `color(srgb ...)` - which the old colour reader could not read. In Chrome no label colour was recognised, so no label was ever checked. Colours are now read in every CSS notation (rgb/rgba old and new syntax, hex, hsl, oklch, oklab, color(srgb / srgb-linear / display-p3)), with the browser converting anything else (lab, lch, named colours).
+- New real-page test `tests/dom_chrome_colours.js`: the page reports its colours the way Chrome does (oklch, modern rgb, color(srgb)); a wrong label is flagged with the correct label and a correct label is recognised, in all three notations (9/9). v11.2.2 failed these.
+
+## 11.2.2 - October 2026
+
+- **Chrome: "Manifest file is missing or unreadable".** The extension itself was valid, but its `manifest.json` sits in the `extension/` sub-folder, so choosing the unzipped project folder (or the folder above the extension) in **Load unpacked** failed. Now:
+  - a separate download **PeakTalent-Auditor-Chrome.zip** unzips to one folder with `manifest.json` directly inside;
+  - the project folder itself also has a `manifest.json` (pointing to `extension/`), so loading the whole project works too;
+  - the build checks both manifests (valid JSON, Manifest V3, every file they name exists).
+- README: clearer Chrome steps and what the "manifest missing" message means.
+
+## 11.2.1 - October 2026
+
+- **Mistake shown in the wrong place.** On the review screen the light-blue **"Annotate here"** chip in the right pane's header was read as a Person Name label (its colour matches the Person Name chip) and flagged "Person Name -> No label", so the bar showed "1 Mistake" although your labels were correct. The label check now ignores the review screen's own controls: "Annotate here", "Reference - read-only", file names (`right.md-...`), label chips, counters ("2 annotations", "2 matches in the left document"), buttons, dialogs and menus. Only labels inside the document text are checked.
+- New real-page test with the exact case (README "# Droom Chat", "Droom" labeled Business Name twice, header with file name and "Annotate here"): v11.2.0 failed it, v11.2.1 passes. Label-check suite: 45/45.
+
+## 11.2.0 - October 2026
+
+**Deep Person Name / Business Name campaign: 2 lakh generated documents, 100% correct.** New `tests/mass.js` (see TEST_REPORT.md). The first round scored 96.85%; everything it found was fixed:
+
+Person Name
+- International names were missed (Wei Zhang, Hannah Fischer, Mateo Garcia, Omar Haddad): ~350 common international given names and surnames added.
+- Surnames that are also brands ("Dhruv Bajaj"): the full name is a Person Name; "Bajaj" alone after a first name is a Person Name, not a Business Name ("works at Bajaj" stays Business).
+- "Hi" was labeled Person Name when the first name after it was scrubbed ("Hi Priya Khan" -> "Hi Delvarsel Khan").
+- Companies after greetings ("Hi Silverline Labs") were Person Name; phrases ending in a corporate suffix are never a person.
+- Software / places / languages / months in name fields ("Candidate Name: Excel") and ordinary words ("Candidate Name: Friends") were Person Name.
+- A plate in a table cell ("| Vehicle No | KL 61 HU 6444 |") was Person Name: text with digits, @ or a plate format is never a person.
+- Replaced ordinary words in name slots ("Dear Parent" -> "Dear Torravar", "Candidate Name: Support" -> ...) are now Overscrubbed.
+- Scrubbed name lists with international names, or a repeated surname, no longer give Overscrubbed.
+
+Business Name
+- Companies named with dictionary words ("Pinnacle Software", "Evergreen Agro Traders") are recognised in a company context (Vendor:, Client:, Bill To, works at, offer letter from, signed the NDA, ...) or with a legal suffix (Inc, Ltd, Pvt Ltd, LLC ...); scrubbed ones are correct redaction (no Overscrubbed).
+- "Hi Silverline Labs" no longer becomes a Business Name with "Hi" in it; Jira, Excel, Photoshop, languages and places are never Business Names.
+
+Other labels
+- PANs starting with "MD" were rejected as GitHub node ids; Indian mobiles containing "555" were rejected as fake US numbers.
+
+All suites pass: 266 rule checks, 65 realistic documents, 227 + 238 label checks, 11 exact documents, 2 lakh mass documents, 7 + 6 + 44 page checks, stress test (1,295 odd documents, 0 crashes), code checker 0 problems.
+
 ## 11.0.1 - October 2026
 
 - **Diagnose button removed from the floating bar** (as requested). The bar now shows only the status and Stop / Start. The diagnostics panel is still available with the keyboard shortcut **Alt+Shift+D** for bug reports.

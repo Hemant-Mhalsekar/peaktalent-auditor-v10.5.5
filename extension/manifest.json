@@ -1,19 +1,37 @@
 {
   "manifest_version": 3,
   "name": "PeakTalent PII/BII Annotation Auditor",
-  "version": "11.0.1",
-  "description": "Highlights PII/BII, credentials and overscrubbed text on PeakTalent review screens and flags labels that break the SOP. Works fully offline.",
+  "version": "11.3.4",
+  "description": "Highlights PII/BII, credentials and overscrubbed text on PeakTalent review screens and flags wrong labels. Works fully offline.",
   "action": {
     "default_popup": "popup.html",
     "default_title": "PeakTalent Auditor",
-    "default_icon": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" }
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
   },
-  "icons": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
   "content_scripts": [
     {
-      "matches": ["https://dashboard.peaktalent.ai/*"],
-      "js": ["content.js"],
+      "matches": [
+        "https://dashboard.peaktalent.ai/*"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_idle"
     }
+  ],
+  "host_permissions": [
+    "https://dashboard.peaktalent.ai/*"
+  ],
+  "permissions": [
+    "activeTab"
   ]
 }

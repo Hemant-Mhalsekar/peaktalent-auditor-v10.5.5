@@ -18,6 +18,9 @@ try {
   execFileSync(process.execPath, [rel('tests', 'matrix.js')], { stdio: 'inherit' });
   execFileSync(process.execPath, [rel('tests', 'labels.js')], { stdio: 'inherit' });
   execFileSync(process.execPath, [rel('tests', 'labels_deep.js')], { stdio: 'inherit' });
+  // mass test: 5,000 generated documents in the build (set MASS_N=200000 for a full campaign)
+  execFileSync(process.execPath, [rel('tests', 'mass.js')], { stdio: ['ignore', 'pipe', 'inherit'], env: Object.assign({}, process.env, { MASS_N: process.env.MASS_N || '5000' }) });
+  console.log('mass test passed (tests/mass.js)');
   execFileSync(process.execPath, [rel('tests', 'exact.js')], { stdio: 'inherit' });
 } catch (e) {
   console.error('\nBuild stopped: tests failed.');
@@ -30,6 +33,7 @@ if (haveJsdom) {
     execFileSync(process.execPath, [rel('tests', 'dom.js')], { stdio: 'inherit', cwd: root });
     execFileSync(process.execPath, [rel('tests', 'dom_large.js')], { stdio: 'inherit', cwd: root });
     execFileSync(process.execPath, [rel('tests', 'dom_labelcheck.js')], { stdio: 'inherit', cwd: root });
+    execFileSync(process.execPath, [rel('tests', 'dom_chrome_colours.js')], { stdio: ['ignore', 'inherit', 'ignore'], cwd: root });
   }
   catch (e) { console.error('\nBuild stopped: DOM tests failed.'); process.exit(1); }
 } else {
@@ -46,8 +50,30 @@ if (manifest.version !== version) {
   process.exit(1);
 }
 
+// Root manifest (v11.2.2): Chrome's "Load unpacked" then also works on the PROJECT folder itself, not only on extension/.
+// Choosing the project folder used to fail with "Manifest file is missing or unreadable".
+{
+  const rootManifest = JSON.parse(JSON.stringify(manifest));
+  const pre = (pth) => 'extension/' + pth;
+  rootManifest.action.default_popup = pre(rootManifest.action.default_popup);
+  for (const k of Object.keys(rootManifest.action.default_icon)) rootManifest.action.default_icon[k] = pre(rootManifest.action.default_icon[k]);
+  for (const k of Object.keys(rootManifest.icons)) rootManifest.icons[k] = pre(rootManifest.icons[k]);
+  rootManifest.content_scripts = rootManifest.content_scripts.map(cs => Object.assign({}, cs, { js: cs.js.map(pre) }));
+  fs.writeFileSync(rel('manifest.json'), JSON.stringify(rootManifest, null, 2) + '\n');
+  // Check both manifests: valid JSON, MV3, and every file they name exists.
+  for (const [base, m] of [['extension', manifest], ['.', rootManifest]]) {
+    const files = [m.action.default_popup, ...Object.values(m.action.default_icon), ...Object.values(m.icons), ...m.content_scripts.flatMap(cs => cs.js)];
+    for (const f of files) if (!fs.existsSync(path.join(root, base, f))) { console.error(`manifest in ${base}: missing ${f}`); process.exit(1); }
+    if (m.manifest_version !== 3) { console.error('manifest_version must be 3'); process.exit(1); }
+  }
+  console.log('manifests OK (extension/manifest.json and ./manifest.json)');
+}
+
 fs.mkdirSync(rel('dist'), { recursive: true });
 fs.writeFileSync(rel('extension', 'content.js'), src);
+// The Chrome extension build itself is tested (chrome.runtime stub: label check, popup status, popup diagnostics).
+try { require.resolve('jsdom', { paths: [root] }); execFileSync(process.execPath, [rel('tests', 'dom_extension.js')], { stdio: ['ignore', 'inherit', 'ignore'], cwd: root }); }
+catch (e) { if (e.status) { console.error('extension test failed'); process.exit(1); } }
 
 const userscript = `// ==UserScript==
 // @name         PeakTalent PII/BII Annotation Auditor

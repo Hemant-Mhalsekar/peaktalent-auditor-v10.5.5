@@ -1,4 +1,4 @@
-// PeakTalent Auditor v11.0.1 - console build.
+// PeakTalent Auditor v11.3.4 - console build.
 // Open the PeakTalent review tab, open the browser console (Safari: Develop > Show JavaScript Console,
 // Chrome: Cmd/Ctrl+Option/Alt+J), paste this whole file and press Enter. Pasting again replaces the old copy.
 // GENERATED FILE - edit src/content.js and run `node scripts/build.js`.
@@ -20,7 +20,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.0.1";
+    const PT_VERSION = "11.3.4";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -42,7 +42,8 @@
     let __ptYieldedOnce = false;
     let __ptViewportInfo = null;          // set while auditing a long document in viewport mode
     let __ptLastError = null;             // last run error, shown by Diagnose
-    let __ptcMistakes = [];               // label-check results (wrong labels) for the current page
+    let __ptcMistakes = [];
+    let __ptLabelStats = null;            // what the label check could read on this page (shown by Alt+Shift+D)               // label-check results (wrong labels) for the current page
     let lastRunMs = 0, lastRunEnd = 0;   // adaptive pacing (see triggerUpdate / heartbeat)
     let cachedLeftPane = null;
     let cachedRightPane = null;
@@ -330,6 +331,7 @@
 
         const toAnnotateCount = document.querySelectorAll(".pt-tag").length;
         const mistakeCount = __ptcMistakes.filter(m => m.el && m.el.isConnected).length;
+        const unreadable = __ptLabelStats && __ptLabelStats.marks > 0 && __ptLabelStats.labeled === 0;
         const bar = document.getElementById("pt-floating-bar");
         if (bar) {
             bar.style.borderColor = mistakeCount > 0 ? "#ef4444" : "rgba(255, 255, 255, 0.12)";
@@ -351,6 +353,10 @@
                 text.title = "Click to list the wrong labels";
                 text.style.cursor = "pointer";
                 text.onclick = (ev) => { ev.stopPropagation(); toggleMistakeList(); };
+            } else if (unreadable) {
+                text.style.color = "#fde68a";
+                text.textContent = `\uD83C\uDFAF ${toAnnotateCount} to Annotate \u00B7 labels not readable`;
+                text.title = "Your labels are on the page but their colour could not be read, so they cannot be checked. Press Alt+Shift+D and send the report.";
             } else {
                 text.style.color = "#ffffff";
                 text.textContent = `\uD83C\uDFAF ${toAnnotateCount} to Annotate`;
@@ -593,6 +599,70 @@
     function setAttrIfChanged(el, name, value) { if (el.getAttribute(name) !== value) el.setAttribute(name, value); }
     function clearPtc(el) { for (const a of PTC_ATTRS) if (el.hasAttribute(a)) el.removeAttribute(a); }
 
+    const REVIEW_UI_TEXT = /^(?:annotate\s+here|reference(?:\s*[\u00B7.\-|]\s*read[\s-]*only)?|read[\s-]*only|close|cancel|apply|remove|submit(?:\s+for\s+review)?|change\s+label(?:\s+for)?|labels|\d+\s+(?:annotations?|match(?:es)?(?:\s+in\s+the\s+(?:left|right|other)\s+document)?))$/i;
+    function isReviewUiElement(el) {
+        const t = (el.textContent || "").replace(/[\s\u200B-\u200D\uFEFF]+/g, " ").trim();
+        if (!t) return false;
+        if (REVIEW_UI_TEXT.test(t)) return true;
+        // (v11.3.1) the same controls with an icon or extra characters ("\u270E Annotate here", "Annotate here \u2192")
+        if (t.length <= 40 && /\b(?:annotate\s+here|read[\s-]*only|submit\s+for\s+review|change\s+label)\b/i.test(t)) return true;
+        if (/^(?:left|right)\.[A-Za-z0-9]+-[0-9a-f]{6,}$/i.test(t)) return true;                       // file name header
+        if (LABEL_NAMES.some(l => l.toLowerCase() === t.toLowerCase())) return true;                    // a label chip
+        // (v11.3.2) a control is a <button>, or sits in a menu / popover / header that does NOT contain the document.
+        // The whole review screen is itself a dialog (role="dialog"): the old rule treated every label inside it as a
+        // control, so no label was ever checked ("labels not readable").
+        if (el.tagName === "BUTTON") return true;
+        const { rightPane: rp } = getPanes();
+        const box = el.closest("button, [role='dialog'], dialog, [role='menu'], [role='listbox'], header, select, option");
+        if (box && !(rp && (box === rp || box.contains(rp)))) return true;
+        return false;
+    }
+    // ---- (v11.3.0) Labels learned from the dashboard's own label dialog - independent of colours and markup ----
+    // When you open or apply a label, the dashboard shows 'Change label for "exclusive"' with the current label in a
+    // picker. That dialog says exactly which label is on which words, so it is recorded and used whenever a label's
+    // colour cannot be read (any browser, any theme).
+    const __ptDialogLabels = new Map();   // words -> label
+    const __labelIn = (s) => { const t = (s || "").replace(/\s+/g, " ").trim().toLowerCase(); return LABEL_NAMES.find(l => l.toLowerCase() === t) || null; };
+    function readLabelDialog(root) {
+        const box = root && root.nodeType === 1 ? root : document.body;
+        const cands = box.querySelectorAll ? box.querySelectorAll("[role='dialog'], [class*='popover'], [class*='Popover'], [class*='modal'], [class*='dropdown'], div") : [];
+        for (const el of cands) {
+            const t = (el.textContent || "").replace(/\s+/g, " ");
+            if (t.length > 600 || !/change\s+label\s+for/i.test(t)) continue;
+            const m = /change\s+label\s+for\s*[\u201C"\u2018']([^\u201D"\u2019']{1,200})[\u201D"\u2019']/i.exec(t);
+            if (!m) continue;
+            let label = null;
+            const sel = el.querySelector("select");
+            if (sel && sel.selectedOptions && sel.selectedOptions[0]) label = __labelIn(sel.selectedOptions[0].textContent);
+            if (!label) for (const q of el.querySelectorAll("[role='combobox'], [aria-haspopup], [class*='select'], [class*='Select'], button, span, div")) { const l = __labelIn(q.textContent); if (l) { label = l; break; } }
+            if (label) return { text: m[1].trim(), label, el };
+        }
+        return null;
+    }
+    ptOn(document, "click", (e) => {
+        try {
+            const t = e.target && e.target.closest ? e.target.closest("button, [role='button'], [role='option'], li, div, span") : null;
+            if (!t || t.closest("#pt-floating-bar")) return;
+            const bt = (t.textContent || "").replace(/\s+/g, " ").trim();
+            const d = readLabelDialog(t.closest("[role='dialog']") || t.parentElement && t.parentElement.parentElement && t.parentElement.parentElement.parentElement);
+            if (!d) return;
+            if (/^(?:\u2713\s*)?(?:apply|save|update|done|ok)$/i.test(bt)) { __ptDialogLabels.set(d.text, d.label); lastAnnotatedSnapshot = ""; triggerUpdate(400); }
+            else if (/remove|delete/i.test(bt) && bt.length < 12) { __ptDialogLabels.delete(d.text); lastAnnotatedSnapshot = ""; triggerUpdate(400); }
+        } catch (err) {}
+    }, { capture: true });
+    // a dialog that opens on an existing label tells us that label too
+    const __dialogObserver = new MutationObserver((muts) => {
+        try {
+            for (const m of muts) for (const n of m.addedNodes) {
+                if (n.nodeType !== 1 || n.closest && n.closest("#pt-floating-bar")) continue;
+                if (!/change\s+label\s+for/i.test(n.textContent || "")) continue;   // cheap test on the new node only
+                const d = readLabelDialog(n.querySelector ? n : document.body) || readLabelDialog(n.parentElement);
+                if (d) __ptDialogLabels.set(d.text, d.label);
+            }
+        } catch (e) {}
+    });
+    try { __dialogObserver.observe(document.body, { childList: true, subtree: true }); } catch (e) {}
+
     function runLabelCheck(rightPane, leftText, rightText, targets, scopeEls) {
         const lookup = new Map();
         for (const t of targets) { lookup.set(t.text, t); if (!lookup.has(t.text.toLowerCase())) lookup.set(t.text.toLowerCase(), t); }
@@ -601,14 +671,28 @@
         const pool = [];
         if (scopeEls) { for (const s of scopeEls) { if (s.matches && s.matches(SEL)) pool.push(s); for (const x of s.querySelectorAll(SEL)) pool.push(x); } }
         else for (const x of rightPane.querySelectorAll(SEL)) pool.push(x);
+        if (!(rightText || "").trim()) { for (const el of rightPane.querySelectorAll("[data-ptc]")) clearPtc(el); __ptcMistakes = []; return []; }   // empty document (.gitkeep)
         const labeled = new Map();   // element -> label
+        const stats = { marks: rightPane.querySelectorAll("mark").length, candidates: pool.length, ui: 0, unread: 0, viaDialog: 0, labeled: 0 };
+        __ptLabelStats = stats;
         for (const el of pool) {
             // (a label drawn INSIDE one of our suggestion spans still counts: the editor may wrap the selection there)
             if (labeled.has(el) || el.classList.contains("pt-tag") || el.closest("#pt-floating-bar")) continue;
             const len = (el.textContent || "").length;
             if (len < 1 || len > 250) continue;
-            const L = detectAssignedCategory(el);
-            if (L) labeled.set(el, L);
+            // (v11.2.1) the review screen's own controls are never labels: the "Annotate here" chip (light blue, read
+            // as Person Name), "Reference \u00B7 read-only", file names ("right.md-d146149f"), label chips, buttons.
+            if (isReviewUiElement(el)) { stats.ui++; continue; }
+            // (v11.3.1) The dashboard draws every label as a <mark>. Any other coloured element (a header chip, a badge)
+            // is only treated as a label when it says so (data-label / data-entity / an "annotation" class). Without this,
+            // the built-in colours of v11.3.0 made the light-blue "Annotate here" chip look like a Person Name label.
+            if (el.tagName !== "MARK" && !el.matches("[data-label], [data-entity], [data-category], [data-annotation]") &&
+                !/\b(?:annot|entity|pii|label-)\w*/i.test(typeof el.className === "string" ? el.className : "")) { stats.ui++; continue; }
+            let L = detectAssignedCategory(el);
+            // colour not readable: a <mark> whose words were labeled in the dashboard's dialog
+            if (!L && el.tagName === "MARK") { const tx = (el.textContent || "").replace(/\s+/g, " ").trim(); if (__ptDialogLabels.has(tx)) { L = __ptDialogLabels.get(tx); stats.viaDialog++; } }
+            if (!L && el.tagName === "MARK") stats.unread++;
+            if (L) { labeled.set(el, L); stats.labeled++; }
         }
         const mistakes = [];
         const seen = new Set();
@@ -828,7 +912,8 @@
         if (!str) return false;
         const s = str.trim().replace(/[^0-9]/g, "");
         if (/^(?:1234567890|0123456789|0000000000|9999999999|1111111111|2222222222|3333333333|4444444444|5555555555|6666666666|7777777777|8888888888)$/.test(s)) return true;
-        if (/^555\d{7}$/.test(s) || /^\d{3}555\d{4}$/.test(s)) return true;
+        // US fictional 555 numbers; an Indian mobile (starting 6-9, e.g. 9065558612) is real
+        if ((/^555\d{7}$/.test(s) || /^\d{3}555\d{4}$/.test(s)) && !/^[6-9]\d{9}$/.test(s)) return true;
         if (/(\d)\1{5,}/.test(s.slice(-10))) return true;            // "7000000000": six identical digits in a row is not a phone
         return false;
     }
@@ -904,15 +989,109 @@
     const LABEL_NAMES = ["Account Number", "Address", "Business Name", "Contact Number", "Credentials", "Date", "Email Address",
         "IP Address", "Overscrubbed", "Person Name", "URL/Link", "Person Username", "Vehicle Number Plate"];
     let __ptPalette = { t: 0, list: [] };
+    // ---- Colour parsing (v11.2.3) ----
+    // Chrome reports modern CSS colours in their own notation (oklch(...), oklab(...), color(srgb ...), "rgb(1 2 3 / 0.5)"),
+    // Safari mostly converts them to rgb(). The old parser only read rgb()/rgba() with integer values, so in Chrome the
+    // label chips' colours could not be read and no label was recognised - the mistake check found nothing.
+    const COLOR_FN_RE = /(?:rgba?|hsla?|oklch|oklab|color)\([^()]*\)/gi;
+    const __ptColourCache = new Map();
+    function parseColourToRgba(str) {
+        const s = String(str || "").trim().toLowerCase();
+        if (!s || s === "none" || s === "transparent") return null;
+        if (__ptColourCache.has(s)) return __ptColourCache.get(s);
+        let out = null;
+        const nums = (inner) => inner.replace(/[,/]/g, " ").trim().split(/\s+/).filter(Boolean);
+        const num = (t, scale) => t.endsWith("%") ? parseFloat(t) / 100 * scale : parseFloat(t);
+        const alpha = (t) => t == null ? 1 : (t.endsWith("%") ? parseFloat(t) / 100 : parseFloat(t));
+        const toByte = (x) => Math.max(0, Math.min(255, Math.round(x)));
+        const gamma = (x) => { const v = x <= 0.0031308 ? 12.92 * x : 1.055 * Math.pow(Math.max(0, x), 1 / 2.4) - 0.055; return toByte(v * 255); };
+        const oklabToRgb = (L, A, B) => {
+            const l_ = L + 0.3963377774 * A + 0.2158037573 * B, m_ = L - 0.1055613458 * A - 0.0638541728 * B, s_ = L - 0.0894841775 * A - 1.2914855480 * B;
+            const l = l_ * l_ * l_, m = m_ * m_ * m_, q = s_ * s_ * s_;
+            return [gamma(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * q), gamma(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * q), gamma(-0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * q)];
+        };
+        let m;
+        if ((m = /^rgba?\(([^()]*)\)$/.exec(s))) {
+            const t = nums(m[1]);
+            if (t.length >= 3) out = [toByte(num(t[0], 255)), toByte(num(t[1], 255)), toByte(num(t[2], 255)), alpha(t[3])];
+        } else if ((m = /^hsla?\(([^()]*)\)$/.exec(s))) {
+            const t = nums(m[1]);
+            if (t.length >= 3) {
+                const h = ((parseFloat(t[0]) % 360) + 360) % 360 / 360, sat = parseFloat(t[1]) / 100, li = parseFloat(t[2]) / 100;
+                const q2 = li < 0.5 ? li * (1 + sat) : li + sat - li * sat, p2 = 2 * li - q2;
+                const hue = (tt) => { tt = (tt + 1) % 1; return tt < 1 / 6 ? p2 + (q2 - p2) * 6 * tt : tt < 1 / 2 ? q2 : tt < 2 / 3 ? p2 + (q2 - p2) * (2 / 3 - tt) * 6 : p2; };
+                out = [toByte(hue(h + 1 / 3) * 255), toByte(hue(h) * 255), toByte(hue(h - 1 / 3) * 255), alpha(t[3])];
+            }
+        } else if ((m = /^oklch\(([^()]*)\)$/.exec(s))) {
+            const t = nums(m[1]);
+            if (t.length >= 3) {
+                const L = t[0].endsWith("%") ? parseFloat(t[0]) / 100 : parseFloat(t[0]);
+                const C = t[1].endsWith("%") ? parseFloat(t[1]) / 100 * 0.4 : parseFloat(t[1]);
+                const H = (parseFloat(t[2]) || 0) * Math.PI / 180;
+                out = [...oklabToRgb(L, C * Math.cos(H), C * Math.sin(H)), alpha(t[3])];
+            }
+        } else if ((m = /^oklab\(([^()]*)\)$/.exec(s))) {
+            const t = nums(m[1]);
+            if (t.length >= 3) {
+                const L = t[0].endsWith("%") ? parseFloat(t[0]) / 100 : parseFloat(t[0]);
+                const A = t[1].endsWith("%") ? parseFloat(t[1]) / 100 * 0.4 : parseFloat(t[1]);
+                const B = t[2].endsWith("%") ? parseFloat(t[2]) / 100 * 0.4 : parseFloat(t[2]);
+                out = [...oklabToRgb(L, A, B), alpha(t[3])];
+            }
+        } else if ((m = /^color\(\s*(srgb|srgb-linear|display-p3)\s+([^()]*)\)$/.exec(s))) {
+            const t = nums(m[2]);
+            if (t.length >= 3) {
+                const v = t.slice(0, 3).map(x => num(x, 1));
+                out = m[1] === "srgb-linear" ? [gamma(v[0]), gamma(v[1]), gamma(v[2]), alpha(t[3])]
+                    : [toByte(v[0] * 255), toByte(v[1] * 255), toByte(v[2] * 255), alpha(t[3])];   // display-p3 ~ srgb is close enough here
+            }
+        } else if ((m = /^#([0-9a-f]{3,8})$/.exec(s))) {
+            let h = m[1];
+            if (h.length <= 4) h = h.split("").map(x => x + x).join("");
+            out = [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16), h.length === 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1];
+        }
+        // anything else (lab(), lch(), named colours): let the browser's canvas convert it to sRGB
+        // (box-shadow / gradient strings: take the first colour function in them)
+        if (!out && /\s/.test(s) && COLOR_FN_RE.test(s)) {
+            COLOR_FN_RE.lastIndex = 0;
+            const first = s.match(COLOR_FN_RE);
+            if (first && first[0] !== s) { const r1 = parseColourToRgba(first[0]); __ptColourCache.set(s, r1); return r1; }
+        }
+        COLOR_FN_RE.lastIndex = 0;
+        if (!out && !parseColourToRgba.__noCanvas && typeof document !== "undefined" && /^(?:lab|lch|[a-z]+)\b/.test(s) && !/^(?:currentcolor|inherit|initial|unset|revert)$/.test(s)) {
+            try {
+                const cv = parseColourToRgba.__cv || (parseColourToRgba.__cv = document.createElement("canvas"));
+                cv.width = cv.height = 1;
+                let g = null;
+                try { g = cv.getContext && cv.getContext("2d"); } catch (e) { g = null; }
+                if (!g) parseColourToRgba.__noCanvas = true;
+                if (g) {
+                    g.clearRect(0, 0, 1, 1); g.fillStyle = "#000"; g.fillStyle = s; g.fillRect(0, 0, 1, 1);
+                    const d = g.getImageData(0, 0, 1, 1).data;
+                    if (d && d[3] > 0) out = [d[0], d[1], d[2], d[3] / 255];
+                }
+            } catch (e) { parseColourToRgba.__noCanvas = true; }
+        }
+        if (out && out.some(x => Number.isNaN(x))) out = null;
+        if (__ptColourCache.size > 2000) __ptColourCache.clear();
+        __ptColourCache.set(s, out);
+        return out;
+    }
     function parseRgb(s) {
-        const m = /rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)(?:[,\s/]+([\d.]+%?))?\s*\)/.exec(s || "");
-        if (!m) return null;
-        let a = m[4] == null ? 1 : (m[4].endsWith("%") ? parseFloat(m[4]) / 100 : parseFloat(m[4]));
-        if (a <= 0.02) return null;
-        const blend = (v) => Math.round(a * +v + (1 - a) * 255);          // as seen on a white page
-        return [blend(m[1]), blend(m[2]), blend(m[3])];
+        const c = parseColourToRgba(s);
+        if (!c) return null;
+        const a = c[3];
+        if (!(a > 0.02)) return null;
+        const blend = (v) => Math.round(a * v + (1 - a) * 255);          // as seen on a white page
+        return [blend(c[0]), blend(c[1]), blend(c[2])];
     }
     const isNeutral = (c) => { const mx = Math.max(...c), mn = Math.min(...c); return mx - mn < 14 || mn > 248 || mx < 40; };
+    const DEFAULT_LABEL_COLOURS = {
+        "Account Number": [114, 46, 209], "Address": [229, 57, 53], "Business Name": [19, 194, 194], "Contact Number": [250, 140, 22],
+        "Credentials": [255, 122, 69], "Date": [235, 47, 150], "Email Address": [56, 158, 13], "IP Address": [92, 219, 211],
+        "Overscrubbed": [255, 227, 227], "Person Name": [22, 119, 255], "URL/Link": [250, 173, 20], "Person Username": [47, 84, 235],
+        "Vehicle Number Plate": [160, 217, 17],
+    };
     function learnPalette() {
         const now = Date.now();
         if (now - __ptPalette.t < 3000 && __ptPalette.list.length) return __ptPalette.list;
@@ -936,7 +1115,11 @@
                 }
             }
         } catch (e) {}
-        __ptPalette = { t: now, list };
+        // (v11.3.0) Labels whose chip colour could not be read get the dashboard's known colours (measured on the live
+        // page: Date 235/47/150, Overscrubbed 255/227/227, ...). Detection then never depends on reading every chip.
+        const have = new Set(list.map(x => x.name));
+        for (const [name, rgb] of Object.entries(DEFAULT_LABEL_COLOURS)) if (!have.has(name)) list.push({ name, rgb, builtin: true });
+        __ptPalette = { t: now, list, learned: have.size };
         return list;
     }
     function matchPlatformPalette(els) {
@@ -978,7 +1161,7 @@
             let cs; try { cs = getComputedStyle(e); } catch (x) { continue; }
             const colours = [cs.backgroundColor];
             // (v10.6.3) the live dashboard draws the underline as a linear-gradient background image
-            for (const m of (cs.backgroundImage || "").match(/rgba?\([^)]*\)/g) || []) colours.push(m);
+            for (const m of (cs.backgroundImage || "").match(COLOR_FN_RE) || []) colours.push(m);
             if (parseFloat(cs.borderBottomWidth) > 0) colours.push(cs.borderBottomColor);
             if (parseFloat(cs.borderTopWidth) > 0) colours.push(cs.borderTopColor);
             if (/underline/.test(cs.textDecorationLine || cs.textDecoration || "")) colours.push(cs.textDecorationColor);
@@ -1529,6 +1712,9 @@
             real++;
         }
         if (real === 0) return false;
+        // (v11.1.0) a capitalised known given name / surname that is not also a common English word ("Imran",
+        // "Shah", "Sinha") is a name, not ordinary text, even though the big word list contains it.
+        if (ws.every(w => /^[A-Z]/.test(w)) && ws.some(w => { const l = w.replace(/[.,:;!?]+$/, "").toLowerCase(); return KNOWN_GIVEN_NAMES.has(l) && !AMBIGUOUS_NAME_WORDS.has(l); })) return false;
         // "Mark Brown", "Grace Hill": two capitalised words starting with a known given name are a person.
         if (ws.length >= 2 && /^[A-Z]/.test(ws[0]) && /^[A-Z]/.test(ws[1]) && KNOWN_GIVEN_NAMES.has(ws[0].toLowerCase())) return false;
         return true;
@@ -1553,7 +1739,7 @@
             if (isCalendarWord(w) || PLACES.has(w.toLowerCase()) || isLanguageWord(w)) return false;
             // A capitalised ordinary word ("Baker", "Rose", "Barrel") is tolerated inside a LIST of names
             // (4+ words, at most 30% such words); in a short phrase it means the text was ordinary.
-            if (isCommonWord(w)) { commonCaps++; continue; }
+            if (isCommonWord(w) && !(ws.length >= 4 && couldBeName(w))) { commonCaps++; continue; }   // in a list, "Clark", "Walker" are names
             real++;
         }
         if (commonCaps > 0 && (ws.length < 4 || commonCaps > 0.3 * ws.length)) return false;
@@ -1783,6 +1969,14 @@
     }
 
     const KNOWN_GIVEN_NAMES = new Set([
+        // (v11.2.0) common international given names and surnames (found missing by the mass test campaign)
+        "aaron", "abigail", "adam", "adams", "ahmed", "aisha", "alan", "albert", "alexander", "alexis", "alice", "allen", "alvarez", "amanda", "amber", "amy", "anderson", "andrea", "andres", "andrew", "angela", "ann", "anna", "anthony", "arthur", "ashley", "austin", "bailey", "baker", "barbara", "becker", "benjamin", "bennett", "betty", "beverly", "bianchi", "billy", "bobby", "bradley", "brandon", "brenda", "brian", "brittany", "brooks", "brown", "bruce", "bryan", "camila", "campbell", "carl", "carlos", "carol", "carolyn", "carter", "castillo", "catherine", "charles", "charlotte", "chavez", "chen", "cheryl", "chiara", "christian", "christina", "christine", "christopher", "clark", "collins", "colombo", "cook", "cooper", "cox", "cruz", "cynthia", "daniel", "danielle", "david", "davis", "deborah", "debra", "denise", "dennis", "diana", "diane", "diaz", "diego", "donald", "donna", "doris", "dorothy", "douglas", "dylan", "edward", "edwards", "elena", "elias", "elijah", "elizabeth", "emil", "emily", "emma", "eric", "esposito", "ethan", "eugene", "evans", "evelyn", "fatima", "felix", "ferrari", "finn", "fischer", "flores", "foster", "frances", "frank", "gabriel", "gao", "garcia", "gary", "george", "gerald", "giulia", "gloria", "gomez", "gonzalez", "grace", "gray", "green", "gregory", "guo", "gutierrez", "haddad", "hall", "hannah", "hao", "harold", "harris", "haruto", "hassan", "he", "heather", "helen", "henry", "hernandez", "hill", "hiroshi", "hoffmann", "howard", "hu", "huang", "hughes", "hugo", "hui", "hussein", "ines", "isabel", "isabella", "ito", "jack", "jackson", "jacob", "jacqueline", "james", "janet", "janice", "jason", "javier", "jean", "jeffrey", "jennifer", "jeremy", "jerry", "jesse", "jessica", "jie", "jimenez", "joan", "joe", "john", "johnson", "jonas", "jonathan", "jones", "jordan", "jose", "joseph", "joshua", "joyce", "juan", "judith", "judy", "julia", "julie", "jun", "justin", "karen", "katherine", "kathleen", "kathryn", "kayla", "keith", "kelly", "kenji", "kenneth", "kevin", "khalid", "khoury", "kim", "kimberly", "king", "kobayashi", "kyle", "larry", "laura", "lauren", "lawrence", "layla", "lee", "lei", "leon", "lewis", "li", "liam", "lin", "linda", "ling", "lisa", "liu", "logan", "long", "lopez", "lori", "luca", "lucas", "lucia", "luis", "lukas", "luo", "ma", "madison", "mansour", "margaret", "maria", "mariam", "marie", "marilyn", "mark", "martha", "martin", "martinez", "mary", "mason", "mateo", "matthew", "maximilian", "megan", "mei", "melissa", "mendoza", "meyer", "michael", "michelle", "miguel", "miller", "ming", "mitchell", "mohammed", "moore", "morales", "morgan", "morris", "murphy", "myers", "nakamura", "nancy", "nasser", "natalie", "nathan", "nelson", "nguyen", "nicholas", "nicole", "noah", "oliver", "olivia", "omar", "ortiz", "oscar", "pablo", "pamela", "parker", "patel", "patricia", "patrick", "paul", "paulo", "pedro", "perez", "peter", "peterson", "philip", "phillips", "price", "rachel", "ralph", "ramirez", "ramos", "randy", "raymond", "rebecca", "reed", "ren", "reyes", "ricci", "richard", "richardson", "rivera", "robert", "roberts", "robinson", "rodriguez", "roger", "rogers", "romano", "ronald", "ross", "rossi", "roy", "ruiz", "russell", "russo", "ruth", "ryan", "saleh", "samantha", "samuel", "sanchez", "sanders", "sandra", "sara", "sarah", "sato", "schneider", "schulz", "scott", "sean", "sergio", "sharon", "shirley", "smith", "sofia", "sophia", "sora", "stephanie", "stephen", "steven", "stewart", "sun", "susan", "suzuki", "takahashi", "takeshi", "tanaka", "tao", "tariq", "taylor", "teresa", "terry", "theo", "theresa", "thomas", "thompson", "timothy", "torres", "turner", "tyler", "valentina", "victoria", "vincent", "virginia", "wagner", "walker", "walter", "wang", "ward", "watanabe", "watson", "wayne", "weber", "wei", "white", "william", "williams", "willie", "wilson", "wood", "wright", "wu", "xin", "xu", "yamamoto", "yan", "yang", "ying", "young", "yuki", "yusuf", "zachary", "zahra", "zhang", "zhao", "zhou", "zhu",
+
+        "agnihotri", "asha", "bhalla", "bhandari", "bisht", "chauhan", "dave", "doshi", "gurung", "jadeja", "jhaveri", "joshi", "kapur", "karki", "khurana", "kothari", "lama", "mehrotra", "mistry", "modi", "mody", "negi", "panchal", "pandya", "pant", "parikh", "parmar", "rai", "rajput", "rana", "rathore", "raval", "rawat", "sanghvi", "seth", "shah", "sherpa", "solanki", "soni", "tamang", "tandon", "tewari", "thakur", "thapa", "trivedi", "vaghela", "vyas", "zala",
+
+        // (v11.1.0) more Indian given names and surnames
+        "aamir", "abdul", "acharya", "ahmed", "ahuja", "aisha", "ali", "alia", "aliya", "amandeep", "amin", "amina", "anand", "ansari", "anthony", "antony", "archana", "arif", "arora", "arvind", "asif", "asma", "awasthi", "ayesha", "baig", "bains", "bajpai", "balasubramanian", "baliga", "baljit", "balwinder", "basu", "bedi", "begum", "benny", "bhargava", "bhat", "bhatia", "bhattacharya", "bhavna", "biju", "binu", "biswas", "bose", "brar", "chahal", "chakraborty", "chanda", "chari", "chaturvedi", "chawla", "chowdary", "dasgupta", "deepa", "devendra", "dhawan", "dhillon", "dinesh", "dixit", "dutta", "dwivedi", "faisal", "farah", "fatima", "feroz", "francis", "gandhi", "ganesh", "ganguly", "george", "ghoshal", "gill", "girish", "gopalan", "govind", "gowda", "grewal", "grover", "gurpreet", "haider", "halder", "hamid", "harish", "harjit", "harpreet", "hasan", "hazra", "heena", "hegde", "hina", "hussain", "imtiaz", "irfan", "iyengar", "iyer", "jana", "jasbir", "jaspreet", "javed", "jijo", "jitendra", "jomon", "joseph", "junaid", "jyoti", "kajal", "kamala", "kamath", "kamran", "kar", "karanth", "kaur", "khalid", "khanna", "khatun", "kini", "kohli", "krishnan", "kudva", "kuldeep", "kulwant", "kurian", "kurup", "lata", "leela", "luthra", "madhu", "mahendra", "mahesh", "maity", "majumdar", "mallya", "mamta", "manju", "manoj", "manpreet", "mathew", "mathur", "meenakshi", "megha", "mehak", "mehra", "menon", "milind", "mirza", "mitra", "mohammad", "mohammed", "mohd", "mondal", "mujeeb", "mukesh", "mukherjee", "murthy", "murty", "naidu", "naik", "nair", "nambiar", "nandini", "naqvi", "narayanan", "narendra", "naresh", "naseem", "natarajan", "navneet", "nayak", "nazia", "nigam", "oberoi", "padma", "pai", "pal", "panicker", "paramjit", "parvati", "pathak", "pathan", "paul", "philip", "pillai", "poojary", "poonam", "prabhu", "pradeep", "pramod", "puri", "qureshi", "radha", "rai", "rajan", "rajeev", "rajendra", "raju", "rakesh", "ramachandran", "raman", "ramesh", "randhawa", "rani", "rao", "rashid", "rashmi", "reddy", "rekha", "renu", "ritika", "ritu", "rizvi", "rizwan", "roy", "rubina", "rupa", "sabharwal", "saha", "salim", "salman", "sana", "sandeep", "sandhu", "sangeeta", "sanjeev", "sapna", "sara", "sarah", "sarita", "sarkar", "sarma", "sastry", "satish", "savita", "saxena", "sayyed", "sebastian", "seema", "sengupta", "sethi", "shabana", "shahid", "shaji", "shakeel", "shanti", "shazia", "shenoy", "shetty", "shoaib", "shobha", "shukla", "shweta", "siddiqui", "sidhu", "simran", "smita", "sonam", "sonia", "srinivasan", "subramaniam", "sudha", "sudhir", "sukhwinder", "suman", "sundaram", "sunita", "sunny", "surendra", "suresh", "suri", "sushma", "swamy", "sweta", "syed", "talwar", "tara", "tariq", "thampi", "thomas", "tomy", "tripathi", "trivedi", "uma", "umesh", "upadhyay", "upadhyaya", "usha", "vajpayee", "vandana", "varghese", "varma", "veena", "venkatesh", "vidya", "vimala", "vinod", "virendra", "virk", "vohra", "walia", "warrier", "wasim", "xavier", "yamini", "yasmin", "yusuf", "zaidi", "zainab", "zara", "zoya", "zubair",
+
         // (v10.5.1) common Indian given names and surnames that were missing; English words (Hope, Grace) are not added.
         "aarav", "aadhya", "aakash", "aaliyah", "aamir", "aanya", "aarti", "abhay", "abhinav", "abhishek", "aditi", "aditya", "afreen", "afsana", "ahmed", "aishwarya", "ajay", "ajit", "akanksha", "akash", "akhil", "akshay", "alok", "amar", "amit", "amitabh", "amrita", "anand", "ananya", "anil", "anirudh", "anita", "anjali", "ankit", "ankita", "anuj", "anupam", "anushka", "aparna", "arjun", "arnav", "arpit", "arun", "aruna", "arvind", "ashish", "ashok", "ashwin", "asif", "ayesha", "ayush", "azhar", "bhavana", "bhavesh", "bharat", "bhuvan", "chaitanya", "chetan", "chirag", "deepak", "deepika", "devendra", "dhruv", "dinesh", "divya", "farhan", "farah", "faisal", "gaurav", "gautam", "geeta", "girish", "gopal", "govind", "gunjan", "harish", "harsha", "hemant", "himanshu", "hitesh", "imran", "irfan", "ishaan", "ishita", "jagdish", "jatin", "jayant", "jaya", "jitendra", "jyoti", "kabir", "kajal", "kalpana", "kamal", "kapil", "karan", "kartik", "kavita", "kavya", "keshav", "kiran", "kishore", "komal", "krishna", "kunal", "lakshmi", "lalit", "madhav", "madhuri", "mahesh", "manish", "manisha", "manoj", "mayank", "meena", "meera", "mohan", "mohit", "mukesh", "nadia", "naveen", "neeraj", "neha", "nikhil", "nilesh", "nisha", "nitin", "pallavi", "pankaj", "parth", "pooja", "prabhat", "pradeep", "prakash", "pranav", "prashant", "pratik", "praveen", "preeti", "priyanka", "rachna", "raghav", "rahul", "rajat", "rajeev", "rajesh", "rakesh", "ramesh", "rashmi", "ravi", "riya", "rohan", "rohit", "ruchi", "sachin", "sahil", "sakshi", "salman", "sameer", "sandeep", "sanjay", "santosh", "sarita", "saurabh", "shalini", "shashank", "shikha", "shilpa", "shivam", "shreya", "shruti", "siddharth", "sneha", "sonal", "sonia", "srinivas", "sudhir", "sujata", "sumit", "sunil", "sunita", "suresh", "swati", "tanvi", "tarun", "tushar", "uday", "umesh", "varun", "vijay", "vikas", "vikram", "vinay", "vineet", "vinod", "vishal", "vivek", "yash", "yogesh", "zainab", "zoya", "agarwal", "ahuja", "bajaj", "banerjee", "bhatt", "bhattacharya", "chatterjee", "chaudhary", "choudhary", "chopra", "das", "dasgupta", "desai", "deshmukh", "deshpande", "dubey", "dutta", "gandhi", "ghosh", "goswami", "gupta", "iyengar", "jain", "joshi", "kapoor", "khan", "khanna", "kulkarni", "kumar", "malhotra", "mehra", "mehta", "menon", "mishra", "mukherjee", "naidu", "nair", "pandey", "patel", "patil", "pillai", "prasad", "qureshi", "rao", "reddy", "saxena", "sen", "sengupta", "shaikh", "sharma", "shetty", "shukla", "singh", "sinha", "srivastava", "subramanian", "tiwari", "trivedi", "varma", "verma", "yadav",
 
@@ -1878,6 +2072,25 @@
         "carter", "miles", "chance", "king", "lord", "deep", "jay", "prince", "star", "max", "victor", "penny", "don", "rex",
         "earl", "duke", "christian", "justice", "royal", "noble", "major", "baker", "cook", "mason", "parker", "walker", "young",
         "white", "black", "brown", "green", "gray", "grey", "hill", "wood", "stone", "swift", "moon", "love", "kind", "sweet"]);
+    // words that put a brand surname in a COMPANY context ("works at Bajaj", "from Tata") rather than after a first name
+    const CO_WORDS_FOR_SURNAME = new Set(["at", "from", "with", "by", "for", "joined", "vendor", "client", "partner", "the"]);
+    // Could this single word be somebody's name (a known given name / surname, or an ambiguous name like "Mark")?
+    function couldBeName(w) { const l = (w || "").toLowerCase(); return KNOWN_GIVEN_NAMES.has(l) || AMBIGUOUS_NAME_WORDS.has(l); }
+    // Corporate suffixes: a capitalised phrase ending in one of these is a company, never a person.
+    const CORP_SUFFIX_RE = /\b(?:Pvt\.?|Private|Ltd\.?|Limited|Inc\.?|Corp\.?|Corporation|LLC|LLP|PLC|Technologies|Solutions|Services|Systems|Labs|Software|Networks|Traders|Industries|Enterprises|Consulting|Consultancy|Logistics|Pharma|Pharmaceuticals|Ventures|Partners|Associates|Holdings|Analytics|Motors|Insurance|Hospital|Studios|Group|Foods)\.?$/;
+    // Is `token` part of a company name ("Pinnacle Software", "Evergreen Agro Traders") on its line?
+    function isInCorporateName(token, line) {
+        if (!token || !line) return false;
+        if (line.length > 400) {   // long lines (minified JSON): only the text around the token matters
+            const i = line.indexOf(token);
+            if (i < 0) return false;
+            line = line.slice(Math.max(0, i - 150), i + token.length + 150);
+        }
+        const re = /(?:[A-Z][\w&'.-]*\s+){0,3}[A-Z][\w&'.-]*\s+(?:Pvt\.?\s+Ltd\.?|Private\s+Limited|Ltd\.?|Limited|Inc\.?|Corp\.?|Corporation|LLC|LLP|PLC|Technologies|Solutions|Services|Systems|Labs|Software|Networks|Traders|Industries|Enterprises|Consulting|Logistics|Pharma|Ventures|Partners|Associates|Holdings|Analytics|Motors|Insurance|Studios|Group)\b/g;
+        let m;
+        while ((m = re.exec(line)) !== null) if (m[0].includes(token)) return true;
+        return false;
+    }
     function isKnownGivenNameWord(w) {
         const t = (w || "").toLowerCase();
         return KNOWN_GIVEN_NAMES.has(t) && !AMBIGUOUS_NAME_WORDS.has(t);
@@ -1928,6 +2141,13 @@
         return memoText(context, 'person', str || '', () => isPersonName_impl(str, narrowText((str || '').trim(), context)));
     }
     function isPersonName_impl(str, context) {
+        // (v11.2.0) Two or three words that are all known given names / surnames are a person, even when a surname is
+        // also a brand ("Dhruv Bajaj", "Ratan Tata").
+        {
+            const ws0 = String(str || "").trim().split(/\s+/);
+            if (ws0.length >= 2 && ws0.length <= 3 && ws0.every(w => /^[A-Z][a-z'\-]+$/.test(w)) &&
+                KNOWN_GIVEN_NAMES.has(ws0[0].toLowerCase()) && ws0.every(w => KNOWN_GIVEN_NAMES.has(w.toLowerCase()))) return true;
+        }
         {
             const t0 = (str || "").trim();
             // Never a person: match titles ("India vs Canada"), places, months / weekdays, ordinary words alone.
@@ -1994,6 +2214,9 @@
 
     // Verified corporate entities, OEMs, vehicle makes, and platforms
     const KNOWN_BUSINESS_NAMES = new Set([
+        // (v11.1.0) major Indian and global companies that were missing (Infosys, Wipro, Zoho, Deloitte ...)
+        "1mg", "5paisa", "abb", "acc", "accenture", "acko", "adani", "adidas", "adobe", "air india", "airbnb", "airbus", "airtel", "akasa", "alibaba", "alphabet", "amazon web services", "ambuja", "amd", "american express", "amul", "angel one", "anthropic", "asana", "ashok leyland", "asian paints", "astrazeneca", "ather energy", "atlassian", "aurobindo", "avenue supermarts", "aws", "baidu", "bain", "bajaj allianz", "bajaj finserv", "bankbazaar", "bayer", "bcg", "berger", "bewakoof", "bharatpe", "bharti airtel", "billdesk", "biocon", "birlasoft", "blackbuck", "blue dart", "bluedart", "boeing", "booking.com", "bosch", "britannia", "browserstack", "bsnl", "burger king", "byju's", "byjus", "bytedance", "canon", "canva", "capgemini", "cashfree", "chargebee", "chevron", "cipla", "cisco", "cleartrip", "clickup", "coca-cola", "coforge", "cognizant", "colgate", "confluent", "costco", "coverfox", "cred", "curefit", "cyient", "dabur", "dailyhunt", "databricks", "decathlon", "deepmind", "delhivery", "dell", "deloitte", "digit insurance", "dmart", "domino's", "dominos", "dr reddy's", "dream11", "dropbox", "druva", "dunzo", "easemytrip", "ecom express", "economic times", "elastic", "emami", "ernst", "eruditus", "expedia", "exxonmobil", "facebook", "fi money", "firstcry", "force motors", "freshdesk", "freshworks", "fujitsu", "general electric", "glenmark", "godrej", "google", "groww", "gsk", "hashicorp", "hasura", "hcl", "hcltech", "hdfc", "healthifyme", "hero motocorp", "hexaware", "hindu", "hindustan times", "hindustan unilever", "honeywell", "huawei", "hubspot", "hul", "ibm", "icertis", "icici", "ikea", "inc42", "india today", "indigo", "infosys", "inmobi", "inshorts", "instagram", "instamojo", "intel", "intercom", "irctc", "itc", "ixigo", "jd.com", "johnson & johnson", "jsw", "jupiter", "juspay", "khatabook", "kpmg", "l&t", "larsen & toubro", "lenovo", "lenskart", "linkedin", "livspace", "ltimindtree", "lupin", "mahindra", "mailchimp", "mamaearth", "marico", "mastercard", "mcdonald's", "mcdonalds", "mckinsey", "merck", "microsoft", "mindtree", "miro", "mobikwik", "monday.com", "moneycontrol", "mongodb", "motorola", "mphasis", "mpl", "ndtv", "nestle", "netflix", "netmeds", "nike", "nikon", "niva bupa", "nokia", "notion", "novartis", "nvidia", "nykaa", "nykaa fashion", "okcredit", "okta", "ola electric", "onecard", "oneplus", "openai", "oppo", "oracle", "oyo", "paisabazaar", "palantir", "panasonic", "parle", "patanjali", "paypal", "pepperfry", "pepsico", "persistent", "pfizer", "pharmeasy", "philips", "physicswallah", "pidilite", "pine labs", "pizza hut", "policybazaar", "postman", "practo", "procter & gamble", "puma", "pwc", "qualcomm", "rakuten", "razorpay", "realme", "redbus", "reebok", "reliance", "republic", "ringcentral", "rivigo", "roche", "royal enfield", "salesforce", "samsung", "sanofi", "schneider electric", "scripbox", "shadowfax", "sharechat", "shopify", "siemens", "simplilearn", "smallcase", "snowflake", "sonata", "sony", "spicejet", "spotify", "starbucks", "stripe", "sugar cosmetics", "sun pharma", "tanishq", "tata", "tata motors", "tata power", "tata steel", "tcs", "tech mahindra", "tencent", "tiktok", "times of india", "titan", "toppr", "toshiba", "trello", "tripadvisor", "twilio", "twitter", "ultratech", "unacademy", "uniqlo", "upgrad", "urban ladder", "vedanta", "vedantu", "vistara", "vivo", "vmware", "vodafone idea", "walmart", "webex", "whatsapp", "whitehat jr", "wipro", "xiaomi", "young", "yourstory", "youtube", "zara", "zee news", "zendesk", "zensar", "zerodha", "zoho", "zoom", "zydus",
+
         // Auto, Tractor, Heavy Equipment OEMs & Brands
         "maruti", "suzuki", "hyundai", "tata", "mahindra", "renault", "nissan", "volkswagen", 
         "skoda", "toyota", "honda", "ford", "chevrolet", "jeep", "mg", "fiat", "peugeot", 
@@ -2494,7 +2717,9 @@
         if (isFieldLabelOrHeader(chg) && !isFieldLabelOrHeader(orig)) return null;
 
         // Ordinary original text replaced by anything else is Overscrubbed (unless it sits in a name field).
-        if (isOrdinaryPhrase(orig) && !isTokenInNameField(orig, ctx) && !addedWordsAreGeneric(orig, chg) &&
+        // (v11.2.0) in a name field, an ordinary word that can never be a name ("Support", "Manager") is still ordinary
+        const ordinaryInNameField = isTokenInNameField(orig, ctx) && !String(orig).split(/\s+/).some(couldBeName);
+        if (isOrdinaryPhrase(orig) && (!isTokenInNameField(orig, ctx) || ordinaryInNameField) && !addedWordsAreGeneric(orig, chg) &&
             !isVectorOrPathData(chg, ctx) && !isDefaultOrPlaceholderLink(chg) && !orig.includes("|") && !chg.includes("|") &&
             !isBusinessName(orig, orig, ctx) && !isFieldLabelOrHeader(chg)) {
             return { label: "Overscrubbed", cls: "pt-overscrub" };
@@ -2508,7 +2733,7 @@
                             /(?:i['\u2019]?m|i\s+am|my\s+name\s+is|hi[!,\\s]+i['\u2019]?m)\s+/i.test(ctx) ||
                             (isJsonName && looksLikePersonName);
         if (isOrigPerson || isChgPerson || isNameField) return null;
-        if (isTokenInNameField(orig, ctx) || isTokenInNameField(chg, ctx)) return null;
+        if ((isTokenInNameField(orig, ctx) || isTokenInNameField(chg, ctx)) && !(isOrdinaryPhrase(orig) && !String(orig).split(/\s+/).some(couldBeName))) return null;
 
         // 13. OVERSCRUBBED (When non-PII text was unnecessarily redacted)
         // First: reject if either side is a common non-entity/job/document word
@@ -3134,12 +3359,16 @@
             if (/^[\|\[\]\*\-:#]+$/.test(cleanText)) return;
 
             // User rule: "this r not person username the value of node id r just id this things if it changed to other form r not changed also no issue no need to label it anything"
-            if (/^(?:MD[A-Za-z0-9_-]{8,}|SFX[A-Za-z0-9_-]{8,})$/.test(cleanText)) return;
+            // (v11.2.0) GitHub-style node ids are mixed-case base64 ("MDQ6VXNlcjEy..."); an all-caps 10-character value
+            // starting with MD is a PAN ("MDJCH6932F"), not a node id.
+            if (/^(?:MD[A-Za-z0-9_-]{8,}|SFX[A-Za-z0-9_-]{8,})$/.test(cleanText) && (/[a-z]/.test(cleanText) || cleanText.length > 12)) return;
             if (label === "Person Username") {
                 if (/^\d{5,12}$/.test(cleanText)) return;
                 if (isIdOrLoginInDoc(cleanText, rightText) || isIdOrLoginInDoc(cleanText, leftText)) return;
             }
             if (label === "Credentials") {
+                // (v11.3.2) a plain dictionary word is a setting, not a secret ("id-token: write", "pages: write")
+                if (/^[A-Za-z]{2,}$/.test(cleanText) && isCommonWord(cleanText.toLowerCase())) return;
                 // A secret is one token (or a grouped number / two-word security answer), never a phrase
                 // ("Xk9#mPq2!vL7 was rotated after the incident").
                 if (cleanText.split(/\s+/).length >= 3 && !/^\d{2,6}(?:[ -]\d{2,6}){2,4}$/.test(cleanText)) return;
@@ -3170,13 +3399,58 @@
                 if (greet) return addTarget(greet[1], label, cls, priority, keyContext);
                 if (isFieldLabelOrHeader(cleanText)) return;
                 if (hasNonEntityWord(cleanText)) return;
+                // (v11.2.0) found by the mass test campaign
+                if (/\d/.test(cleanText) || isVehiclePlateFormat(cleanText) || /@/.test(cleanText)) return;   // "KL 61 HU 6444" is a plate, not a name
+                // (v11.3.2) code identifiers: ALL-CAPS single words that are not names ("CHECKSUMHASH", "WEBSITE"), snake_case
+                if (/_/.test(cleanText)) return;
+                // camelCase / PascalCase compounds are code ("userService", "OrderController"), not people - except name
+                // prefixes like McDonald, MacArthur, DeSouza, LaToya, VanDyke, O'Brien
+                if (cleanText.split(/\s+/).some(w => /^[a-z]+[A-Z]/.test(w) || (/^[A-Z][a-z]+[A-Z][a-z]/.test(w) && !/^(?:Mc|Mac|De|Di|Da|Du|La|Le|Van|Von|Del|Della|Fitz)[A-Z]/.test(w)))) return;
+                if (/^[A-Z]{2,}$/.test(cleanText) && !KNOWN_GIVEN_NAMES.has(cleanText.toLowerCase())) return;
+                // the value of an HTML / XML attribute name="..." is a field name, not a person (<input name="WEBSITE">)
+                {
+                    const escP = cleanText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                    if (new RegExp("<[A-Za-z][\\w-]*[^<>]*\\bname\\s*=\\s*[\"']" + escP + "[\"']").test(rightText)) return;
+                }
+                const pw = cleanText.replace(/[,.]/g, " ").split(/\s+/).filter(Boolean);
+                const lw = pw.map(w => w.toLowerCase());
+                if (CORP_SUFFIX_RE.test(cleanText) && pw.length > 1) return;                                   // "Northwind Logistics"
+                if (pw.length === 1 && (TECH_TOOLS.has(lw[0]) || /^(?:excel|photoshop|jira|confluence|github|gitlab|python|java|figma|slack|notion|tally)$/.test(lw[0]) ||
+                    PLACES.has(lw[0]) || isLanguageWord(lw[0]) || isCalendarWord(lw[0]))) return;                // "Excel", "Bengaluru", "Hindi"
+                if (!pw.some(couldBeName) && isOrdinaryPhrase(pw.join(" "))) return;                        // "Friends", "Partner"
+                if (lw.some(w => KNOWN_BUSINESS_NAMES.has(w)) && !pw.some(w => KNOWN_GIVEN_NAMES.has(w.toLowerCase()))) return;   // "Infosys"
             }
 
+            if (label === "Business Name" && /\s/.test(cleanText) && !cleanText.split(/\s+/).some(w => CORP_SUFFIX_RE.test(w))) {   // a full company name ("Evergreen Agro LLC") is never trimmed
+                // (v11.3.4) a brand followed / preceded by ordinary words is only the brand: "Meta token" -> "Meta",
+                // "Google Ads account" -> "Google Ads" (corporate suffixes such as Services / Ltd are kept)
+                const ws = cleanText.split(/\s+/);
+                const keep = (w) => CORP_SUFFIX_RE.test(w) || /^(?:&|and|of)$/i.test(w);
+                let a = 0, b = ws.length;
+                const bizish = (s) => containsKnownBusiness(s) || isBusinessName(s, s, "");
+                while (b - a > 1 && isCommonWord(ws[b - 1].toLowerCase()) && !keep(ws[b - 1]) && bizish(ws.slice(a, b - 1).join(" "))) b--;
+                while (b - a > 1 && isCommonWord(ws[a].toLowerCase()) && !keep(ws[a]) && bizish(ws.slice(a + 1, b).join(" "))) a++;
+                if (a > 0 || b < ws.length) return addTarget(ws.slice(a, b).join(" "), label, cls, priority, keyContext);
+            }
             if (label === "Business Name") {
                 // User rule: "bank name i sno an business name"
                 if (/^(?:bank\s*name|company\s*name|business\s*name|firm\s*name|store\s*name|vendor\s*name|employer\s*name|organization\s*name|account\s*name|patient\s*name|policy\s*holder|primary\s*beneficiary|bank|banking)$/i.test(cleanText)) return;
                 if (isFieldLabelOrHeader(cleanText)) return;
                 if (/\bbank(?:ing)?\b/i.test(cleanText)) return;
+                // (v11.2.0) found by the mass test campaign
+                if (/^(?:hi|hello|hey|dear|thanks|regards|cc)\b/i.test(cleanText)) return;                      // "Hi Silverline Labs"
+                if (/^(?:jira|confluence|excel|photoshop|python|kubernetes|docker|english|hindi|bengali|tamil)$/i.test(cleanText) || isLanguageWord(cleanText) ||
+                    PLACES.has(cleanText.toLowerCase()) || isCalendarWord(cleanText)) return;
+                // a surname that is also a brand ("Dhruv Bajaj"): right after a given name it is part of a person's name
+                if (!/\s/.test(cleanText) && new RegExp("\\b([A-Z][a-z]+)\\s+" + cleanText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b").test(rightText)) {
+                    const m = new RegExp("\\b([A-Z][a-z]+)\\s+" + cleanText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b").exec(rightText);
+                    if (m && KNOWN_GIVEN_NAMES.has(m[1].toLowerCase())) return;
+                    // a known SURNAME after any capitalised first name ("Halfensa Bajaj" - the first name was scrubbed)
+                    if (m && KNOWN_GIVEN_NAMES.has(cleanText.toLowerCase()) && !KNOWN_BUSINESS_NAMES.has(m[1].toLowerCase()) && !isCommonWord(m[1])) return;
+                }
+                // (v11.1.0) a product of a company is not the company: "Microsoft Excel", "Google Docs", "Adobe Photoshop"
+                if (/\s/.test(cleanText) && /\b(?:Office|Excel|Word|PowerPoint|Outlook|Teams|Azure|Windows|Docs|Sheets|Slides|Drive|Gmail|Meet|Ads|AdWords|Analytics|Cloud|Workspace|Maps|Chrome|Photoshop|Illustrator|Acrobat|Premiere|Reader|Studio|Code|Copilot|Pay|Prime|Music|Store|Play|Search|Console|Firebase|BigQuery|Lambda|S3|EC2|Kafka|BI)\b/.test(cleanText) &&
+                    !/\b(?:Pvt|Private|Ltd|Limited|Inc|Corp|Corporation|LLC|LLP|PLC|Technologies|Solutions|Services|Systems|Labs)\b/.test(cleanText)) return;
 
                 // Legal entity TYPES are not businesses ("C Corporation", "LLC", "Sole Proprietorship").
                 if (/^(?:[a-z]\s+corp(?:oration)?|llc|llp|plc|inc|ltd|gmbh|sole\s+proprietorship|partnership|private\s+limited(?:\s+company)?|public\s+limited(?:\s+company)?|pvt\.?\s*ltd\.?|limited\s+liability\s+(?:company|partnership)|corporation|company)$/i.test(cleanText)) return;
@@ -3466,7 +3740,8 @@
         // Catches auto brands (Maruti, Hyundai, Tata, Jeep, Nissan, Volkswagen), OEMs (Kubota), platforms, etc. across all doc types
         for (const bName of KNOWN_BUSINESS_NAMES) {
             if (bName.length < 3) continue;
-            const bRegex = new RegExp('(?:^|[^a-zA-Z0-9_])(' + bName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')(?=[^a-zA-Z0-9_]|$)', 'gi');
+            // (v11.3.2) not inside a hyphenated identifier either ("github-pages", "aws-sdk")
+            const bRegex = new RegExp('(?:^|[^a-zA-Z0-9_\\-])(' + bName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')(?=[^a-zA-Z0-9_\\-]|$)', 'gi');
             let bm;
             while ((bm = bRegex.exec(rightText)) !== null) {
                 const matchWord = bm[1];
@@ -3474,6 +3749,12 @@
                 // A brand used as a field label ("GitHub: https://...") or inside a URL / e-mail / path is not a Business Name.
                 if (/^\s*:/.test(rightText.slice(at + matchWord.length, at + matchWord.length + 3))) continue;
                 if (/(?:\/\/|[./@])$/.test(rightText.slice(Math.max(0, at - 2), at)) || /^[./@]\w/.test(rightText.slice(at + matchWord.length, at + matchWord.length + 2))) continue;
+                // (v11.1.0) a brand used as the first word of a PRODUCT name ("Microsoft Office", "Google Ad Words",
+                // "Adobe Photoshop") is the product, not the company; a corporate suffix after it is still the company.
+                {
+                    const nextWord = (/^[ \t]+([A-Z][A-Za-z0-9+]*)/.exec(rightText.slice(at + matchWord.length, at + matchWord.length + 40)) || [])[1];
+                    if (nextWord && !/^(?:Pvt|Private|Ltd|Limited|Inc|Corp|Corporation|LLC|LLP|PLC|Group|Technologies|Solutions|Services|Consultancy|Systems|Labs|Software|Networks|Ventures|Partners|Industries|Enterprises|Holdings|Motors|Foods|Retail|India|Global|International|Co)\b/.test(nextWord)) continue;
+                }
                 if (!hasNonEntityWord(matchWord) && !isFieldLabelOrHeader(matchWord)) {
                     if (lowerOf(leftText).includes(bName.toLowerCase())) {
                         addTarget(matchWord, "Business Name", "pt-business", 90);
@@ -3485,11 +3766,23 @@
         const corpNameRegex = /\b[A-Z][a-zA-Z0-9_\-&']*(?:[ \t]+(?:&|[A-Z][a-zA-Z0-9_\-&']*)){0,3}[ \t]+(?:Technologies|Solutions|Motors|Pvt\.?|Ltd\.?|Limited|Inc\.?|Corp\.?|Corporation|LLC|LLP|PLC|Enterprises|Industries|Holdings|Systems|Studios|Consulting|Consultancy[ \t]+Services|Services|Hospital|Logistics|Insurance|Labs|Software|Networks|Traders|Pharmaceuticals|Pharma|Ventures|Partners|Associates)\b(?:[ \t]+(?:Pvt\.?|Private)[ \t]+(?:Ltd\.?|Limited))?(?:[ \t]+(?:Ltd\.?|Limited))?/g;
         let cnm;
         while ((cnm = corpNameRegex.exec(rightText)) !== null) {
-            const rawCorp = cnm[0].trim();
+            // (v11.2.0) greetings / determiners before a company are not part of its name ("Hi Silverline Labs")
+            const rawCorp = cnm[0].trim().replace(/^(?:(?:Hi|Hello|Hey|Dear|Thanks|The|Our|Your|At|From|With|By|To|For|And)[ \t]+)+/, "");
+            if (!/\s/.test(rawCorp)) continue;
             const SUFFIX_WORDS = /^(?:technologies|solutions|motors|pvt\.?|private|ltd\.?|limited|inc\.?|corp\.?|corporation|llc|llp|plc|enterprises|industries|holdings|systems|studios|consulting|consultancy|services|hospital|logistics|insurance|labs|software|networks|traders|pharmaceuticals|pharma|ventures|partners|associates|analytics)$/i;
             const nameWords = rawCorp.split(/\s+/).filter(w => !SUFFIX_WORDS.test(w));
             // "Senior Data Services" / "Our Partners" are not companies: one name word must be distinctive.
-            if (!nameWords.some(w => !isCommonWord(w) || KNOWN_BUSINESS_NAMES.has(w.toLowerCase()))) continue;
+            // (v11.2.0) ...unless the suffix is a legal form ("Pinnacle Inc", "Evergreen Agro Pvt Ltd") or the line says it is a
+            // company ("Vendor: Pinnacle Networks", "Offer letter from Pinnacle Software", "works at ...").
+            if (!nameWords.some(w => !isCommonWord(w) || KNOWN_BUSINESS_NAMES.has(w.toLowerCase()))) {
+                const legal = /\b(?:Pvt|Private|Ltd|Limited|Inc|Corp|Corporation|LLC|LLP|PLC)\b/.test(rawCorp);
+                const at = rightText.indexOf(rawCorp);
+                const lineEnd = at < 0 ? -1 : rightText.indexOf("\n", at);
+                const ctxLine = at < 0 ? "" : rightText.slice(Math.max(0, rightText.lastIndexOf("\n", Math.max(0, rightText.lastIndexOf("\n", at) - 1))), lineEnd < 0 ? rightText.length : lineEnd);   // this line and the one above ("Bill To")
+                const bizCtx = /\b(?:vendor|client|customer|company|employer|organi[sz]ation|partner|supplier|works?\s+(?:at|for)|worked\s+(?:at|for)|joined|previously\s+at|offer\s+letter\s+from|invoice\s+from|payment\s+(?:received\s+)?from|bill\s+to|signed|contract\s+with)\b/i.test(ctxLine);
+                if (!legal && !bizCtx) continue;
+                if (nameWords.length === 0 || /^(?:our|the|your|senior|junior|data|business|general|internal|head|local)$/i.test(nameWords[0])) continue;
+            }
             // The suffix words themselves ("Services", "Systems") are generic; judge only the name part.
             if (!isFieldLabelOrHeader(rawCorp) && !hasNonEntityWord(nameWords.join(" "))) {
                 if (leftText.includes(rawCorp)) {
@@ -3514,6 +3807,36 @@
             return text.slice(s, e === -1 ? text.length : e);
         }
 
+        // A word next to a replaced part of a name, kept identical on both sides ("Aditi" in "Aditi Shah" ->
+        // "Aditi Wrethavex", "Sharma" in "Rahul Sharma" -> "Velmo Sharma"). Returns the kept word or null.
+        function keptNamePart(diff, leftText, rightText) {
+            const o = cleanWord(diff.original || ""), ch = cleanWord(diff.changed || "");
+            if (!/^[A-Z][a-z'\-]{1,}$/.test(o) || !/^[A-Z][a-z'\-]{2,}$/.test(ch) || o === ch) return null;
+            if (isCommonWord(ch) && !isCommonWord(o)) return null;                  // replaced BY a real word: not a name swap
+            const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const lL = lineContaining(o, leftText), lR = lineContaining(ch, rightText);
+            const before = (line, w) => (new RegExp("(?:^|[^\\p{L}])([A-Z][a-z'\\-]+)[ \\t]+" + esc(w) + "(?![\\p{L}])", "u").exec(line) || [])[1];
+            const after = (line, w) => (new RegExp("(?:^|[^\\p{L}])" + esc(w) + "[ \\t]+([A-Z][a-z'\\-]+)(?![\\p{L}])", "u").exec(line) || [])[1];
+            for (const [a, b] of [[before(lL, o), before(lR, ch)], [after(lL, o), after(lR, ch)]]) {
+                if (!a || a !== b || isHonorific(a)) continue;
+                // (v11.2.0) a greeting or other short function word next to the name is not part of it ("Hi Priya Khan")
+                if (/^(?:hi|hello|hey|dear|thanks|thank|regards|cc|to|from|with|by|and|or|for|at|the|a|an|on|in|of|via|per)$/i.test(a) || a.length < 3) continue;
+                const aKnown = KNOWN_GIVEN_NAMES.has(a.toLowerCase()), oKnown = KNOWN_GIVEN_NAMES.has(o.toLowerCase());
+                if (!(aKnown || oKnown)) continue;                                    // one half must be a known name
+                if (isCalendarWord(a) || PLACES.has(a.toLowerCase()) || isLanguageWord(a) || KNOWN_BUSINESS_NAMES.has(a.toLowerCase())) continue;
+                if (!aKnown && isCommonWord(a)) continue;                            // "The Shah" etc.
+                return a;
+            }
+            return null;
+        }
+        function containsKnownBusiness(s) {
+            const t = (s || "").toLowerCase();
+            if (!t) return false;
+            if (KNOWN_BUSINESS_NAMES.has(t)) return true;
+            const ws = t.split(/\s+/);
+            for (let n = Math.min(4, ws.length); n >= 1; n--) for (let i = 0; i + n <= ws.length; i++) if (KNOWN_BUSINESS_NAMES.has(ws.slice(i, i + n).join(" ")) && (n > 1 || ws[i].length > 3)) return true;
+            return false;
+        }
         // Words of a replacement that is CORRECT redaction (company, address, credential, reference code):
         // remembered so the mistake check can flag a reviewer's Overscrubbed label on them.
         function markRedacted(diff) { for (const w of cleanWord(diff.changed || "").split(/[\s\-_/.,:;]+/)) if (w) __ptScrubbedNameWords.add(w); }
@@ -3522,6 +3845,21 @@
             if (isVectorOrPathData("", docContext)) return;
 
             for (const diff of diffs) {
+                // (v11.3.4) a dotted / underscored person handle replaced by another ("kartik.nayyar" -> "Jordan.Miller",
+                // "Rahul.chaturvedi" -> "Morgan.Bennett"): a scrubbed name, never Overscrubbed
+                {
+                    const o = cleanWord(diff.original || "").replace(/\*/g, ""), ch = cleanWord(diff.changed || "").replace(/\*/g, "");
+                    const handle = /^[A-Za-z]{2,}[._][A-Za-z]{2,}$/;
+                    if (handle.test(o) && handle.test(ch) && /[a-z]/.test(o) && /[a-z]/.test(ch)) {   // not CONSTANT_NAMES
+                        const nameish = (s) => s.split(/[._]/).some(w => couldBeName(w)) || s.split(/[._]/).every(w => !isCommonWord(w.toLowerCase()));
+                        if (nameish(o) || nameish(ch)) { for (const w of ch.split(/[._]/).concat([ch])) __ptScrubbedNameWords.add(w); continue; }
+                    }
+                }
+                // (v11.2.0) Pure insertion (nothing on the left was replaced, usually an alignment artefact around a
+                // repeated word such as a shared surname): there is no original to judge, so never Overscrubbed.
+                if (!String(diff.original || "").trim() && !/^\s*$/.test(String(diff.changed || ""))) {
+                    if (/^[A-Z][a-z'\-]+(?:\s+[A-Z][a-z'\-]+){2,}$/.test(String(diff.changed).trim())) { for (const w of String(diff.changed).trim().split(/\s+/)) __ptScrubbedNameWords.add(w); continue; }
+                }
                 // The global (whole-document) pass has no line context of its own. Without one, every context guard
                 // (password lines, DOB fields, name fields) was skipped, so use the line the diff actually sits on.
                 let fullContext = docContext || lineContaining(diff.original, leftText) || lineContaining(diff.changed, rightText);
@@ -3538,7 +3876,37 @@
 
                 // The ORIGINAL decides: when it is ordinary text ("Chance R", "Kickoff"), the changed side's look
                 // (often a synthetic name) must not suppress Overscrubbed.
-                const origOrdinary = isOrdinaryPhrase(cleanWord(diff.original)) && !isTokenInNameField(cleanWord(diff.original), leftText);
+                // (v11.1.0) Half of a person's name replaced ("Aditi Shah" -> "Aditi Wrethavex"): the replaced part is a
+                // scrubbed name (no label, even when it is also a dictionary word like Shah / Khan / Rose) and the part
+                // that was kept is a Person Name.
+                {
+                    const kept = keptNamePart(diff, leftText, rightText);
+                    if (kept) {
+                        for (const w of cleanWord(diff.changed).split(/\s+/)) if (w) __ptScrubbedNameWords.add(w);
+                        addTarget(kept, "Person Name", "pt-person", 86);
+                        continue;
+                    }
+                }
+                // (v11.1.0) A company name is never "ordinary text", even when its words are dictionary words
+                // ("Tata Consultancy Services", "Asian Paints").
+                const origIsCompany = isBusinessName(diff.original, diff.changed, fullContext) || containsKnownBusiness(cleanWord(diff.original)) ||
+                    isInCorporateName(cleanWord(diff.original), lineContaining(cleanWord(diff.original), leftText)) ||
+                    isInCorporateName(cleanWord(diff.changed), lineContaining(cleanWord(diff.changed), rightText));
+                // (v11.1.0) "Hi Harsh," -> "Hi Quimolith,": a capitalised word right after a greeting is a name.
+                {
+                    const o = cleanWord(diff.original);
+                    const gl = lineContaining(o, leftText);
+                    if (/^[A-Z][a-z'\-]+(?:\s+[A-Z][a-z'\-]+){0,2}$/.test(o) && !isCommonWord(cleanWord(diff.changed)) &&
+                        new RegExp("(?:^|[\\s>])(?:hi|hello|hey|dear|thanks|thank\\s+you|regards|cc)[,!\\s]+" + o.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?![\\p{L}])", "iu").test(gl) &&
+                        !/^(?:team|all|everyone|sir|madam|ma'am|guys|folks|there|friends|colleagues|customer|user|both|again)$/i.test(o) &&
+                        !(isOrdinaryPhrase(o) && !o.split(/\s+/).some(couldBeName))) {
+                        for (const w of cleanWord(diff.changed).split(/\s+/)) if (w) __ptScrubbedNameWords.add(w);
+                        continue;
+                    }
+                }
+                const origOrdinary = !origIsCompany && isOrdinaryPhrase(cleanWord(diff.original)) &&
+                    (!isTokenInNameField(cleanWord(diff.original), leftText) || !cleanWord(diff.original).split(/\s+/).some(couldBeName));
+                if (origIsCompany && !isOrdinaryPhrase(cleanWord(diff.changed))) { markRedacted(diff); continue; }   // a scrubbed company: correct redaction
                 // User rule: "here the bussiness name r changed to other form its correct it should not be labelled at all"
                 if (!origOrdinary && isBusinessName(diff.changed, diff.original, fullContext) || isBusinessName(diff.original, diff.changed, fullContext) ||
                     isTokenInBusinessContext(cleanWord(diff.changed), rightText) || isTokenInBusinessContext(cleanWord(diff.original), leftText) ||
@@ -3713,9 +4081,55 @@
                         for (const w of rv.split(/\s+/)) __ptNameCellWords.add(w);
                         const lw = lv.split(/\s+/), rw = rv.split(/\s+/);
                         for (let k = 0; k < Math.min(lw.length, rw.length); k++) {
-                            if (lw[k] === rw[k] && lw[k].length >= 3 && !isOrdinaryPhrase(lw[k])) addTarget(rw[k], "Person Name", "pt-person", 87, true);
+                            if (lw[k] === rw[k] && lw[k].length >= 3 && !isHonorific(lw[k]) && !isOrdinaryPhrase(lw[k])) addTarget(rw[k], "Person Name", "pt-person", 87, true);
                         }
                     }
+                }
+            }
+        }
+
+        // Step 1F (v11.1.0): NAME COLUMNS by HEADER in pipe and CSV tables ("full_name", "Name", "Student",
+        // "Employee", "Customer", "Agent" ...). An unchanged value in such a column is a Person Name; a changed one is a
+        // scrubbed name (no label).
+        {
+            const NAME_HDR = /^(?:full[\s_]*name|name|first[\s_]*name|last[\s_]*name|student(?:[\s_]*name)?|employee(?:[\s_]*name)?|customer(?:[\s_]*name)?|candidate(?:[\s_]*name)?|patient(?:[\s_]*name)?|agent(?:[\s_]*name)?|author|assignee|owner|reporter|manager|contact(?:[\s_]*person)?|user[\s_]*name|member|participant|attendee|teacher|mentor|parent(?:[\s_]*name)?)$/i;
+            const splitRow = (line, sep) => {
+                const t = line.trim();
+                if (sep === "|") { if (!t.startsWith("|")) return null; const cs = t.split("|").map(x => x.trim()); cs.shift(); if (cs.length && cs[cs.length - 1] === "") cs.pop(); return cs.length >= 2 ? cs : null; }
+                if (t.includes("|") || !t.includes(",")) return null;
+                const cs = t.split(",").map(x => x.trim()); return cs.length >= 3 ? cs : null;
+            };
+            for (const sep of ["|", ","]) {
+                let header = null, li = 0;
+                const lRows = new Map();   // first cell -> cells (left)
+                for (const ln of leftLines) { const cs = splitRow(ln, sep); if (cs && cs[0]) lRows.set(cs[0], cs); }
+                for (const ln of rightLines) {
+                    const cs = splitRow(ln, sep);
+                    if (!cs) { header = null; continue; }
+                    if (!header) { header = cs; continue; }                      // first row of a table block = header
+                    if (cs.every(x => /^:?-{2,}:?$/.test(x))) continue;           // markdown separator row
+                    const lc = lRows.get(cs[0]) || (leftLines[li] && splitRow(leftLines[li], sep));
+                    for (let ci = 0; ci < header.length && ci < cs.length; ci++) {
+                        if (!NAME_HDR.test(header[ci].replace(/[*`]/g, ""))) continue;
+                        const v = cs[ci];
+                        if (!v || /^(?:nan|null|none|n\/a|na|-+)$/i.test(v) || !/^[\p{L}][\p{L}.'\- ]{1,40}$/u.test(v) || v.split(/\s+/).length > 4) continue;
+                        if (isOrdinaryPhrase(v) || isLanguageWord(v) || PLACES.has(v.toLowerCase())) continue;
+                        const lv = lc && lc[ci];
+                        // (v11.2.0) the left value was an ordinary word that is never a name ("Team", "Manager"): replacing it
+                        // is overscrubbing, not a scrubbed name
+                        if (lv && lv !== v && isOrdinaryPhrase(lv) && !lv.split(/\s+/).some(couldBeName)) continue;
+                        if (lv === v || (leftText.includes(v) && !lc)) addTarget(v, "Person Name", "pt-person", 88, true);
+                        else if (lv && lv !== v) {
+                            const lw = lv.split(/\s+/), rw = v.split(/\s+/);
+                            // kept part of a partly replaced name ("Asha Sinha" -> "Asha Lysdaldren") -> Person Name
+                            for (let k = 0; k < Math.min(lw.length, rw.length); k++) {
+                                if (lw[k] === rw[k] && /^[A-Z][a-z'\-]+$|^[a-z]{3,}$/.test(rw[k]) && !isHonorific(rw[k]) && !isCalendarWord(rw[k]) && !PLACES.has(rw[k].toLowerCase())) addTarget(rw[k], "Person Name", "pt-person", 87, true);
+                                else { __ptNameCellWords.add(rw[k]); __ptNameCellWords.add(lw[k]); }
+                            }
+                            __ptNameCellWords.add(v); __ptNameCellWords.add(lv);
+                        }
+                    }
+                    li++;
                 }
             }
         }
@@ -4075,7 +4489,8 @@
         // (v10.5.1) words on the SAME line only: "Sneha Iyer\nAccount Number" used to swallow the next line.
         const nameCandidates = rightText.match(/\b[A-Z][a-z]+(?:[ \t]+[A-Z][a-z]+){1,3}\b/g) || [];
         for (const nc of nameCandidates) {
-            if (nc.length >= 4 && !isInfraOrServerTerm(nc) && !isBusinessName(nc, nc, "") && !isFieldLabelOrHeader(nc) && !hasNonEntityWord(nc)) {
+            const startsWithGiven = KNOWN_GIVEN_NAMES.has(nc.split(/\s+/)[0].toLowerCase());   // "Dhruv Bajaj": Bajaj is also a brand
+            if (nc.length >= 4 && !isInfraOrServerTerm(nc) && (startsWithGiven || !isBusinessName(nc, nc, "")) && !isFieldLabelOrHeader(nc) && !hasNonEntityWord(nc)) {
                 if (isPersonName(nc, "") && leftText.includes(nc)) {
                     addTarget(nc, "Person Name", "pt-person", 85);
                 }
@@ -4103,12 +4518,55 @@
             }
         }
 
+        // 8F (v11.1.0): the value of a NAME FIELD ("Customer Name: Asha Bansal", "Account Holder: ...",
+        // "Father's Name: ...", "Nominee - ...", JSON "full_name": "...") identical on both sides is a Person Name,
+        // even when the names are not in the name list.
+        {
+            const FIELD = /(?:^|[\s|,{;"'(])(?:customer|full|first|last|employee|candidate|student|patient|applicant|account\s*holder|holder|card\s*holder|contact\s*person|father'?s?|mother'?s?|spouse|husband'?s?|wife'?s?|guardian|nominee|beneficiary|insured|policy\s*holder|parent'?s?|teacher|agent|reviewer|approver|assignee|reporter|author|owner|manager|signatory|witness)?[\s_]*(?:name|holder|nominee|beneficiary|signatory|witness)?["']?\s*[:=\-]\s*["']?([A-Z][a-z'\-]+(?:[ \t]+[A-Z][a-z'\-]+){0,3}|[A-Z][A-Z'\-]+(?:[ \t]+[A-Z][A-Z'\-]+){1,3})(?=["',;|)}\s]|$)/gm;
+            const KEY_OK = /(?:name|holder|nominee|beneficiary|signatory|witness|insured|guardian|spouse|author|assignee|reporter|approver|reviewer)\s*["']?\s*[:=\-]\s*["']?$/i;
+            for (const line of rightLines) {
+                if (line.length > 400) continue;
+                FIELD.lastIndex = 0;
+                let m;
+                while ((m = FIELD.exec(line)) !== null) {
+                    const v = m[1];
+                    const keyPart = line.slice(Math.max(0, m.index), m.index + m[0].length - v.length);
+                    if (!KEY_OK.test(keyPart)) continue;
+                    if (/(?:company|business|bank|file|product|project|branch|course|batch|plan|domain|host|server|app|repo|brand|store|shop|school|college|university|hospital|city|state|country|place|event|team|group|channel|document|sheet|vendor|merchant)\s*[_\s]*name/i.test(keyPart)) continue;
+                    if (isOrdinaryPhrase(v) || PLACES.has(v.toLowerCase()) || isLanguageWord(v) || containsKnownBusiness(v) || isFieldLabelOrHeader(v)) continue;
+                    if (!leftText.includes(v)) continue;
+                    addTarget(v, "Person Name", "pt-person", 87, true);
+                }
+            }
+        }
+
+        // 8G (v11.1.0): the name right after a greeting ("Hi Asha,", "Dear Harsh,", "Thanks Imran!") identical on both
+        // sides is a Person Name - also names that are ordinary words elsewhere (Harsh, Asha, Rose).
+        {
+            const GREET = /(?:^|[\n>]|\s)(?:Hi|Hello|Hey|Dear|Thanks|Thank you|Regards|Cheers)[,!]?[ \t]+([A-Z][a-z'\-]+(?:[ \t]+[A-Z][a-z'\-]+){0,2})(?=[ \t]*[,!.\n:]|[ \t]*$)/g;
+            const NOT_NAME = /^(?:team|all|everyone|sir|madam|ma'am|guys|folks|there|friends|colleagues|customer|user|both|again|you|so|for|in|advance|a|lot|and|the|again)$/i;
+            let gm;
+            while ((gm = GREET.exec(rightText)) !== null) {
+                const v = gm[1];
+                const ws = v.split(/\s+/);
+                if (ws.some(w => NOT_NAME.test(w) || isCalendarWord(w) || PLACES.has(w.toLowerCase()) || isLanguageWord(w) || isHonorific(w))) continue;
+                // at least one word must be a (possibly ambiguous) known name or not an ordinary word
+                if (!ws.some(w => KNOWN_GIVEN_NAMES.has(w.toLowerCase()) || !isCommonWord(w))) continue;
+                if (!new RegExp("(?:Hi|Hello|Hey|Dear|Thanks|Thank you|Regards|Cheers)[,!]?[ \\t]+" + v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?![\\p{L}])", "u").test(leftText)) continue;
+                addTarget(v, "Person Name", "pt-person", 87, true);
+            }
+        }
+
         // 8D: Single Given Names from KNOWN_GIVEN_NAMES identical in both left and right (e.g. Kartik, Jesus, Thomas)
         const singleWordCandidates = rightText.match(/\b[A-Z][a-z]{2,}\b/g) || [];
         for (const sw of singleWordCandidates) {
             const lower = sw.toLowerCase();
-            if (isKnownGivenNameWord(lower) && !isFieldLabelOrHeader(sw) && !hasNonEntityWord(sw)) {
-                if (leftText.includes(sw) && isPersonName(sw, rightText)) {
+            // (v11.2.0) a surname that is also a brand ("Bajaj", "Tata") right after a first name is part of a person's name
+            const afterFirstName = KNOWN_BUSINESS_NAMES.has(lower) && KNOWN_GIVEN_NAMES.has(lower) &&
+                new RegExp("\\b[A-Z][a-z]{2,}[ \\t]+" + sw + "\\b").test(rightText) &&
+                !new RegExp("\\b(?:" + Array.from(CO_WORDS_FOR_SURNAME).join("|") + ")[ \\t]+" + sw + "\\b", "i").test(rightText);
+            if ((isKnownGivenNameWord(lower) || afterFirstName) && !isFieldLabelOrHeader(sw) && !hasNonEntityWord(sw)) {
+                if (leftText.includes(sw) && (afterFirstName || isPersonName(sw, rightText))) {
                     addTarget(sw, "Person Name", "pt-person", 85);
                 }
             }
@@ -4159,7 +4617,7 @@
         while ((pMatch = plateRegex.exec(rightText)) !== null) {
             const plate = pMatch[1].trim();
             if (isVehiclePlateFormat(plate) && leftText.includes(plate)) {
-                addTarget(plate, "Vehicle Number Plate", "pt-vehicle", 85);
+                addTarget(plate, "Vehicle Number Plate", "pt-vehicle", 92);
             }
         }
 
@@ -4197,7 +4655,7 @@
                 // (v10.5.4) an address inside a sentence ("Delivered to 5th Floor, ..., Hyderabad 500081 yesterday"):
                 // keep only the part from the first house / floor / plot number to the PIN code.
                 {
-                    const inner = cand.match(/(?:\b(?:flat|plot|house|h\.?\s?no|door|no\.|shop|unit)\s*[#\w-]*|#\s*\d|\b\d+[a-z]?(?:st|nd|rd|th)?\b)[^\n]*?\b[1-9]\d{2}\s?\d{3}\b/i);
+                    const inner = cand.length > 400 ? null : cand.match(/(?:\b(?:flat|plot|house|h\.?\s?no|door|no\.|shop|unit)\s*[#\w-]*|#\s*\d|\b\d+[a-z]?(?:st|nd|rd|th)?\b)[^\n]*?\b[1-9]\d{2}\s?\d{3}\b/i);
                     if (inner && inner[0].length < cand.length && inner[0].length >= 15 && isCompleteAddress(inner[0]) && !isCompleteAddress(cand.replace(inner[0], "").trim() || "x")) {
                         if (cand.indexOf(inner[0]) > 0 || cand.length > cand.indexOf(inner[0]) + inner[0].length) cand = inner[0];
                     }
@@ -4792,15 +5250,39 @@
         const fmt = (v) => typeof v === 'string' ? v : (() => { try { return JSON.stringify(v); } catch (x) { return String(v); } })();
         const out = (...a) => { console.log(...a); lines.push(a.map(fmt).join(' ')); };
         const { leftPane, rightPane } = getPanes();
-        const ident = (el) => el ? (el.tagName + (el.id ? "#" + el.id : "") + (typeof el.className === "string" && el.className ? "." + el.className.trim().split(/\s+/).slice(0, 4).join(".") : "")) : "none";
+        const ident = (el) => el ? (el.tagName + (el.id ? "#" + el.id : "") + (typeof el.className === "string" && el.className ? "." + el.className.trim().split(/\s+/).slice(0, 3).join(".") : "")) : "none";
         out("[PeakTalent] v" + PT_VERSION + " diagnostics");
-        out("  review screen detected:", isAnnotationReviewScreen(), "| panes found:", !!leftPane, !!rightPane,
-                    "| right text length:", rightPane ? (rightPane.textContent || "").length : 0,
-                    "| large-document mode:", __ptViewportInfo ? JSON.stringify(__ptViewportInfo) : "no",
-                    "| last run:", lastRunMs + " ms");
-        out("  panes: left =", ident(leftPane), "| right =", ident(rightPane));
-        out("  suggestions on screen:", document.querySelectorAll(".pt-tag").length);
+        out("  browser:", navigator.userAgent);
+        out("  running as:", (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.id) ? "browser extension" : "userscript / console");
+        out("  review screen:", isAnnotationReviewScreen(), "| panes:", ident(leftPane), "/", ident(rightPane), "| right text:", rightPane ? (rightPane.textContent || "").length : 0, "chars | last run:", lastRunMs + " ms");
+        out("  suggestions on screen:", document.querySelectorAll(".pt-tag").length, "| mistakes:", __ptcMistakes.length);
         if (__ptLastError) out("  last error:", __ptLastError);
+        try {
+            __ptPalette.t = 0;
+            const pal = learnPalette();
+            out("  label colours: " + (__ptPalette.learned || 0) + " of 13 read from the chips, the rest built-in");
+            const byName = {};
+            for (const p of pal) (byName[p.name] = byName[p.name] || []).push((p.builtin ? "builtin " : "") + "rgb(" + p.rgb.join(",") + ")");
+            for (const k of Object.keys(byName)) out("    " + k + ": " + byName[k].slice(0, 3).join(" | "));
+            const chip = Array.from(document.querySelectorAll("span, div, button")).find(x => (x.textContent || "").trim() === "Date" && x.childElementCount <= 3);
+            if (chip) { const cs = getComputedStyle(chip); out("  raw 'Date' chip style:", cs.backgroundColor, "|", cs.color, "|", cs.borderTopColor, "| dot:", chip.querySelector("*") ? getComputedStyle(chip.querySelector("*")).backgroundColor : "-"); }
+        } catch (e) { out("  palette read failed:", String(e)); }
+        if (__ptLabelStats) out("  label check:", __ptLabelStats);
+        out("  labels learned from the label dialog:", __ptDialogLabels.size);
+        if (rightPane) {
+            const marks = Array.from(rightPane.querySelectorAll("mark")).slice(0, 15);
+            out("  first <mark> labels in the right document (text | raw colours | label read | verdict):");
+            for (const m of marks) {
+                const cs = getComputedStyle(m);
+                out("    " + JSON.stringify((m.textContent || "").trim().slice(0, 30)) + " | bg " + cs.backgroundColor + " | img " + String(cs.backgroundImage).slice(0, 80) + " | border " + cs.borderBottomWidth + " " + cs.borderBottomColor +
+                    " | read: " + (detectAssignedCategory(m) || "(none)") + " | " + (m.getAttribute("data-ptc") || "-") + (m.getAttribute("data-ptc-expected") ? " -> " + m.getAttribute("data-ptc-expected") : ""));
+            }
+            if (!marks.length) {
+                const any = Array.from(rightPane.querySelectorAll("span, u, ins, a, b, em, strong")).filter(x => !x.classList.contains("pt-tag")).slice(0, 8);
+                out("  no <mark> elements; first inline elements:");
+                for (const x of any) out("    " + x.outerHTML.slice(0, 200));
+            }
+        }
         return lines.join("\n");
     }
     // A panel with the diagnostics text and a Copy button (nothing is sent anywhere).
@@ -4844,6 +5326,7 @@
     if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.onMessage) {
         __ptMessageListener = (msg, _sender, sendResponse) => {
             if (msg && msg.action === "rescan") { forceRescan(); sendResponse({ ok: true }); }
+            else if (msg && msg.action === "diagnostics") { let t = ""; try { t = printDiagnostics(); } catch (e) { t = "diagnostics failed: " + e; } sendResponse({ ok: true, text: t }); }
             else if (msg && msg.action === "status") {
                 sendResponse({ ok: true, onReviewScreen: isAnnotationReviewScreen(), active: !!window.__pt_auto_active,
                                tags: document.querySelectorAll("span.pt-tag").length,
@@ -4894,6 +5377,7 @@
         if (window.__pt_interval) { clearInterval(window.__pt_interval); window.__pt_interval = null; }
         if (window.__pt_observer) { window.__pt_observer.disconnect(); window.__pt_observer = null; }
         if (debounceTimer) clearTimeout(debounceTimer);
+        try { __dialogObserver.disconnect(); } catch (e) {}
         window.__pt_cleanup = null;
     };
     window.__pt_rescan = forceRescan;
@@ -4904,7 +5388,7 @@
             extractDynamicTargets, classifyDiff, isCredentialsFormat, isVehiclePlateFormat, isDateFormat,
             isIpAddressFormat, isAccountNumberFormat, isBusinessName, isPersonName, isTokenInBusinessContext,
             isCompleteAddress, diffTokensGlobalLCS, applyAllTargetsInSinglePass, VERSION: PT_VERSION,
-            stats: () => ({ lastRunMs, viewport: __ptViewportInfo })
+            stats: () => ({ lastRunMs, viewport: __ptViewportInfo }), parseColourToRgba
         };
     }
 
