@@ -102,7 +102,7 @@ const letters = (n) => Array.from({ length: n }, () => L2[Math.floor(rnd() * L2.
 const STATES = ['KA', 'MH', 'TN', 'DL', 'UP', 'GJ', 'RJ', 'KL', 'TS', 'WB', 'HR', 'PB'];
 const VAL = {
   'Email Address': () => `${pick(FIRST)}.${pick(LAST)}${Math.floor(rnd() * 99)}@${pick(['globex-demo.com', 'initech-demo.in', 'northwind-demo.io'])}`,
-  'Contact Number': () => pick([`${pick(['9', '8', '7'])}${digits(9)}`, `+91 ${pick(['9', '8'])}${digits(4)} ${digits(5)}`, `+91-${pick(['9', '7'])}${digits(9)}`]),
+  'Indian Mobile Number': () => pick([`${pick(['9', '8', '7'])}${digits(9)}`, `+91 ${pick(['9', '8'])}${digits(4)} ${digits(5)}`, `+91-${pick(['9', '7'])}${digits(9)}`]),
   'IP Address': () => `${pick([10, 172, 192, 203])}.${Math.floor(rnd() * 250)}.${Math.floor(rnd() * 250)}.${1 + Math.floor(rnd() * 250)}`,
   'Vehicle Number Plate': () => `${pick(STATES)} ${String(1 + Math.floor(rnd() * 98)).padStart(2, '0')} ${letters(2)} ${digits(4)}`,
   'URL/Link': () => `https://${pick(['docs', 'wiki', 'portal', 'app'])}.${pick(['globex-demo', 'initech-demo', 'northwind-demo'])}.io/${synthWord()}`,
@@ -113,7 +113,7 @@ const VAL = {
 };
 const CTX = {
   'Email Address': (v) => pick([`Mail ${v} today`, `Email: ${v}`, `Contact <${v}>`]),
-  'Contact Number': (v) => pick([`Call ${v} now`, `Mobile: ${v}`, `Ph - ${v}`]),
+  'Indian Mobile Number': (v) => pick([`Call ${v} now`, `Mobile: ${v}`, `Ph - ${v}`]),
   'IP Address': (v) => pick([`Server ${v} is down`, `host=${v}`, `"ip": "${v}"`]),
   'Vehicle Number Plate': (v) => pick([`Vehicle: ${v}`, `Car ${v} parked`, `| Vehicle No | ${v} |`]),
   'URL/Link': (v) => pick([`Docs: ${v}`, `See ${v} for details`, `[guide](${v})`]),

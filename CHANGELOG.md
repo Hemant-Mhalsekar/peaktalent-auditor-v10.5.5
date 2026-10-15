@@ -1,5 +1,15 @@
 # Changelog
 
+## 11.4.0 - October 2026
+
+New label set (Complete PII Type List), Contact group. Scope column of the list is not followed: every type is labeled.
+- **Phone numbers are split.** `Indian Mobile Number` (10 digits starting 6-9, optional +91 / 91 / 0) and `International Phone Number` (every other phone: other countries, Indian landlines, toll-free). The country code and brackets are part of the label. Non-Indian numbers are found for the first time (`+1 (415) 732-0198`, `+44 20 7946 0321`, `(11) 3456-7890`, `0812-3456-7890`); a bare run of digits only after a phone word. Dates, IPs, SSN, CPF, EIN, ZIP+4, CEP, card and Aadhaar numbers are excluded. The US-555 placeholder rule no longer hides numbers that start with 0 (`(021) 5551234`, Jakarta).
+- **Postal codes are labeled** when a key or a table / CSV column names them: `Postal Code`, `Indonesian Postal Code` (kode pos), `Brazilian CEP`.
+- **Partial addresses count.** A street on its own (`MG Road`, `221B Baker Street, London`, `Rua Augusta 1500`, `Jl. Sudirman No. 12`) is an Address, with the place names that follow it on the line. A city, state, country or postal code alone is not.
+- **Mistake check** knows the new labels: a mobile labeled International (or the reverse) is a mistake, a phone labeled with the old `Contact Number` chip is shown with the right new label, a postal code labeled Address is shown as Postal Code.
+- **All ~80 chip names** of the new label picker are read. Labels that share a colour are judged for every label of that colour (11.3.6); when all are wrong the badge names them all. Built-in chip colours are only used for chips that are on the page.
+- Tests: new `tests/contact.js` (90 cases); older tests moved from Contact Number to the new phone labels.
+
 ## 11.3.6 - October 2026
 
 - **Labels that share a colour are no longer guessed. The check judges every candidate label: real mistakes are still flagged, unclear cases are marked 'unsure' and counted as not checked.** When two labels have (almost) the same colour (within a margin of 6), the check no longer picks the first chip. If the label dialog knows the words, that label is used. Otherwise every candidate is judged: all wrong -> a real mistake; all correct -> fine; mixed -> `data-ptc="unsure"` (amber dashed outline, badge "A / B ?", hover card explains), not a mistake, and included in "not checked" (bar, tooltip, Alt+Shift+D and the popup status carry the new `ambiguous` count). Palettes without ties behave exactly as before.

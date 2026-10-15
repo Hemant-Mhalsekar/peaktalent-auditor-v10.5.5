@@ -88,10 +88,10 @@ The PeakTalent UI enforces a strict 13-category color system. Annotations must c
 | **2** | **Person Name** | 🔵 `#1890FF` | `#E6F7FF` | `#91D5FF` | `#096DD9` | Verified real human names. Left == Right identical only. |
 | **3** | **Business Name** | 🟢 `#13C2C2` | `#E6FFFB` | `#87E8DE` | `#08979C` | Commercial brands, corporations, vendors. Excludes banks & tech tools. |
 | **4** | **Overscrubbed** | ⚠️ `#FF7875` | `#FFF1F0` | `#FFCCC7` | `#CF1322` | Non-PII text, prose, or code unnecessarily redacted or replaced. |
-| **5** | **Address** | 🔴 `#F5222D` | `#FFF1F0` | `#FFA39E` | `#CF1322` | Complete postal addresses (premise + street + city/PIN). Left == Right only. |
+| **5** | **Address** | 🔴 `#F5222D` | `#FFF1F0` | `#FFA39E` | `#CF1322` | Full or partial postal addresses (a street on its own counts; a city, state, country or PIN alone does not). Left == Right only. |
 | **6** | **Vehicle Number Plate** | 🍏 `#A0D911` | `#FCFFE6` | `#EAFF8F` | `#7CB305` | Valid Indian motor vehicle registration numbers with official state codes. |
 | **7** | **Date** | 🌸 `#EB2F96` | `#FFF0F6` | `#FFADD2` | `#C41D7F` | Strictly Date of Birth (DOB) only. General dates must NOT be labeled. |
-| **8** | **Contact Number** | 🟠 `#FA8C16` | `#FFF7E6` | `#FFD591` | `#D46B08` | Mobile, landline, toll-free, fax numbers. |
+| **8** | **Contact Number** | 🟠 `#FA8C16` | `#FFF7E6` | `#FFD591` | `#D46B08` | Old chip, replaced by Indian Mobile Number and International Phone Number (5.9). |
 | **9** | **Email Address** | 🌿 `#52C41A` | `#F6FFED` | `#B7EB8F` | `#389E0D` | Personal or commercial email addresses. |
 | **10** | **IP Address** | 🔷 `#13C2C2` | `#E6FFFB` | `#87E8DE` | `#08979C` | IPv4 and IPv6 network addresses. |
 | **11** | **URL/Link** | 🟡 `#FAAD14` | `#FFFBE6` | `#FFE58F` | `#D48806` | Web addresses, HTTP(S) links, endpoints. Excludes placeholders. |
@@ -184,14 +184,13 @@ The platform mandates that the following **15 categories are strictly classified
   - Scrubbed plates (plates changed between Left and Right return `null`).
 
 ### 5.5 Address
-- **Complete Postal Address Standard**: Must be a multi-part address containing:
-  1. Premise or Building indicator (e.g. `12`, `Plot 7`, `Flat 302`, `Tower B`)
-  2. Street or Locality (e.g. `MG Road`, `Sector 5`, `Outer Ring Road`)
-  3. City and/or PIN Code (e.g. `Pune 411001`, `Bengaluru 560100`)
+- **Full or partial (v11.4.0)**: a complete address (`Flat 302, Lodha Splendora, Wakad, Pune 411057`) **or a part of one** that locates a place below city level: a street on its own (`MG Road`, `221B Baker Street, London`, `Rua Augusta 1500`, `Jl. Sudirman No. 12`), a sector (`Sector 62, Noida`), a shop / flat / plot with its street (`Shop 4, Linking Road, Bandra West`).
+- **The label covers the whole address on the line**: house number, building, street, locality, city, state and PIN together, as one label.
 - **Negative Constraints**:
-  - Isolated city names (`Bengaluru`, `Pune`, `Mumbai`, `New Delhi`) are **NOT** addresses.
-  - Isolated street names (`MG Road`) or floor numbers (`3rd Floor`) are **NOT** addresses.
-- **Verification Requirement**: The complete address string must exist identically in **BOTH Left and Right panes**. If scrubbed or altered, do not annotate.
+  - A city, state or country on its own (`Bengaluru`, `Maharashtra`, `India`) is **NOT** an address.
+  - A postal code on its own is a **Postal Code**, not an Address (see 5.9).
+  - A floor on its own (`3rd Floor`) is not an address; ordinary phrases that end in a street word (`Wall Street Journal`, `Google Drive`) are not either.
+- **Verification Requirement**: The address must exist identically in **BOTH Left and Right panes**. If scrubbed or altered, do not annotate.
 - **Scrubbed address -> no label at all**: if any part of the address changed (street, plot number, PIN), do not label the address, its unchanged fragments (e.g. `Sector 127, Noida`), or the replacement text (`937 Garnthwaite Road`) - not Address, not Overscrubbed.
 - **Multi-line addresses**: when the whole block is identical on both sides, label each line of it as Address.
 
@@ -222,7 +221,10 @@ The platform mandates that the following **15 categories are strictly classified
 - Git commit hashes, API node IDs (`node_id`), base64 strings (`MDY6Q29tbWl0...`), login session keys, and numeric database IDs are **NOT** usernames and must **NOT** be annotated.
 
 ### 5.9 Other Categories (Contact, Email, IP, URL)
-- **Contact Number**: Indian mobile numbers (10 digits starting 6–9, optional `+91`), and landlines with an STD code starting `0`. Must be identical on both sides. (The auditor does not yet recognise non-Indian formats such as `+1 (555) 234-8901`; check those by hand.)
+- **Indian Mobile Number** (v11.4.0, replaces Contact Number for mobiles): 10 digits starting 6–9, with an optional `+91`, `91` or `0` in front, which is part of the label (`+91 98450 12345`, `09845012345`, `984-501-2345`).
+- **International Phone Number** (v11.4.0): every other phone number, including Indian landlines (`080-2345 6789`, `+91 80 2345 6789`) and toll-free numbers (`1800-123-4567`). The country code and brackets are part of the label (`+1 (415) 732-0198`, `+55 11 91234-5678`, `0812-3456-7890`). A run of digits without a phone shape counts only right after a phone word (`Fax: 2345 6789`). Dates, IP addresses, SSN, CPF, EIN, ZIP+4, CEP, card and Aadhaar numbers are never phones. US numbers with 555 after the area code are fictional and not labeled.
+- **The old Contact Number chip**: a phone labeled Contact Number is shown as a mistake, with the right one of the two labels above.
+- **Postal Code / Indonesian Postal Code / Brazilian CEP** (v11.4.0): labeled when a key or a column names the value (`Pincode: 560087`, `"postal_code": "560001"`, `ZIP 94105-1234`, `Postcode: SW1A 1AA`, a CSV `postal_code` column). `Kode pos` gives Indonesian Postal Code (5 digits) and `CEP` gives Brazilian CEP (`#####-###`). A bare number with no key is not labeled. Inside an address line, the whole line is the Address.
 - **Email Address**: Valid `user@domain` addresses, identical on both sides. File names such as `icon@2x.png` are not emails.
 - **IP Address**: IPv4 (e.g. `192.168.1.1`) and IPv6 (e.g. `2001:db8::1`). MAC addresses (`00:1A:2B:3C:4D:5E`) are **not** IP addresses.
 - **URL / Link**: Only `https://` links identical on both sides are labeled (project rule). `http://` and bare `www.` links are left unlabeled. Placeholders (`https://example.com`, `localhost`) and footnote anchors (`#footnote-1`) are excluded.

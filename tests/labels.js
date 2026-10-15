@@ -33,7 +33,7 @@ no('Address: Flat 302, Tower B, Prestige Lakeside, Varthur Road, Bengaluru 56008
 no('Plot no. 13, Near Shanti Mandir,\nSector 127, Noida,\nUttar Pradesh 201304', 'Sector 127, Noida', '937 Garnthwaite Road\nSector 127, Noida,\nUttar Pradesh');
 notAs('Location: Bengaluru', 'Bengaluru');
 notAs('Based in Pune and Mumbai', 'Pune');
-notAs('Meet at MG Road tomorrow', 'MG Road');
+yes('Meet at MG Road tomorrow', 'MG Road');   // (v11.4.0) a partial address (a street on its own) is an Address
 notAs('Floor: 3rd Floor', '3rd Floor');
 
 // ======================= BUSINESS NAME =======================
@@ -55,12 +55,12 @@ notAs('STRIPE_KEY=sk_test_51HxYzAbCdEfGh', 'STRIPE');
 notAs('Our Services and Solutions', 'Our Services');
 
 // ======================= CONTACT NUMBER =======================
-label('Contact Number');
+label('Indian Mobile Number');
 yes('Call 9876543210 today', '9876543210');
 yes('Mobile: +91 98450 12345', '+91 98450 12345');
 yes('Mob: +91-9811122233', '+91-9811122233');
 yes('Phone: 98450-12345', '98450-12345');
-yes('Office: 080-2345 6789', '080-2345 6789');
+yes('Office: 080-2345 6789', '080-2345 6789', 'International Phone Number');
 yes('Whatsapp 09845012345', '09845012345');
 no('Call 9876543210 today', '9123456780', 'Call 9123456780 today');
 notAs('Aadhaar: 4321 8765 2109', '4321 8765 2109');
@@ -265,7 +265,7 @@ yes('Client: Mahindra & Mahindra Ltd', 'Mahindra & Mahindra Ltd');
 notAs('Paid via HDFC Bank NEFT', 'HDFC Bank');
 notAs('Built with Node.js and React', 'Node.js');
 notAs('Our Partners', 'Our Partners');
-label2('Contact Number');
+label2('Indian Mobile Number');
 yes('{"mobile": "9811122233"}', '9811122233');
 yes('ph: 98201-11223 / 98201-11224', '98201-11224');
 notAs('Card Number: 4111 1111 1111 1111', '4111 1111 1111');

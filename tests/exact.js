@@ -33,7 +33,7 @@ Account Number: 50100234567891
 IFSC: HDFC0001234
 Vehicle: MH 12 AB 9876
 Form zorvantel on 12-01-2026`,
-[['Kavya Nair','Person Name'],['21-09-1996','Date'],['+91 98450 12345','Contact Number'],['4321 8765 2109','Credentials'],
+[['Kavya Nair','Person Name'],['21-09-1996','Date'],['+91 98450 12345','Indian Mobile Number'],['4321 8765 2109','Credentials'],
  ['50100234567891','Account Number'],['HDFC0001234','Credentials'],['zorvantel','Overscrubbed']]);
 
 doc('Server incident report',
@@ -70,7 +70,7 @@ We are pleased to offer you the position of Senior Analyst.
 Your joining date is 1 May 2026. Please report to Meera Pillai.
 For queries write to hr@infosys-demo.com or call 080-2345 6789.`,
 [['Infosys Limited','Business Name'],['Electronics City, Hosur Road, Bengaluru 560100','Address'],['Meera Pillai','Person Name'],
- ['hr@infosys-demo.com','Email Address'],['080-2345 6789','Contact Number']]);
+ ['hr@infosys-demo.com','Email Address'],['080-2345 6789','International Phone Number']]);
 
 doc('Support ticket CSV',
 `ticket_id,customer,phone,issue,agent
@@ -79,7 +79,7 @@ doc('Support ticket CSV',
 `ticket_id,customer,phone,issue,agent
 4102434713937455,Sneha Iyer,9845098450,Login failed after velmarish,bournika.j
 4102649426338705,Torvan Quist,9988776655,Refund not received,bournika.j`,
-[['Sneha Iyer','Person Name'],['9845098450','Contact Number'],['velmarish','Overscrubbed'],['bournika.j','Person Name']]);
+[['Sneha Iyer','Person Name'],['9845098450','Indian Mobile Number'],['velmarish','Overscrubbed'],['bournika.j','Person Name']]);
 
 doc('Code + config',
 `// Author: Karthik Rao
@@ -107,7 +107,7 @@ doc('Chat export',
 `[10:02] Meera Pillai: did you push the fix for Zentrix Analytics Pvt Ltd?
 [10:03] Tarun Bose: yes, PR is up. Server 172.16.4.21 restarted.
 [10:04] Meera Pillai: thanks. Call me on 99001 22334 if it fails again.`,
-[['Meera Pillai','Person Name'],['Tarun Bose','Person Name'],['Zentrix Analytics Pvt Ltd','Business Name'],['172.16.4.21','IP Address'],['99001 22334','Contact Number']]);
+[['Meera Pillai','Person Name'],['Tarun Bose','Person Name'],['Zentrix Analytics Pvt Ltd','Business Name'],['172.16.4.21','IP Address'],['99001 22334','Indian Mobile Number']]);
 
 doc('Lecture list (education export)',
 `| id | title | class | board | teacher |
@@ -145,14 +145,14 @@ Patient Name: Lakshmi Narayanan    DOB: 05-11-1958
 Referred by: Dr. Arvind Swamy
 Diagnosis: Type 2 velmorine. Review after 3 months.
 Contact: 9840012345`,
-[['Apollo Hospitals, Greams Road, Chennai 600006','Address'],['Lakshmi Narayanan','Person Name'],['05-11-1958','Date'],['Arvind Swamy','Person Name'],['velmorine','Overscrubbed'],['9840012345','Contact Number']]);
+[['Apollo Hospitals, Greams Road, Chennai 600006','Address'],['Lakshmi Narayanan','Person Name'],['05-11-1958','Date'],['Arvind Swamy','Person Name'],['velmorine','Overscrubbed'],['9840012345','Indian Mobile Number']]);
 
 doc('JSON user list',
 `[{"id": 77812, "name": "Deepak Choudhary", "email": "deepak.c@initech-demo.com", "mobile": "+91-9811122233", "ip": "203.0.113.45", "created_at": "2024-03-11T09:12:44Z", "role": "admin"},
  {"id": 77813, "name": "Anita Desai", "email": "anita.desai@initech-demo.com", "mobile": "+91-9811122244", "ip": "203.0.113.46", "created_at": "2024-03-12T10:00:00Z", "role": "viewer"}]`,
 `[{"id": 77812, "name": "Deepak Choudhary", "email": "deepak.c@initech-demo.com", "mobile": "+91-9811122233", "ip": "203.0.113.45", "created_at": "2024-03-11T09:12:44Z", "role": "admin"},
  {"id": 77813, "name": "Velmora Quint", "email": "velmora.q@orbelune.com", "mobile": "+91-9988776655", "ip": "198.51.100.7", "created_at": "2024-03-12T10:00:00Z", "role": "viewer"}]`,
-[['Deepak Choudhary','Person Name'],['deepak.c@initech-demo.com','Email Address'],['+91-9811122233','Contact Number'],['203.0.113.45','IP Address']]);
+[['Deepak Choudhary','Person Name'],['deepak.c@initech-demo.com','Email Address'],['+91-9811122233','Indian Mobile Number'],['203.0.113.45','IP Address']]);
 
 doc('Resume header',
 `RAHUL VERMA
@@ -165,7 +165,7 @@ Email: rahul.verma92@gmail.com | Phone: 9876543210 | GitHub: https://github.com/
 Skills: Python, SQL, Power BI, Tableau
 Languages: Beaargale, Hindi, Marathi
 Experience: Senior Data Analyst, Infosys Limited (2019 - Present)`,
-[['RAHUL VERMA','Person Name'],['rahul.verma92@gmail.com','Email Address'],['9876543210','Contact Number'],['https://github.com/rahulv92','URL/Link'],
+[['RAHUL VERMA','Person Name'],['rahul.verma92@gmail.com','Email Address'],['9876543210','Indian Mobile Number'],['https://github.com/rahulv92','URL/Link'],
  ['Beaargale','Overscrubbed'],['Infosys Limited','Business Name']]);
 
 let failed = 0;
