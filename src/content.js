@@ -15,7 +15,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.3.4";
+    const PT_VERSION = "11.3.6";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -111,6 +111,30 @@
             font: 600 10.5px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
             color: #fff !important;
             background: #dc2626 !important;
+            padding: 0 6px !important;
+            border-radius: 4px !important;
+            box-shadow: 0 1px 4px rgba(0,0,0,.25) !important;
+            z-index: 2147483000 !important;
+            pointer-events: none !important;
+            text-decoration: none !important;
+        }
+        /* ---- (v11.3.6) shared colour: the label could be either, so it is shown as "unsure", never guessed ---- */
+        [data-ptc="unsure"] {
+            outline: 2px dashed #f59e0b !important;
+            outline-offset: 2px !important;
+            border-radius: 3px !important;
+            position: relative !important;
+            cursor: help !important;
+        }
+        [data-ptc="unsure"]::before {
+            content: attr(data-ptc-your) " ?" !important;
+            position: absolute !important;
+            left: -2px !important;
+            bottom: calc(100% + 4px) !important;
+            white-space: nowrap !important;
+            font: 600 10.5px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+            color: #fff !important;
+            background: #d97706 !important;
             padding: 0 6px !important;
             border-radius: 4px !important;
             box-shadow: 0 1px 4px rgba(0,0,0,.25) !important;
@@ -327,6 +351,10 @@
         const toAnnotateCount = document.querySelectorAll(".pt-tag").length;
         const mistakeCount = __ptcMistakes.filter(m => m.el && m.el.isConnected).length;
         const unreadable = __ptLabelStats && __ptLabelStats.marks > 0 && __ptLabelStats.labeled === 0;
+        // (v11.3.5) labels that could not be checked (the judge crashed, or the colour could not be read). Never throws.
+        let notChecked = 0, checkSummary = "";
+        try { notChecked = labelsNotChecked(); checkSummary = labelCheckSummary(mistakeCount); } catch (e) { notChecked = 0; checkSummary = ""; }
+        const notCheckedNote = notChecked > 0 ? ` (+${notChecked} not checked)` : "";
         const bar = document.getElementById("pt-floating-bar");
         if (bar) {
             bar.style.borderColor = mistakeCount > 0 ? "#ef4444" : "rgba(255, 255, 255, 0.12)";
@@ -344,18 +372,25 @@
                 dot.style.backgroundColor = "#ef4444";
                 dot.style.boxShadow = "0 0 10px #ef4444";
                 text.style.color = "#fecaca";
-                text.textContent = `\uD83C\uDFAF ${toAnnotateCount} to Annotate \u00B7 \u26A0\uFE0F ${mistakeCount} Mistake${mistakeCount > 1 ? "s" : ""}`;
-                text.title = "Click to list the wrong labels";
+                text.textContent = `\uD83C\uDFAF ${toAnnotateCount} to Annotate \u00B7 \u26A0\uFE0F ${mistakeCount} Mistake${mistakeCount > 1 ? "s" : ""}${notCheckedNote}`;
+                text.title = "Click to list the wrong labels" + (checkSummary ? "\n" + checkSummary : "");
                 text.style.cursor = "pointer";
                 text.onclick = (ev) => { ev.stopPropagation(); toggleMistakeList(); };
             } else if (unreadable) {
                 text.style.color = "#fde68a";
                 text.textContent = `\uD83C\uDFAF ${toAnnotateCount} to Annotate \u00B7 labels not readable`;
-                text.title = "Your labels are on the page but their colour could not be read, so they cannot be checked. Press Alt+Shift+D and send the report.";
+                text.title = "Your labels are on the page but their colour could not be read, so they cannot be checked. Press Alt+Shift+D and send the report." + (checkSummary ? "\n" + checkSummary : "");
+            } else if (notChecked > 0) {
+                // 0 mistakes, but some labels could not be checked: this must not look like the all-clear
+                text.style.color = "#fde68a";
+                text.textContent = `\uD83C\uDFAF ${toAnnotateCount} to Annotate \u00B7 \u26A0\uFE0F 0 mistakes, ${notChecked} not checked`;
+                text.title = "No mistakes were found, but some labels could not be checked (a label whose colour could not be read, or a check that failed). Press Alt+Shift+D and send the report." + (checkSummary ? "\n" + checkSummary : "");
+                text.style.cursor = "default";
+                text.onclick = null;
             } else {
                 text.style.color = "#ffffff";
                 text.textContent = `\uD83C\uDFAF ${toAnnotateCount} to Annotate`;
-                text.title = "";
+                text.title = checkSummary;
                 text.style.cursor = "default";
                 text.onclick = null;
             }
@@ -364,7 +399,8 @@
             dot.style.backgroundColor = "#94a3b8";
             dot.style.boxShadow = "none";
             text.style.color = "#94a3b8";
-            text.textContent = `\u23F8 Paused \u2014 ${toAnnotateCount} to Annotate${mistakeCount ? ` \u00B7 \u26A0\uFE0F ${mistakeCount} Mistake${mistakeCount > 1 ? "s" : ""}` : ""}`;
+            text.textContent = `\u23F8 Paused \u2014 ${toAnnotateCount} to Annotate${mistakeCount ? ` \u00B7 \u26A0\uFE0F ${mistakeCount} Mistake${mistakeCount > 1 ? "s" : ""}${notCheckedNote}` : (notChecked > 0 ? ` \u00B7 \u26A0\uFE0F 0 mistakes, ${notChecked} not checked` : "")}`;
+            if (checkSummary) text.title = checkSummary;
             btn.className = "btn-start";
             btn.textContent = "\u25B6 Start";
             btn.title = "Click to resume auto-annotation";
@@ -658,6 +694,20 @@
     });
     try { __dialogObserver.observe(document.body, { childList: true, subtree: true }); } catch (e) {}
 
+    // (v11.3.5) How many labels could not be checked: a judge crash or a <mark> whose label could not be read.
+    // Labels outside the document and the review screen's own controls are not counted. Never throws.
+    function labelsNotChecked() {
+        try { const s = __ptLabelStats; return s ? (s.errors | 0) + (s.unread | 0) + (s.ambiguous | 0) : 0; } catch (e) { return 0; }   // (v11.3.6) + labels on a shared colour that could not be told apart
+    }
+    function labelCheckSummary(mistakeCount) {
+        try {
+            const s = __ptLabelStats;
+            if (!s) return "";
+            const k = s.skipped || {};
+            return `Label check: ${s.checked | 0} checked, mistakes: ${mistakeCount | 0}, errors: ${s.errors | 0}, unread: ${s.unread | 0}, unsure (shared colour): ${s.ambiguous | 0}, too short: ${k.tooShort | 0}, too long: ${k.tooLong | 0}`;
+        } catch (e) { return ""; }
+    }
+
     function runLabelCheck(rightPane, leftText, rightText, targets, scopeEls) {
         const lookup = new Map();
         for (const t of targets) { lookup.set(t.text, t); if (!lookup.has(t.text.toLowerCase())) lookup.set(t.text.toLowerCase(), t); }
@@ -668,13 +718,16 @@
         else for (const x of rightPane.querySelectorAll(SEL)) pool.push(x);
         if (!(rightText || "").trim()) { for (const el of rightPane.querySelectorAll("[data-ptc]")) clearPtc(el); __ptcMistakes = []; return []; }   // empty document (.gitkeep)
         const labeled = new Map();   // element -> label
-        const stats = { marks: rightPane.querySelectorAll("mark").length, candidates: pool.length, ui: 0, unread: 0, viaDialog: 0, labeled: 0 };
+        const ambig = new Map();     // (v11.3.6) element -> candidate labels, when its colour is shared by several labels and nothing else settles it
+        const stats = { marks: rightPane.querySelectorAll("mark").length, candidates: pool.length, ui: 0, unread: 0, viaDialog: 0, labeled: 0,
+                        checked: 0, errors: 0, ambiguous: 0, lastError: "", skipped: { unread: 0, tooShort: 0, tooLong: 0 } };
         __ptLabelStats = stats;
         for (const el of pool) {
             // (a label drawn INSIDE one of our suggestion spans still counts: the editor may wrap the selection there)
             if (labeled.has(el) || el.classList.contains("pt-tag") || el.closest("#pt-floating-bar")) continue;
             const len = (el.textContent || "").length;
-            if (len < 1 || len > 250) continue;
+            if (len < 1) continue;
+            if (len > 250) { if (el.tagName === "MARK") stats.skipped.tooLong++; continue; }   // (v11.3.5) counted, still not checked
             // (v11.2.1) the review screen's own controls are never labels: the "Annotate here" chip (light blue, read
             // as Person Name), "Reference \u00B7 read-only", file names ("right.md-d146149f"), label chips, buttons.
             if (isReviewUiElement(el)) { stats.ui++; continue; }
@@ -684,9 +737,21 @@
             if (el.tagName !== "MARK" && !el.matches("[data-label], [data-entity], [data-category], [data-annotation]") &&
                 !/\b(?:annot|entity|pii|label-)\w*/i.test(typeof el.className === "string" ? el.className : "")) { stats.ui++; continue; }
             let L = detectAssignedCategory(el);
+            // (v11.3.6) the colour is shared by several labels: the label dialog settles it when it knows these words; otherwise keep every candidate
+            if (L) {
+                try {
+                    const cands = __ptAmbiguous.get(el);
+                    if (cands && cands.length > 1) {
+                        const tx = (el.textContent || "").replace(/\s+/g, " ").trim();
+                        const dl = __ptDialogLabels.get(tx);
+                        if (dl && cands.includes(dl)) { L = dl; stats.viaDialog++; }
+                        else ambig.set(el, cands);
+                    }
+                } catch (e) { try { stats.errors++; stats.lastError = String((e && e.message) || e).slice(0, 200); } catch (x) {} }
+            }
             // colour not readable: a <mark> whose words were labeled in the dashboard's dialog
             if (!L && el.tagName === "MARK") { const tx = (el.textContent || "").replace(/\s+/g, " ").trim(); if (__ptDialogLabels.has(tx)) { L = __ptDialogLabels.get(tx); stats.viaDialog++; } }
-            if (!L && el.tagName === "MARK") stats.unread++;
+            if (!L && el.tagName === "MARK") { stats.unread++; stats.skipped.unread++; }
             if (L) { labeled.set(el, L); stats.labeled++; }
         }
         const mistakes = [];
@@ -698,18 +763,49 @@
             if (nested) { clearPtc(el); continue; }
             seen.add(el);
             const T = labelText(el);
-            if (T.length < 2) { clearPtc(el); continue; }
-            let verdict = null;
-            try { verdict = judgeLabel(T, L, ctx); } catch (e) { verdict = null; }
+            if (T.length < 2) { stats.skipped.tooShort++; clearPtc(el); continue; }
+            let verdict = null, tieFailed = false, handled = false, Lx = L;
+            // (v11.3.6) A colour shared by several labels is never guessed: every candidate is judged.
+            //   all wrong -> a real mistake whichever label was used;  all correct -> ok;  mixed -> "unsure" (not a mistake, counted as not checked)
+            const cands = ambig.get(el);
+            if (cands && cands.length > 1) {
+                try {
+                    const vs = cands.map(c => judgeLabel(T, c, ctx));
+                    const bad = vs.filter(Boolean);
+                    const names = cands.length > 2 ? cands.slice(0, -1).join(", ") + " and " + cands[cands.length - 1] : cands.join(" and ");
+                    if (bad.length === vs.length) {
+                        verdict = { expected: bad[0].expected, why: bad[0].why + ` (The colour is shared by ${names}; whichever you used, it is wrong.)` };
+                        Lx = cands[0]; stats.checked++; handled = true;
+                    } else if (bad.length === 0) {
+                        Lx = cands[0]; stats.checked++; handled = true;
+                    } else {
+                        stats.ambiguous++; handled = true;
+                        setAttrIfChanged(el, "data-ptc", "unsure");
+                        setAttrIfChanged(el, "data-ptc-your", cands.join(" / "));
+                        setAttrIfChanged(el, "data-ptc-expected", bad[0].expected);
+                        setAttrIfChanged(el, "data-ptc-why", `Colour is shared by ${names}, so the auditor cannot tell which you used. Check the label name by hand.`);
+                        continue;
+                    }
+                } catch (e) {
+                    // fall back to today's behaviour (judge the label that was read) and count the failure
+                    tieFailed = true; handled = false; verdict = null; Lx = L;
+                    try { stats.errors++; stats.lastError = String((e && e.message) || e).slice(0, 200); } catch (x) {}
+                }
+            }
+            if (!handled) {
+                // a crash is still NOT a mistake, but it is counted so the bar does not look like the all-clear (v11.3.5)
+                try { verdict = judgeLabel(T, L, ctx); stats.checked++; }
+                catch (e) { verdict = null; if (!tieFailed) { try { stats.errors++; stats.lastError = String((e && e.message) || e).slice(0, 200); } catch (x) {} } }
+            }
             if (verdict) {
                 setAttrIfChanged(el, "data-ptc", "wrong");
-                setAttrIfChanged(el, "data-ptc-your", L);
+                setAttrIfChanged(el, "data-ptc-your", Lx);
                 setAttrIfChanged(el, "data-ptc-expected", verdict.expected);
                 setAttrIfChanged(el, "data-ptc-why", verdict.why);
-                mistakes.push({ el, text: T, your: L, expected: verdict.expected, why: verdict.why });
+                mistakes.push({ el, text: T, your: Lx, expected: verdict.expected, why: verdict.why });
             } else {
                 setAttrIfChanged(el, "data-ptc", "ok");
-                setAttrIfChanged(el, "data-ptc-your", L);
+                setAttrIfChanged(el, "data-ptc-your", Lx);
                 for (const a of ["data-ptc-expected", "data-ptc-why"]) if (el.hasAttribute(a)) el.removeAttribute(a);
             }
         }
@@ -728,10 +824,17 @@
     }
     const escHtml = (s) => String(s).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
     ptOn(document, "mouseover", (e) => {
-        const el = e.target && e.target.closest ? e.target.closest("[data-ptc='wrong']") : null;
+        const el = e.target && e.target.closest ? e.target.closest("[data-ptc='wrong'], [data-ptc='unsure']") : null;
         const card = document.getElementById("ptc-card");
         if (!el) { if (card && !e.target.closest("#ptc-card")) card.classList.remove("ptc-show"); return; }
         const c = ptcCard();
+        if (el.getAttribute("data-ptc") === "unsure") {   // (v11.3.6) shared colour
+            c.innerHTML = '<div class="ptc-h">? Unsure which label</div>' +
+                '<div class="ptc-row"><span>Text</span><b>' + escHtml(labelText(el).slice(0, 80)) + '</b></div>' +
+                '<div class="ptc-row"><span>Could be</span><b class="ptc-bad">' + escHtml(el.getAttribute("data-ptc-your")) + '</b></div>' +
+                '<div class="ptc-row"><span>Correct</span><b class="ptc-good">' + escHtml(el.getAttribute("data-ptc-expected")) + '</b></div>' +
+                '<div class="ptc-why">' + escHtml(el.getAttribute("data-ptc-why") || "") + '</div>';
+        } else
         c.innerHTML = '<div class="ptc-h">\u26A0 Wrong label</div>' +
             '<div class="ptc-row"><span>Text</span><b>' + escHtml(labelText(el).slice(0, 80)) + '</b></div>' +
             '<div class="ptc-row"><span>Your label</span><b class="ptc-bad">' + escHtml(el.getAttribute("data-ptc-your")) + '</b></div>' +
@@ -1139,15 +1242,30 @@
         for (let k = 0; k < 3; k++) if (Math.abs(rgb[k] - (255 - a * (255 - P[k]))) > 8) return 1;
         return hi - lo;
     }
+    // (v11.3.6) Two labels with (almost) the same colour cannot be told apart by colour. Every label whose best match is within
+    // TIE_MARGIN of the overall best is a candidate; the first one is still returned (old callers keep working) and the whole
+    // list is left in __ptLastTie for detectAssignedCategory, which stores it in __ptAmbiguous (element -> labels).
+    const TIE_MARGIN = 6;
+    let __ptLastTie = null;
+    const __ptAmbiguous = new WeakMap();
     function __bestColour(values, pal, base) {
         let best = null, bestScore = 1e9;
+        const byName = new Map();   // label -> its best score over every colour of the element
+        const note = (name, sc) => { const o = byName.get(name); if (o === undefined || sc < o) byName.set(name, sc); };
         for (const v of values) {
             const rgb = parseRgb(v);
             if (!rgb || isNeutral(rgb)) continue;
-            for (const p of pal) { const d = Math.hypot(rgb[0] - p.rgb[0], rgb[1] - p.rgb[1], rgb[2] - p.rgb[2]); if (d < bestScore) { bestScore = d; best = p.name; } }
-            for (const [name, P] of base) { const sc = __tintError(rgb, P) * 250; if (sc < bestScore) { bestScore = sc; best = name; } }
+            for (const p of pal) { const d = Math.hypot(rgb[0] - p.rgb[0], rgb[1] - p.rgb[1], rgb[2] - p.rgb[2]); note(p.name, d); if (d < bestScore) { bestScore = d; best = p.name; } }
+            for (const [name, P] of base) { const sc = __tintError(rgb, P) * 250; note(name, sc); if (sc < bestScore) { bestScore = sc; best = name; } }
         }
-        return bestScore <= 24 ? best : null;
+        __ptLastTie = null;
+        if (!(bestScore <= 24)) return null;
+        try {
+            const cands = [];
+            for (const [name, sc] of byName) if (sc <= 24 && sc <= bestScore + TIE_MARGIN) cands.push(name);
+            if (cands.length > 1) __ptLastTie = cands.sort();   // sorted: the result does not depend on the order of the chips
+        } catch (e) { __ptLastTie = null; }
+        return best;
     }
     function __matchColours(els, pal, base) {
         const values = [];
@@ -1169,6 +1287,7 @@
 
     function detectAssignedCategory(el) {
         if (!el || el.nodeType !== 1) return null;
+        try { __ptAmbiguous.delete(el); } catch (e) {}   // (v11.3.6) set again below only when the colour is shared by several labels
         // Our own suggestion spans carry data-label / pt-* classes too. They must never be read as the
         // reviewer's label: a Person Name label placed around our "Overscrubbed" suggestion was read as
         // Overscrubbed, so the mistake was never shown.
@@ -1234,8 +1353,13 @@
         // screen ("Account Number", "Overscrubbed", ...). A label drawn on the text uses its chip's colour as a
         // background, underline or border, so it is matched by colour distance - whatever the platform's markup.
         {
+            __ptLastTie = null;
             const hit = matchPlatformPalette(allElements);
-            if (hit) return hit;
+            if (hit) {
+                try { if (__ptLastTie && __ptLastTie.length > 1 && __ptLastTie.includes(hit)) __ptAmbiguous.set(el, __ptLastTie.slice()); } catch (e) {}
+                __ptLastTie = null;
+                return hit;
+            }
         }
 
         // Layer 4: Check computed & inline border / background colors (space-normalized)
@@ -1276,6 +1400,22 @@
         return null;
     }
 
+    // (v11.3.5) End of a link: trailing punctuation is not part of it, and a closing ) ] } is only dropped when it has no
+    // opening partner inside the link - "https://en.wikipedia.org/wiki/Heat_(film)" keeps its bracket, "(see https://a.io/x)" loses it.
+    function trimUrlEnd(s) {
+        const count = (str, ch) => str.split(ch).length - 1;
+        for (;;) {
+            const before = s;
+            s = s.replace(/[\s*_\-:#,.'"|!?;]+$/, "");
+            const last = s.slice(-1);
+            if (last === "(" || last === "[" || last === "{") s = s.slice(0, -1);
+            else if (last === ")" && count(s, ")") > count(s, "(")) s = s.slice(0, -1);
+            else if (last === "]" && count(s, "]") > count(s, "[")) s = s.slice(0, -1);
+            else if (last === "}" && count(s, "}") > count(s, "{")) s = s.slice(0, -1);
+            if (s === before) return s;
+        }
+    }
+
     function cleanWord(str) {
         if (!str) return "";
         let s = str.trim();
@@ -1283,7 +1423,7 @@
             s = s.slice(1, -1);
         }
         if (/^https?:\/\//i.test(s)) {
-            s = s.replace(/[\s\[\]\(\)\*_\-:#,\.\'"\|]+$/g, "");
+            s = trimUrlEnd(s);
         } else {
             s = s.replace(/[\s\[\]\(\)\*_\-:#,\.\/'"\|]+$/g, "");
         }
@@ -4169,12 +4309,44 @@
         }
 
         // Step 4: Scan for HTTPS links that exist identically in BOTH left and right documents
-        const httpsRegex = /https:\/\/[^\s"'<>\[\]\(\)\*]+/g;
-        const rightMatches = rightText.match(httpsRegex) || [];
-        for (const rawUrl of rightMatches) {
-            const cleanUrl = rawUrl.replace(/[.,;:!?]+$/, '');
-            if (cleanUrl.startsWith("https://") && cleanUrl.length > 8 && leftText.includes(cleanUrl)) {
-                addTarget(cleanUrl, "URL/Link", "pt-url", 85);
+        // (v11.3.5) Brackets inside a link stay part of it (balanced ( ) [ ] - see trimUrlEnd). A link that a PDF wrapped over
+        // several lines ("https://a.io/very/long/" + "path/to/page") is one link: it is joined only when a line ends where
+        // links usually wrap ( / - _ = & ? % ~ + ) and the next line starts with something shaped like a link piece, and it is
+        // labeled only when the same link (ignoring line breaks) is in the left document. A label cannot span lines on the page,
+        // so every line's piece is labeled on its own.
+        {
+            let leftFlat = null;
+            const flat = () => (leftFlat === null ? (leftFlat = leftText.replace(/\s+/g, "")) : leftFlat);
+            const WRAP_END = /[\/\-_=&?%~+]$/;
+            // a piece has path punctuation ("path/to/page", "?id=4") or is a file name ("index.html"); "and/or", "he/she", "1/2" are not
+            const isWrapPiece = (tok) => !/^[a-z][a-z0-9+.-]*:\/\//i.test(tok) &&
+                ((/[\/?=&#%]/.test(tok) && !/^[A-Za-z]{1,5}\/[A-Za-z]{1,5}$/.test(tok) && !/^\d{1,4}(?:\/\d{1,4}){1,2}$/.test(tok)) ||
+                 /^[\w-]+\.[A-Za-z0-9]{2,5}$/.test(tok));
+            const putUrl = (text) => {
+                const ex = targetMap.get(text);
+                if (!ex || 85 > ex.priority) targetMap.set(text, { text, label: "URL/Link", cls: "pt-url", priority: 85 });
+            };
+            const httpsRegex = /https:\/\/[^\s"'<>]+/g;
+            let um;
+            while ((um = httpsRegex.exec(rightText)) !== null) {
+                const pieces = [um[0]];
+                let end = um.index + um[0].length;
+                while (pieces.length < 8) {
+                    const nx = /^[ \t]*(?:\r?\n[ \t]*)+([^\s"'<>]+)/.exec(rightText.slice(end));
+                    if (!nx) break;
+                    // a line that starts with a query ("?q=a&page=2", "&x=1") continues the link whatever the previous line ended with
+                    const startsQuery = /^[?&][^\s]/.test(nx[1]);
+                    if (!startsQuery && !(WRAP_END.test(pieces[pieces.length - 1]) && isWrapPiece(nx[1]))) break;
+                    pieces.push(nx[1]);
+                    end += nx[0].length;
+                }
+                pieces[pieces.length - 1] = trimUrlEnd(pieces[pieces.length - 1]);
+                const joined = pieces.join("");
+                if (!joined.startsWith("https://") || joined.length <= 8) continue;
+                if (pieces.length === 1 && leftText.includes(joined)) { addTarget(joined, "URL/Link", "pt-url", 85); continue; }
+                // wrapped on one side only, or wrapped differently on the two sides
+                if (!flat().includes(joined) || isDefaultOrPlaceholderLink(joined) || joined.length > MAX_TOKEN_LEN * 2) continue;
+                for (const p of pieces) if (p.length >= 2) putUrl(p);
             }
         }
         // (v10.4) The Employee-ID table scan was removed: Employee IDs are not one of the 15 SOP credential categories.
@@ -4735,6 +4907,24 @@
             }
         }
 
+        // (v11.3.5) A link is one label: an e-mail address or IP address that only occurs inside a labeled link
+        // ("https://user:pass@git.acme.io/r.git", "https://203.0.113.45/admin") is part of that link, not a second label.
+        {
+            const urlTexts = Array.from(targetMap.values()).filter(t => t.label === "URL/Link").map(t => t.text);
+            if (urlTexts.length > 0) {
+                const spans = [];
+                for (const u of urlTexts) {
+                    let i = rightText.indexOf(u);
+                    while (i !== -1) { spans.push([i, i + u.length]); i = rightText.indexOf(u, i + 1); }
+                }
+                for (const [key, t] of targetMap) {
+                    if (t.label !== "Email Address" && t.label !== "IP Address") continue;
+                    const occ = occurrencesOf(t.text, rightText);
+                    if (occ.length > 0 && occ.every(i => spans.some(([a, b]) => i >= a && i < b))) targetMap.delete(key);
+                }
+            }
+        }
+
         const __result = Array.from(targetMap.values()).sort((a, b) => b.text.length - a.text.length);
         // Words that replaced a NAME (scrubbed names) travel with the result (also through the cache) for the mistake check.
         __result.scrubbedNames = new Set([...__ptScrubbedNameWords, ...__ptNameCellWords]);
@@ -4768,7 +4958,8 @@
         const patternParts = [];
         if (urlTargets.length > 0) {
             urlTargets.sort((a, b) => b.length - a.length);
-            patternParts.push('(?<![a-zA-Z0-9_-])(?:' + urlTargets.join('|') + ')(?=[\\s"\'<>\\]\\)]|$)');
+            // (v11.3.5) a link followed by sentence punctuation ("... https://a.io/x." / "https://a.io/x, then") is still that link
+            patternParts.push('(?<![a-zA-Z0-9_-])(?:' + urlTargets.join('|') + ')(?=[.,;:!?]*(?:[\\s"\'<>\\]\\)]|$))');
         }
         if (numTargets.length > 0) {
             numTargets.sort((a, b) => b.length - a.length);
@@ -5251,6 +5442,10 @@
         out("  running as:", (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.id) ? "browser extension" : "userscript / console");
         out("  review screen:", isAnnotationReviewScreen(), "| panes:", ident(leftPane), "/", ident(rightPane), "| right text:", rightPane ? (rightPane.textContent || "").length : 0, "chars | last run:", lastRunMs + " ms");
         out("  suggestions on screen:", document.querySelectorAll(".pt-tag").length, "| mistakes:", __ptcMistakes.length);
+        try {
+            const s = __ptLabelStats;
+            if (s) out("  not checked:", labelsNotChecked(), "| errors:", s.errors | 0, "| unread:", s.unread | 0, "| unsure (shared colour):", s.ambiguous | 0, "| too short:", (s.skipped || {}).tooShort | 0, "| too long:", (s.skipped || {}).tooLong | 0, "| checked:", s.checked | 0, s.lastError ? "| last check error: " + s.lastError : "");
+        } catch (e) {}
         if (__ptLastError) out("  last error:", __ptLastError);
         try {
             __ptPalette.t = 0;
@@ -5323,9 +5518,11 @@
             if (msg && msg.action === "rescan") { forceRescan(); sendResponse({ ok: true }); }
             else if (msg && msg.action === "diagnostics") { let t = ""; try { t = printDiagnostics(); } catch (e) { t = "diagnostics failed: " + e; } sendResponse({ ok: true, text: t }); }
             else if (msg && msg.action === "status") {
+                let nc = 0, er = 0, am = 0;
+                try { nc = labelsNotChecked(); er = (__ptLabelStats && __ptLabelStats.errors) | 0; am = (__ptLabelStats && __ptLabelStats.ambiguous) | 0; } catch (e) {}
                 sendResponse({ ok: true, onReviewScreen: isAnnotationReviewScreen(), active: !!window.__pt_auto_active,
                                tags: document.querySelectorAll("span.pt-tag").length,
-                               mistakes: __ptcMistakes.length });
+                               mistakes: __ptcMistakes.length, errors: er, ambiguous: am, notChecked: nc });
             }
         };
         chrome.runtime.onMessage.addListener(__ptMessageListener);
@@ -5383,7 +5580,7 @@
             extractDynamicTargets, classifyDiff, isCredentialsFormat, isVehiclePlateFormat, isDateFormat,
             isIpAddressFormat, isAccountNumberFormat, isBusinessName, isPersonName, isTokenInBusinessContext,
             isCompleteAddress, diffTokensGlobalLCS, applyAllTargetsInSinglePass, VERSION: PT_VERSION,
-            stats: () => ({ lastRunMs, viewport: __ptViewportInfo }), parseColourToRgba
+            stats: () => ({ lastRunMs, viewport: __ptViewportInfo }), parseColourToRgba, labelStats: () => __ptLabelStats
         };
     }
 

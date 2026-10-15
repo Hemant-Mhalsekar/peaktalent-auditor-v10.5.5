@@ -195,6 +195,33 @@ notAs('Old: http://legacy.acmecorp-demo.io', 'http://legacy.acmecorp-demo.io');
 notAs('Mirror: www.acmecorp-demo.io', 'www.acmecorp-demo.io');
 notAs('Example: https://example.com', 'https://example.com');
 notAs('Local: https://localhost:3000', 'https://localhost:3000');
+// (v11.3.5) links wrapped over several lines (PDF text): every line's piece is labeled; the left may be wrapped differently
+yes('Open https://acmecorp-demo.io/very/long/\npath/to/page now', 'https://acmecorp-demo.io/very/long/');
+yes('Open https://acmecorp-demo.io/very/long/\npath/to/page now', 'path/to/page');
+yes('Open\nhttps://acmecorp-demo.io/docs/\napi/v2/users\nnow', 'api/v2/users');
+yes('Go https://acmecorp-demo.io/a/\n\nb/c/page ok', 'b/c/page');
+yes('Go https://acmecorp-demo.io/search\n?q=abc&page=2 ok', '?q=abc&page=2');
+yes('Go https://acmecorp-demo.io/my-long-\npage-name/x ok', 'page-name/x');
+yes('Go https://acmecorp-demo.io/a/b/c/page ok', 'https://acmecorp-demo.io/a/b/c/page');                                           // control: not wrapped
+yes('Go https://acmecorp-demo.io/a/b/c/page ok', 'b/c/page', undefined, 'Go https://acmecorp-demo.io/a/\nb/c/page ok');           // wrapped only on the right
+yes('Go https://acmecorp-demo.io/a/\nb/c/page ok', 'https://acmecorp-demo.io/a/b/c/page', undefined, 'Go https://acmecorp-demo.io/a/b/c/page ok'); // wrapped only on the left
+no('Go https://acmecorp-demo.io/a/\nb/c/page ok', 'b/c/page', 'Go https://velmora.io/a/\nb/c/page ok');                            // domain scrubbed -> no label
+notAs('Home https://acmecorp-demo.io/\nand/or more', 'and/or');
+notAs('Home https://acmecorp-demo.io/\nand more text here', 'and');
+notAs('Due 12/03\nhttps://acmecorp-demo.io/x', '12/03');
+// (v11.3.5) brackets that belong to the link stay in it; brackets around the link do not
+yes('Film https://en.wikipedia.org/wiki/Heat_(film) ok', 'https://en.wikipedia.org/wiki/Heat_(film)');
+yes('Film https://en.wikipedia.org/wiki/Heat_(film).', 'https://en.wikipedia.org/wiki/Heat_(film)');
+yes('[x](https://en.wikipedia.org/wiki/Heat_(film))', 'https://en.wikipedia.org/wiki/Heat_(film)');
+yes('(see https://acmecorp-demo.io/page)', 'https://acmecorp-demo.io/page');
+yes('see [https://acmecorp-demo.io/page] ok', 'https://acmecorp-demo.io/page');
+yes('see **https://acmecorp-demo.io/page** ok', 'https://acmecorp-demo.io/page');
+yes('Go https://[2001:db8::1]/admin ok', 'https://[2001:db8::1]/admin');
+// (v11.3.5) one label per link: an e-mail / IP address inside a labeled link is not a second label
+notAs('Clone https://user:pass@git.acmecorp-demo.io/repo.git', 'pass@git.acmecorp-demo.io', 'Email Address');
+notAs('Panel: https://203.0.113.45/admin', '203.0.113.45', 'IP Address');
+yes('Server 203.0.113.45 and https://203.0.113.45/admin', '203.0.113.45', 'IP Address');   // the same IP outside a link is still an IP
+yes('Mail pass@git.acmecorp-demo.io and https://user:pass@git.acmecorp-demo.io/r.git', 'pass@git.acmecorp-demo.io', 'Email Address');
 
 // ======================= PERSON USERNAME =======================
 label('Person Username');

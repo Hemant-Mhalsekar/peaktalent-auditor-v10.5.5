@@ -1,5 +1,14 @@
 # Changelog
 
+## 11.3.6 - October 2026
+
+- **Labels that share a colour are no longer guessed. The check judges every candidate label: real mistakes are still flagged, unclear cases are marked 'unsure' and counted as not checked.** When two labels have (almost) the same colour (within a margin of 6), the check no longer picks the first chip. If the label dialog knows the words, that label is used. Otherwise every candidate is judged: all wrong -> a real mistake; all correct -> fine; mixed -> `data-ptc="unsure"` (amber dashed outline, badge "A / B ?", hover card explains), not a mistake, and included in "not checked" (bar, tooltip, Alt+Shift+D and the popup status carry the new `ambiguous` count). Palettes without ties behave exactly as before.
+
+## 11.3.5 - October 2026
+
+- **Bar now shows how many labels could not be checked; a crash or unreadable label no longer looks like all-clear.** The mistake check counts labels it could not judge (`errors`: the judge crashed; `unread`: a `<mark>` whose colour could not be read) and shows "N Mistakes (+K not checked)", or "0 mistakes, K not checked" in the existing warning colour when there are none. A crash is still not flagged as a mistake. The bar tooltip, Alt+Shift+D diagnostics and the toolbar popup list the counts (checked, mistakes, errors, unread, too short, too long). Labels of 1 character or over 250 characters are counted as skipped, but are not part of "not checked".
+- **Links:** a link that a PDF wrapped over several lines is recognised (each line's piece is labeled, since a label cannot span lines); an e-mail or IP address that only occurs inside a labeled link is not a second label; brackets that belong to a link stay in it (`.../Heat_(film)`) while brackets around a link are dropped; a link followed by "." or "," is now highlighted on the page.
+
 ## 11.3.4 - October 2026
 
 From the PROJECT.md screenshot (settings table):

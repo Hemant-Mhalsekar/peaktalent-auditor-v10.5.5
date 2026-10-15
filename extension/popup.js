@@ -34,8 +34,12 @@ async function refresh() {
   $('stats').hidden = false;
   $('tags').textContent = res.tags;
   $('mistakes').textContent = res.mistakes || 0;
+  // (v11.3.5) labels the check could not read or judge: "0 mistakes" must not look like "all correct" when this is not 0
+  const notChecked = res.notChecked || 0;
+  if ($('notchecked')) $('notchecked').textContent = notChecked;
   if (!res.active) setStatus('warn', 'Paused (use the bar on the page to resume)');
-  else if (res.mistakes > 0) setStatus('bad', res.mistakes + ' wrong label' + (res.mistakes === 1 ? '' : 's') + ' - hover the red outlines');
+  else if (res.mistakes > 0) setStatus('bad', res.mistakes + ' wrong label' + (res.mistakes === 1 ? '' : 's') + ' - hover the red outlines' + (notChecked > 0 ? ' (+' + notChecked + ' not checked)' : ''));
+  else if (notChecked > 0) setStatus('warn', '0 mistakes, ' + notChecked + ' not checked - press Copy diagnostics and send it');
   else setStatus('ok', 'Auditing this document');
 }
 
