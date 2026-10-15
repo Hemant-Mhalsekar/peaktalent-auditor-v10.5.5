@@ -1,4 +1,4 @@
-// PeakTalent Auditor v11.3.6 - console build.
+// PeakTalent Auditor v11.4.0 - console build.
 // Open the PeakTalent review tab, open the browser console (Safari: Develop > Show JavaScript Console,
 // Chrome: Cmd/Ctrl+Option/Alt+J), paste this whole file and press Enter. Pasting again replaces the old copy.
 // GENERATED FILE - edit src/content.js and run `node scripts/build.js`.
@@ -20,7 +20,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.3.6";
+    const PT_VERSION = "11.4.0";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -581,8 +581,10 @@
         const isEmail = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/.test(T);
         const strong = isEmail ? "Email Address" : /^https:\/\/\S+$/i.test(T) ? "URL/Link" : isIpAddressFormat(T) ? "IP Address" :
             /^@[A-Za-z_][\w.]{1,29}$/.test(T) ? "Person Username" : isVehiclePlateFormat(T) ? "Vehicle Number Plate" :
-            (isContactNumberFormat(T) && !isDefaultOrPlaceholderPhone(T)) ? "Contact Number" : null;
-        if (strong && strong !== L && !(L === "Credentials" && strong === "Contact Number")) return wrong(strong, `This is a ${strong}.`);
+            phoneLabelFor(T);
+        // (v11.4.0) a postal code can have a phone-like shape ("08139-555"): with a postal label it is judged as a postal code below
+        const postalL = L === LBL_POSTAL || L === LBL_KODEPOS || L === LBL_CEP;
+        if (strong && strong !== L && !(L === "Credentials" && PHONE_LABELS.has(strong)) && !(postalL && isPostalCodeShape(T))) return wrong(strong, `This is a ${strong}.`);
         const keyLike = /^["']?[A-Za-z_][\w.-]*["']?$/.test(T) && new RegExp('["\']?' + escRe(T) + '["\']?\\s*[:=]').test(rLine);
         if (keyLike && !/^@/.test(T)) return wrong(PTC_NONE, `This is a field name / key, not a ${L}.`);
         if (isFieldLabelOrHeader(T)) return wrong(PTC_NONE, `This is a field label or column header, not a ${L}.`);
@@ -595,7 +597,30 @@
                 if (/^http:\/\//i.test(T) || /^www\./i.test(T)) return wrong(PTC_NONE, "Only https:// links are labeled.");
                 return /^https:\/\/\S+$/i.test(T) ? null : wrong(PTC_NONE, "This is not a link.");
             case "IP Address": return isIpAddressFormat(T) ? null : wrong(PTC_NONE, "This is not a valid IP address.");
-            case "Contact Number": return (isContactNumberFormat(T) && !isDefaultOrPlaceholderPhone(T)) ? null : wrong(PTC_NONE, "This is not a phone number.");
+            case "Contact Number": {   // (v11.4.0) replaced by Indian Mobile Number / International Phone Number
+                const ph = phoneLabelFor(T);
+                return ph ? wrong(ph, `Phone numbers now use ${LBL_IN_MOBILE} or ${LBL_INTL_PHONE}; this one is an ${ph}.`) : wrong(PTC_NONE, "This is not a phone number.");
+            }
+            case LBL_IN_MOBILE:
+                if (isIndianMobileFormat(T)) return null;
+                return isIntlPhoneFormat(T) ? wrong(LBL_INTL_PHONE, "This is not an Indian mobile (10 digits starting 6-9).") : wrong(PTC_NONE, "This is not a phone number.");
+            case LBL_INTL_PHONE: {
+                if (isIntlPhoneFormat(T)) return null;
+                if (isIndianMobileFormat(T)) return wrong(LBL_IN_MOBILE, "This is an Indian mobile number (10 digits starting 6-9).");
+                // a run of digits right after a phone word ("Fax: 2345 6789")
+                const before = rLine.slice(0, Math.max(0, rLine.indexOf(T)));
+                const dg = digits.length;
+                if (dg >= 7 && dg <= 15 && !isNotAPhoneShape(T) && /\b(?:phone|ph|tel|telephone|mob|mobile|cell|fax|whatsapp|contact|call|landline)\b[^\d]{0,12}$/i.test(before)) return null;
+                return wrong(PTC_NONE, "This is not a phone number.");
+            }
+            case LBL_POSTAL:
+                return isPostalCodeShape(T) ? null : wrong(PTC_NONE, "This is not a postal code.");
+            case LBL_KODEPOS:
+                if (/^\d{5}$/.test(T)) return null;
+                return isPostalCodeShape(T) ? wrong(LBL_POSTAL, "An Indonesian postal code (kode pos) has 5 digits.") : wrong(PTC_NONE, "This is not a postal code.");
+            case LBL_CEP:
+                if (/^\d{5}-?\d{3}$/.test(T)) return null;
+                return isPostalCodeShape(T) ? wrong(LBL_POSTAL, "A Brazilian CEP is written #####-###.") : wrong(PTC_NONE, "This is not a postal code.");
             case "Vehicle Number Plate": return isVehiclePlateFormat(T) ? null : wrong(PTC_NONE, "This is not a valid Indian number plate.");
             case "Person Username": return /^@[A-Za-z_][\w.]{1,29}$/.test(T) ? null : wrong(PTC_NONE, "This is not an @username.");
             case "Account Number": return (/^\d[\d -]{7,22}\d$/.test(T) && digits.length >= 9 && digits.length <= 18) ? null : wrong(PTC_NONE, "This is not a bank account number (9-18 digits).");
@@ -604,7 +629,10 @@
                 const ctxTxt = (rLine + " " + lineOf(leftText, T)).toLowerCase();
                 return /\b(?:dob|d\.o\.b|date\s*of\s*birth|birth\s*date|birthday|born|date_of_birth|birth_date)\b/.test(ctxTxt) ? null : wrong(PTC_NONE, "Only dates of birth are labeled.");
             }
-            case "Address": return isCompleteAddress(T) ? null : wrong(PTC_NONE, "Not a complete address (a city, street or PIN alone is not labeled).");
+            case "Address":   // (v11.4.0) full or partial; a city, state, country or postal code alone is not an address
+                if (isCompleteAddress(T) || isPartialAddress(T)) return null;
+                if (isPostalCodeShape(T) && !/\s\S+\s/.test(T)) return wrong(LBL_POSTAL, "A postal code on its own is labeled Postal Code, not Address.");
+                return wrong(PTC_NONE, "Not an address (a city, state or country alone is not labeled).");
             case "Credentials":
                 if (ordinaryWord) return wrong(PTC_NONE, "This is an ordinary word, not a credential.");
                 return null;
@@ -780,7 +808,7 @@
                     const names = cands.length > 2 ? cands.slice(0, -1).join(", ") + " and " + cands[cands.length - 1] : cands.join(" and ");
                     if (bad.length === vs.length) {
                         verdict = { expected: bad[0].expected, why: bad[0].why + ` (The colour is shared by ${names}; whichever you used, it is wrong.)` };
-                        Lx = cands[0]; stats.checked++; handled = true;
+                        Lx = cands.join(" / "); stats.checked++; handled = true;   // (v11.4.0) the label could be any of them
                     } else if (bad.length === 0) {
                         Lx = cands[0]; stats.checked++; handled = true;
                     } else {
@@ -1016,7 +1044,7 @@
         const s = str.trim().replace(/[^0-9]/g, "");
         if (/^(?:1234567890|0123456789|0000000000|9999999999|1111111111|2222222222|3333333333|4444444444|5555555555|6666666666|7777777777|8888888888)$/.test(s)) return true;
         // US fictional 555 numbers; an Indian mobile (starting 6-9, e.g. 9065558612) is real
-        if ((/^555\d{7}$/.test(s) || /^\d{3}555\d{4}$/.test(s)) && !/^[6-9]\d{9}$/.test(s)) return true;
+        if ((/^555\d{7}$/.test(s) || /^1?[2-9]\d{2}555\d{4}$/.test(s)) && !/^[6-9]\d{9}$/.test(s)) return true;   // (v11.4.0) US shape only: "(021) 5551234" is Jakarta
         if (/(\d)\1{5,}/.test(s.slice(-10))) return true;            // "7000000000": six identical digits in a row is not a phone
         return false;
     }
@@ -1090,7 +1118,22 @@
 
     // ---- Platform palette (label chip colours), learned from the page and cached for 3 s ----
     const LABEL_NAMES = ["Account Number", "Address", "Business Name", "Contact Number", "Credentials", "Date", "Email Address",
-        "IP Address", "Overscrubbed", "Person Name", "URL/Link", "Person Username", "Vehicle Number Plate"];
+        "IP Address", "Overscrubbed", "Person Name", "URL/Link", "Person Username", "Vehicle Number Plate",
+        // (v11.4.0) the new label set (Complete PII Type List). Many share a chip colour: such a label is judged for every
+        // label of that colour and shown as "unsure" when they disagree (v11.3.6), never guessed.
+        "Passport Number", "Driver Licence Number", "Payment Card Number", "Crypto Wallet Address", "Postal Code", "GPS Coordinates",
+        "Indian Aadhaar Number", "Indian PAN (Business)", "Indian PAN (Individual)", "Indian GSTIN", "Indian TAN", "Indian CIN",
+        "Brazilian CPF", "Brazilian RG", "Indian Voter ID", "Brazilian PIS/PASEP", "MAC Address", "Indonesian BPJS Number",
+        "Indonesian Civil Servant Number (NIP)", "US Social Security Number", "US Passport Number", "US Employer Identification Number",
+        "US Driver Licence Number", "US Bank Account/Routing Number", "Stripe Key", "Slack Token", "Sentry Token", "SendGrid Key",
+        "PyPI Token", "AWS Access Key ID", "AWS Secret Access Key", "Bank Account Number", "Brazilian CNPJ", "Brazilian CNH",
+        "Bearer Token", "Brazilian CEP", "Brazilian Voter Registration", "Connection URL with Credentials", "Date of Birth",
+        "Generic API Key", "Google API Key", "GitLab Token", "GitHub Username", "GitHub Token", "IBAN", "IMEI Number",
+        "Indian Mobile Number", "Indian UAN", "Indian UPI ID", "Indian Vehicle Number Plate", "IPv6 Address", "JWT Token", "npm Token",
+        "OpenAI API Key", "Password", "Private IP Address", "Private Key Block", "Public IPv4 Address", "Indian IFSC Code",
+        "Anthropic API Key", "International Phone Number", "Indonesian Postal Code", "Indonesian NPWP", "Indonesian Passport Number",
+        "Indonesian NIK", "Indonesian Family Card (KK)", "Indonesian Driving Licence (SIM)"];
+    const LABEL_NAME_SET = new Set(LABEL_NAMES.map(l => l.toLowerCase()));
     let __ptPalette = { t: 0, list: [] };
     // ---- Colour parsing (v11.2.3) ----
     // Chrome reports modern CSS colours in their own notation (oklch(...), oklab(...), color(srgb ...), "rgb(1 2 3 / 0.5)"),
@@ -1199,6 +1242,7 @@
         const now = Date.now();
         if (now - __ptPalette.t < 3000 && __ptPalette.list.length) return __ptPalette.list;
         const list = [];
+        const seen = new Set();   // chip names on the page, whether or not their colour could be read
         try {
             const { leftPane, rightPane } = getPanes();
             const all = document.querySelectorAll("span, div, button, label, li, a");
@@ -1207,6 +1251,7 @@
                 const txt = (el.textContent || "").trim();
                 if (!LABEL_NAMES.includes(txt)) continue;
                 if ((leftPane && leftPane.contains(el)) || (rightPane && rightPane.contains(el)) || el.closest("#pt-floating-bar")) continue;
+                seen.add(txt);
                 // the chip, its colour dot and its parent
                 const parts = [el, el.parentElement, ...el.querySelectorAll("*")].filter(Boolean);
                 for (const pEl of parts) {
@@ -1221,7 +1266,9 @@
         // (v11.3.0) Labels whose chip colour could not be read get the dashboard's known colours (measured on the live
         // page: Date 235/47/150, Overscrubbed 255/227/227, ...). Detection then never depends on reading every chip.
         const have = new Set(list.map(x => x.name));
-        for (const [name, rgb] of Object.entries(DEFAULT_LABEL_COLOURS)) if (!have.has(name)) list.push({ name, rgb, builtin: true });
+        // (v11.4.0) ...but only for chips that are on the page (or when no chip was found at all): the new label set dropped
+        // none of the old chips yet, and a built-in colour for a chip that is not there would invent a shared colour.
+        for (const [name, rgb] of Object.entries(DEFAULT_LABEL_COLOURS)) if (!have.has(name) && (seen.size === 0 || seen.has(name))) list.push({ name, rgb, builtin: true });
         __ptPalette = { t: now, list, learned: have.size };
         return list;
     }
@@ -1424,6 +1471,8 @@
     function cleanWord(str) {
         if (!str) return "";
         let s = str.trim();
+        // (v11.4.0) a phone number written with its area code in brackets keeps them: "(022) 2345 6789", "+1 (415) 732-0198"
+        if (/^\(\+?\d{1,4}\)[ \t]?\d/.test(s) && phoneLabelFor(s)) return s;
         if (/^_[^_]+_$/.test(s) || /^\*[^\*]+\*$/.test(s)) {
             s = s.slice(1, -1);
         }
@@ -2436,6 +2485,92 @@
         return false;
     }
 
+    // ---- (v11.4.0) Contact group of the new label set ----
+    // Phone numbers are split in two labels: an Indian mobile (10 digits starting 6-9, with an optional +91 / 91 / 0 in
+    // front) and every other phone number (other countries, Indian landlines, toll-free). The country code is part of the label.
+    const LBL_IN_MOBILE = "Indian Mobile Number", LBL_INTL_PHONE = "International Phone Number", LBL_POSTAL = "Postal Code",
+        LBL_KODEPOS = "Indonesian Postal Code", LBL_CEP = "Brazilian CEP";
+    const PHONE_LABELS = new Set(["Contact Number", LBL_IN_MOBILE, LBL_INTL_PHONE]);
+    // Shapes that look like a phone number but are something else: dates, IP and version numbers, SSN, CPF, EIN, ZIP+4, CEP, year ranges.
+    function isNotAPhoneShape(s) {
+        if (isDateFormat(s) || isIpAddressFormat(s)) return true;
+        if (/^\d{1,4}(?:\.\d{1,4}){2,}$/.test(s)) return true;                           // 1.2.3.4
+        if (/^\d{3}-\d{2}-\d{4}$/.test(s) || /^\d{2}-\d{7}$/.test(s)) return true;          // SSN, EIN
+        if (/^\d{3}\.\d{3}\.\d{3}-\d{2}$/.test(s)) return true;                            // CPF
+        if (/^\d{5}-\d{3,4}$/.test(s)) return true;                                         // CEP, ZIP+4
+        if (/^(?:19|20)\d{2}\s?[-\u2013]\s?(?:19|20)?\d{2}$/.test(s)) return true;          // 2019-2023
+        if (/^[1-9]\d{3}[\s-]\d{4}[\s-]\d{4}(?:[\s-]\d{1,4})?$/.test(s)) return true;        // Aadhaar, card numbers
+        return false;
+    }
+    function isIndianMobileFormat(str) {
+        if (!str) return false;
+        const s = str.trim();
+        if (isDefaultOrPlaceholderPhone(s) || isNotAPhoneShape(s)) return false;
+        const m = /^(\+\s?91|\(\+91\)|\+\(91\)|0091|91(?=[\s.-])|0)?[\s.-]?([6-9][\d\s.-]*\d)$/.exec(s);
+        if (!m) return false;
+        const groups = m[2].split(/[\s.-]+/);
+        if (groups.length > 3 || groups.some(g => g.length < 2) || groups[0].length < 3) return false;   // "+91 80 2345 6789" is a landline
+        if (groups.join("").length !== 10) return false;
+        // "080-2345 6789" is a landline: a leading 0 joined to the number must be followed by at least 5 digits ("098450 12345")
+        if (m[1] === "0" && /^0\d/.test(s) && (s.split(/[\s.-]+/)[0].length < 6)) return false;
+        return true;
+    }
+    function isIntlPhoneFormat(str) {
+        if (!str) return false;
+        const s = str.trim();
+        if (isIndianMobileFormat(s) || isNotAPhoneShape(s) || isDefaultOrPlaceholderPhone(s)) return false;
+        const digits = s.replace(/\D/g, "");
+        if (/^\+\s?\(?\d{1,4}\)?(?:[\s.-]?\(?\d{1,5}\)?){1,6}$/.test(s)) return digits.length >= 8 && digits.length <= 15;   // +44 20 7946 0321
+        if (digits.length < 8 || digits.length > 13) return false;
+        if (/^0\d{1,4}(?:[\s-]\d{2,8}){1,3}$/.test(s)) return true;                              // 080-2345 6789, 0812-3456-7890, 0120-4567890
+        if (/^0\d{9,11}$/.test(s) && !/^0[6-9]\d{9}$/.test(s)) return true;                      // 02223456789
+        if (/^\(0?\d{2,4}\)\s?\d{3,5}(?:[\s-]?\d{3,5})?$/.test(s)) return true;                  // (022) 2345 6789, (11) 3456-7890, (415) 732-0198
+        if (/^1[89][06]0[\s-]?\d{3}[\s-]?\d{3,4}$/.test(s)) return true;                         // 1800-123-4567
+        if (/^[2-9]\d{2}([.-])\d{3}\1\d{4}$/.test(s)) return true;                               // 415-732-0198
+        return false;
+    }
+    // A postal code of any country: 560087, 94105-1234, 01310-100, SW1A 1AA, K6E 8X2, 6274SH. Needs a digit; never a word.
+    function isPostalCodeShape(v) {
+        const s = (v || "").trim();
+        const core = s.replace(/[ -]/g, "");
+        return core.length >= 3 && core.length <= 10 && /\d/.test(s) && /^[A-Z0-9]{2,8}(?:[ -][A-Z0-9]{2,5})?$/i.test(s) &&
+            (core.match(/[A-Za-z]/g) || []).length <= 5;   // "EC1A 1BB" has 5 letters
+    }
+    // (v11.4.0) A partial address: a street (name + street word, or a street word in front as in Brazil and Indonesia),
+    // optionally with a house / flat / shop number before it and the place names after it ("MG Road", "Shop 4, Linking Road,
+    // Bandra West", "221B Baker Street, London", "Rua Augusta 1500, Consolacao", "Jl. Sudirman No. 12, Jakarta Selatan").
+    // Street words that are often ordinary words (Drive, Way, Place, Court, Square) need a house number in front.
+    const ADDR_NAME = "(?:[A-Z][A-Za-z'\u00C0-\u017F.-]*|\\d+(?:st|nd|rd|th))";
+    const ADDR_PREMISE = "(?:(?:[Ff]lat|[Pp]lot|[Hh]ouse|[Dd]oor|[Ss]hop|[Uu]nit|[Oo]ffice|[Aa]pt\\.?|[Aa]partment|[Nn]o\\.?|#)\\s*(?:[Nn]o\\.?\\s*)?#?\\d+[A-Za-z]?(?:[-/]\\d+[A-Za-z]?)?|\\d+[A-Za-z]?(?:[-/]\\d+[A-Za-z]?)?)";
+    const ADDR_SUFFIX_SAFE = "Road|Rd|Street|St|Lane|Ln|Avenue|Ave|Boulevard|Blvd|Marg|Nagar|Layout|Colony|Chowk|Gali|Galli|Enclave|Vihar|Puram|Peth|Highway|Hwy";
+    const ADDR_SUFFIX_RISKY = "Drive|Dr|Way|Court|Ct|Place|Pl|Square|Sq|Terrace|Path|Close|Crescent";
+    const ADDR_PREFIX = "(?:Rua|R\\.|Avenida|Av\\.|Travessa|Alameda|Pra[c\u00E7]a|Rodovia|Estrada|Jl\\.|Jalan|Gg\\.|Gang)";
+    const ADDR_PLACES = "(?:,\\s*(?:" + ADDR_NAME + "(?:\\s+" + ADDR_NAME + "){0,3}|[1-9]\\d{2}\\s?\\d{3}|\\d{5}(?:-\\d{3,4})?)(?:\\s+[1-9]\\d{2}\\s?\\d{3})?)*";
+    const PARTIAL_ADDRESS_SOURCE =
+        "(?<![A-Za-z0-9])(?:" +
+            "(?:" + ADDR_PREMISE + ",?\\s+)?(?:" + ADDR_NAME + "\\s+){1,4}(?:" + ADDR_SUFFIX_SAFE + ")\\b\\.?" +
+            "|" + ADDR_PREMISE + ",?\\s+(?:" + ADDR_NAME + "\\s+){1,4}(?:" + ADDR_SUFFIX_RISKY + ")\\b\\.?" +
+            "|" + ADDR_PREFIX + "\\s+(?:" + ADDR_NAME + "\\s*){1,4}(?:,?\\s*(?:No\\.?\\s*)?\\d+[A-Za-z]?)?" +
+        ")(?!\\s+[A-Z][a-z])" + ADDR_PLACES;
+    const NOT_STREET_START = /^(?:the|a|an|this|that|these|those|our|your|my|their|his|her|its|on|in|at|to|from|via|main|new|old|next|last|each|every|any|no|wall|easy|sesame|memory|fast|silk|abbey|google|test|high|one|two|first|second)$/i;
+    function isPartialAddress(str) {
+        const s = (str || "").trim();
+        if (s.length < 5 || s.length > 200) return false;
+        if (isCompleteAddress(s)) return true;
+        const m = new RegExp("^" + PARTIAL_ADDRESS_SOURCE + "$").exec(s);
+        if (!m) return false;
+        // the first word of a street name without a house number must not be an ordinary word ("The Road", "Wall Street")
+        const first = s.split(/[\s,]+/)[0];
+        if (!/\d/.test(first) && !new RegExp("^" + ADDR_PREFIX + "$", "i").test(first) && !/^(?:flat|plot|house|door|shop|unit|office|apt\.?|apartment|no\.?|#)$/i.test(first) && NOT_STREET_START.test(first)) return false;
+        return true;
+    }
+    // Which phone label a value gets, or null when it is not a phone number on its own.
+    function phoneLabelFor(str) {
+        if (isIndianMobileFormat(str)) return LBL_IN_MOBILE;
+        if (isIntlPhoneFormat(str)) return LBL_INTL_PHONE;
+        return null;
+    }
+
     const NON_EMAIL_FILE_EXTENSIONS = /\.(?:png|jpe?g|gif|svg|webp|ico|bmp|tiff|heic|mp4|mp3|wav|mov|avi|js|ts|jsx|tsx|css|scss|html|xml|json|ya?ml|md|txt|csv|tar|gz|zip|rar|7z|exe|dmg|apk|ipa|bin|pdf|docx?|xlsx?|pptx?)$/i;
 
     function isEmailAddressFormat(str) {
@@ -2789,7 +2924,7 @@
         // 1. Contact Number, Account Number, Credentials, IP Address, Email Address:
         // Rule: "mail should same as left then label it if not no"
         // If changed or scrubbed, return null (never label as Email Address and never as Overscrubbed)
-        if (isContactNumberFormat(chg) || isContactNumberFormat(orig) ||
+        if (isContactNumberFormat(chg) || isContactNumberFormat(orig) || phoneLabelFor(chg) || phoneLabelFor(orig) ||
             isIpAddressFormat(chg) || isIpAddressFormat(orig) ||
             isAccountNumberFormat(chg) || isAccountNumberFormat(orig) ||
             isCredentialsFormat(chg) || isCredentialsFormat(orig) ||
@@ -4302,14 +4437,32 @@
 
         // Step 3: Direct Scan for 10-Digit Contact Numbers identical in BOTH left and right documents
         // (v10.5.1) also "+91 98450 12345", "98450-12345", "+91-9845012345", landlines "080-2345 6789".
-        const phoneMatches = rightText.match(/(?:\+91[\s-]?|\b0)?\b[6-9]\d{4}[\s-]?\d{5}\b|(?:(?<![\w+])\+\d{1,3}[- ]?|\b0|\b)[6-9]\d{9}\b|\b0[1-9]\d{1,3}[- ]\d{3,4}[- ]?\d{4}\b/g) || [];
-        for (const pm of phoneMatches) {
-            // Money is not a phone number ("Amount 7000000000 INR", "Rs. 9876543210").
-            const pmLine = lineContaining(pm, rightText);
-            const esc = pm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            if (new RegExp("(?:amount|amt|total|balance|price|rs\\.?|inr|\u20B9|usd|\\$)\\s*[:=]?\\s*" + esc + "|" + esc + "\\s*(?:inr|rs|rupees|usd|dollars|views|likes|units)\\b", "i").test(pmLine)) continue;
-            if (isContactNumberFormat(pm) && leftText.includes(pm)) {
-                addTarget(pm, "Contact Number", "pt-contact", 95);
+        // (v11.4.0) Every phone shape (other countries, landlines, toll-free) is found, and gets Indian Mobile Number or
+        // International Phone Number. A bare run of digits is a phone only right after a phone word ("Phone:", "Fax", "Tel").
+        {
+            const PHONE_CAND = /(?<![\w+@\/.-])(?:\+[ \t]?\(?\d{1,4}\)?|\(\+?\d{1,4}\)|\d)(?:[ \t.-]?\(?\d{1,5}\)?){1,7}(?![\w@\/]|[.-]\d)/g;
+            const PHONE_WORD = /\b(?:phone|ph|tel|telephone|mob|mobile|cell|fax|whatsapp|wa|hp|contact(?:\s*(?:no|number))?|call|landline)\b\.?\s*(?:no\.?|number|#)?\s*["']?\s*[:=\-]?\s*["']?\s*$/i;
+            let pm;
+            while ((pm = PHONE_CAND.exec(rightText)) !== null) {
+                let cand = pm[0].trim();
+                let lab = phoneLabelFor(cand);
+                for (let k = 0; !lab && k < 4 && /[ \t.-]/.test(cand); k++) {   // "+44 20 7946 0321 2024": drop trailing groups
+                    cand = cand.replace(/[ \t.-]+[^ \t.-]+$/, "");
+                    lab = phoneLabelFor(cand);
+                }
+                const lineStart = rightText.lastIndexOf("\n", pm.index) + 1;
+                const before = rightText.slice(Math.max(lineStart, pm.index - 30), pm.index);
+                if (!lab) {
+                    cand = pm[0].trim();
+                    const dg = cand.replace(/\D/g, "");
+                    if (PHONE_WORD.test(before) && dg.length >= 7 && dg.length <= 15 && !isNotAPhoneShape(cand) && !isDefaultOrPlaceholderPhone(cand)) lab = LBL_INTL_PHONE;
+                }
+                if (!lab || !leftText.includes(cand)) continue;
+                // Money is not a phone number ("Amount 7000000000 INR", "Rs. 9876543210").
+                const pmLine = lineContaining(cand, rightText);
+                const esc = cand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                if (new RegExp("(?:amount|amt|total|balance|price|rs\\.?|inr|\u20B9|usd|\\$)\\s*[:=]?\\s*" + esc + "|" + esc + "\\s*(?:inr|rs|rupees|usd|dollars|views|likes|units)\\b", "i").test(pmLine)) continue;
+                addTarget(cand, lab, "pt-contact", 95);
             }
         }
 
@@ -4793,6 +4946,50 @@
             }
         }
 
+        // (v11.4.0) Postal codes (Postal Code, Indonesian Postal Code, Brazilian CEP). A number alone says nothing, so a postal
+        // code is labeled only when a key ("Pincode: 560087", "postal_code": "...", "Kode pos 12190") or a table / CSV column
+        // header names it. Inside an address line the whole line is the Address instead.
+        {
+            const KEY = "postal[\\s_-]*code|post[\\s_-]*code|postcode|zip[\\s_-]*code|zipcode|zip|pin[\\s_-]*code|pincode|kode[\\s_-]*pos|kodepos|cep";
+            const HEADER_RE = new RegExp("^(?:" + KEY + ")$", "i");
+            const postalLabel = (key, v, line) => {
+                const k = key.toLowerCase().replace(/[\s_-]/g, "");
+                if (k === "kodepos" || (/\bindonesia\b/i.test(line) && /^\d{5}$/.test(v))) return LBL_KODEPOS;
+                if (k === "cep" || (/\bbra[sz]il\b/i.test(line) && /^\d{5}-\d{3}$/.test(v))) return /^\d{5}-?\d{3}$/.test(v) ? LBL_CEP : LBL_POSTAL;
+                return LBL_POSTAL;
+            };
+            const fit = (raw) => {   // "94105 and more" -> "94105"
+                let v = (raw || "").trim().replace(/^["']|["']$/g, "");
+                for (let k = 0; k < 4 && v && !isPostalCodeShape(v); k++) v = v.replace(/[ -]+[^ -]*$/, "");
+                return isPostalCodeShape(v) ? v : null;
+            };
+            const kv = new RegExp("(?:^|[\\s{,\"'(|])[\"']?(" + KEY + ")[\"']?\\s*(?:no\\.?|number)?\\s*[:=\\-]?\\s*[\"']?([A-Za-z0-9][A-Za-z0-9 -]{0,10}[A-Za-z0-9])", "gim");
+            let km;
+            while ((km = kv.exec(rightText)) !== null) {
+                const v = fit(km[2]);
+                if (v && leftText.includes(v)) addTarget(v, postalLabel(km[1], v, lineContaining(v, rightText)), "pt-address", 97);
+            }
+            const lines = rightText.split("\n");
+            for (let i = 0; i < lines.length; i++) {
+                const ln = lines[i];
+                const delim = ln.includes("|") ? "|" : ln.includes("\t") ? "\t" : ln.includes(",") ? "," : null;
+                if (!delim) continue;
+                const head = ln.split(delim).map(c => c.trim().replace(/^["']|["']$/g, ""));
+                const col = head.findIndex(c => HEADER_RE.test(c));
+                if (col < 0) continue;
+                for (let r = i + 1; r < lines.length && r <= i + 5000; r++) {
+                    const row = lines[r];
+                    if (!row.trim()) continue;
+                    if (!row.includes(delim)) break;
+                    if (/^[\s|:\-]+$/.test(row)) continue;   // markdown separator row
+                    const cells = row.split(delim);
+                    if (cells.length !== head.length) continue;
+                    const v = fit(cells[col]);
+                    if (v && leftText.includes(v)) addTarget(v, postalLabel(head[col], v, row), "pt-address", 97);
+                }
+            }
+        }
+
         // Step 10: Scan for Complete Addresses identical in BOTH left & right
         // Rule: "for address there should be complete address eg 12, MG Road, Pune 411001 and both left and right should be then only it should be labeled as adress otherwise no need to mark"
         const addrCandidateRegex = /(?:(?:#?\d+[a-zA-Z]?(?:[-/]\d+[a-zA-Z]?)?|plot(?:\s*no\.?)?\s*\d+|flat(?:\s*no\.?)?\s*\d+|door(?:\s*no\.?)?\s*\d+|house(?:\s*no\.?)?\s*\d+)[,\s]+[a-zA-Z0-9\s,\.\-']+(?:road|rd|street|st|lane|ln|crescent|cres|avenue|ave|nagar|layout|colony|sector|block|cross|main|marg|chowk|rasta)[,\s]+[a-zA-Z\s]+[,\s]+[1-9][0-9]{5})/gi;
@@ -4850,6 +5047,29 @@
             if (!isCompleteAddress(joined) && !isCompleteAddress(block.join(" "))) continue;
             if (!leftNorm.includes(normWs(block.join(" ")))) continue;
             for (const l of block) addTarget(l.replace(/[,\s]+$/, ""), "Address", "pt-address", 85, true);
+        }
+        // (v11.4.0) Partial addresses count too: a street on its own ("MG Road", "221B Baker Street, London", "Rua Augusta
+        // 1500", "Jl. Sudirman No. 12") with whatever place names follow it on the line. A city, state, country or PIN alone
+        // is still not an address. Same rules as above: identical on both sides, never a fragment of a scrubbed address.
+        {
+            const re = new RegExp(PARTIAL_ADDRESS_SOURCE, "g");
+            const lines = rightText.split("\n");
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                if (line.length > 400 || /[{};=<>]/.test(line)) continue;
+                re.lastIndex = 0;
+                let m;
+                while ((m = re.exec(line)) !== null) {
+                    const cand = m[0].replace(/[,\s]+$/, "");
+                    if (!isPartialAddress(cand) || !leftText.includes(cand)) continue;
+                    let covered = false;
+                    for (const t of targetMap.values()) if (t.label === "Address" && t.text !== cand && t.text.includes(cand)) { covered = true; break; }
+                    if (covered) continue;
+                    const block = blockAround(i);
+                    if (block.length > 1 && !leftNorm.includes(normWs(block.join(" ")))) continue;   // part of a scrubbed address
+                    addTarget(cand, "Address", "pt-address", 84, true);
+                }
+            }
         }
 
         // Step 11: Credential key-value lines ("Password - x", "PAN: y", "OTP is 123456").
@@ -4930,6 +5150,10 @@
             }
         }
 
+        // (v11.4.0) The old "Contact Number" label is split: every phone found by the older scans (tables, key-value lines)
+        // gets Indian Mobile Number or International Phone Number.
+        for (const t of targetMap.values()) if (t.label === "Contact Number") t.label = phoneLabelFor(t.text) || LBL_INTL_PHONE;
+
         const __result = Array.from(targetMap.values()).sort((a, b) => b.text.length - a.text.length);
         // Words that replaced a NAME (scrubbed names) travel with the result (also through the cache) for the mistake check.
         __result.scrubbedNames = new Set([...__ptScrubbedNameWords, ...__ptNameCellWords]);
@@ -4998,7 +5222,7 @@
                     const childEls = clone.querySelectorAll("*");
                     for (let b = 0; b < childEls.length; b++) {
                         const ct = (childEls[b].textContent || "").trim();
-                        if (/^(?:Business Name|Person Name|Account Number|Contact Number|Credentials|Date|Email Address|IP Address|URL\/Link|Person Username|Vehicle Number Plate|Address|Overscrubbed|[\u00D7\u2715xX])$/i.test(ct)) {
+                        if (LABEL_NAME_SET.has(ct.toLowerCase()) || /^[\u00D7\u2715xX]$/.test(ct)) {
                             childEls[b].remove();
                         }
                     }

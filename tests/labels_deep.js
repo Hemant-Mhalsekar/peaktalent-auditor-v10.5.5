@@ -35,10 +35,10 @@ pos('Address','Office: Plot No. 7, Sector 62, Noida, Uttar Pradesh 201309','Plot
 pos('Address','Residence: H.No 12-3-45, Banjara Hills, Hyderabad 500034','H.No 12-3-45, Banjara Hills, Hyderabad 500034');
 pos('Address','Address:\nNo. 45, 2nd Cross, Indiranagar,\nBengaluru 560038\nIndia\nThanks','No. 45, 2nd Cross, Indiranagar');
 negs('Address','Location: Bengaluru','Bengaluru');
-negs('Address','Our office is on MG Road.','MG Road');
+pos('Address','Our office is on MG Road.','MG Road');   // (v11.4.0) partial address
 negs('Address','Floor: 3rd Floor','3rd Floor');
 neg('Address','Address: 14, MG Road, Pune 411001','Address: 22, Brigade Road, Pune 411002','22, Brigade Road, Pune 411002');
-negs('Address','Pincode: 560038','560038');
+pos('Address','Pincode: 560038','560038','Postal Code');   // (v11.4.0) a keyed PIN is a Postal Code, never an Address
 
 /* ===================== BUSINESS NAME ===================== */
 pos('Business Name','She works at Infosys Limited in Pune.','Infosys Limited');
@@ -59,18 +59,18 @@ negs('Business Name','STRIPE_KEY=sk_live_51HxYzAbCdEfGhIjKlMn','STRIPE');
 negs('Business Name','HDFC Bank, Koramangala Branch','HDFC Bank');
 
 /* ===================== CONTACT NUMBER ===================== */
-pos('Contact Number','Call 9876543210 now','9876543210');
-pos('Contact Number','Mobile: +91 98450 12345','+91 98450 12345');
-pos('Contact Number','Ph: +91-9811122233','+91-9811122233');
-pos('Contact Number','WhatsApp 98200-11223','98200-11223');
-pos('Contact Number','Office: 080-2345 6789','080-2345 6789');
-pos('Contact Number','{"mobile": "9123498765"}','9123498765');
-pos('Contact Number','| 1042 | Kavya | 9845098450 |','9845098450');
-neg('Contact Number','Call 9876543210','Call 9123456780','9123456780');
-negs('Contact Number','Order 5876543210 shipped','5876543210');
-negs('Contact Number','Timestamp 1698765432','1698765432');
-not('Contact Number','Aadhaar: 4321 8765 2109','4321 8765 2109');
-negs('Contact Number','Call 9999999999 for demo','9999999999');
+pos('Indian Mobile Number','Call 9876543210 now','9876543210');
+pos('Indian Mobile Number','Mobile: +91 98450 12345','+91 98450 12345');
+pos('Indian Mobile Number','Ph: +91-9811122233','+91-9811122233');
+pos('Indian Mobile Number','WhatsApp 98200-11223','98200-11223');
+pos('International Phone Number','Office: 080-2345 6789','080-2345 6789');
+pos('Indian Mobile Number','{"mobile": "9123498765"}','9123498765');
+pos('Indian Mobile Number','| 1042 | Kavya | 9845098450 |','9845098450');
+neg('Indian Mobile Number','Call 9876543210','Call 9123456780','9123456780');
+negs('Indian Mobile Number','Order 5876543210 shipped','5876543210');
+negs('Indian Mobile Number','Timestamp 1698765432','1698765432');
+not('Indian Mobile Number','Aadhaar: 4321 8765 2109','4321 8765 2109');
+negs('Indian Mobile Number','Call 9999999999 for demo','9999999999');
 
 /* ===================== CREDENTIALS ===================== */
 pos('Credentials','Password - customerdelivery2@admin123!','customerdelivery2@admin123!');
@@ -228,10 +228,10 @@ negs('Business Name','The vendor list is attached.','vendor');
 negs('Business Name','Use Cloud SQL and OAuth.','Cloud SQL');
 negs('Business Name','[Insert company name]','Insert company name');
 // Contact
-pos('Contact Number','Contact: 09876543210','09876543210');
-pos('Contact Number','tel:+919876543210','+919876543210');
-negs('Contact Number','Amount 7000000000 INR','7000000000');
-negs('Contact Number','ID 1234567890','1234567890');
+pos('Indian Mobile Number','Contact: 09876543210','09876543210');
+pos('Indian Mobile Number','tel:+919876543210','+919876543210');
+negs('Indian Mobile Number','Amount 7000000000 INR','7000000000');
+negs('Indian Mobile Number','ID 1234567890','1234567890');
 // Credentials
 pos('Credentials','Security answer - BlueHorizon','BlueHorizon');
 pos('Credentials','MPIN: 4821','4821');
@@ -240,7 +240,7 @@ pos('Credentials','Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NT
 pos('Credentials','Expiry: 11/28','11/28');
 not('Credentials','Valid till 11/28 per policy','11/28');
 negs('Credentials','password reset link sent','reset');
-negs('Credentials','PIN code: 560038','560038');
+pos('Credentials','PIN code: 560038','560038','Postal Code');   // (v11.4.0) not a credential: a Postal Code
 negs('Credentials','OTP verification failed','verification');
 // Date
 pos('Date','| Name | DOB |\n| Ravi | 04/02/1995 |','04/02/1995');

@@ -127,7 +127,7 @@ test('Identity', 'identical @handle labeled', () => yes(run(F.handleSame.left, F
 {
   const ts = run(F.greeting.left, F.greeting.right);
   test('Person', 'greeting word not part of name', () => { no(ts, 'Hi Rahul Sharma'); yes(ts, 'Rahul Sharma', 'Person Name'); });
-  test('Person', 'identical phone labeled', () => yes(ts, '9876543210', 'Contact Number'));
+  test('Person', 'identical phone labeled', () => yes(ts, '9876543210', 'Indian Mobile Number'));
 }
 
 

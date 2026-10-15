@@ -20,7 +20,7 @@ Please find the onboarding checklist attached. Call me on +91 98450 12345 if any
 Regards,
 Priya Raghavan
 HR Manager, Northwind Traders Pvt Ltd`,
-[['Priya Raghavan','Person Name'],['priya.raghavan@northwind-demo.com','Email Address'],['Arjun Mehta','Person Name'],['arjun.mehta@contoso-demo.in','Email Address'],['+91 98450 12345','Contact Number'],['Northwind Traders Pvt Ltd','Business Name']],
+[['Priya Raghavan','Person Name'],['priya.raghavan@northwind-demo.com','Email Address'],['Arjun Mehta','Person Name'],['arjun.mehta@contoso-demo.in','Email Address'],['+91 98450 12345','Indian Mobile Number'],['Northwind Traders Pvt Ltd','Business Name']],
 ['Mon, 12 Jan 2026','HR Manager','Onboarding','Subject','Regards']);
 
 diff('email header scrubbed',
@@ -59,7 +59,7 @@ Address: Flat 302, Tower B, Prestige Lakeside, Varthur Road, Bengaluru 560087
 EXPERIENCE
 Senior Data Analyst, Infosys Limited (2019 - Present)
 - Built dashboards in Power BI for the finance team.`,
-[['rahul.verma92@gmail.com','Email Address'],['9876543210','Contact Number'],['https://www.linkedin.com/in/rahul-verma-92','URL/Link'],['14/08/1992','Date']],
+[['rahul.verma92@gmail.com','Email Address'],['9876543210','Indian Mobile Number'],['https://www.linkedin.com/in/rahul-verma-92','URL/Link'],['14/08/1992','Date']],
 ['EXPERIENCE','Senior Data Analyst','Power BI','2019','Present','finance']);
 
 diff('resume scrubbed',
@@ -188,12 +188,12 @@ same('csv employees',
 `emp_id,full_name,email,phone,city
 1042,Kavya Nair,kavya.nair@globex-demo.com,9845098450,Kochi
 1043,Imran Shaikh,imran.shaikh@globex-demo.com,9123498765,Mumbai`,
-[['Kavya Nair','Person Name'],['kavya.nair@globex-demo.com','Email Address'],['9845098450','Contact Number'],['Imran Shaikh','Person Name'],['9123498765','Contact Number']],
+[['Kavya Nair','Person Name'],['kavya.nair@globex-demo.com','Email Address'],['9845098450','Indian Mobile Number'],['Imran Shaikh','Person Name'],['9123498765','Indian Mobile Number']],
 ['emp_id','full_name','Kochi','Mumbai','1042']);
 
 same('json users',
 `[{"id": 77812, "name": "Deepak Choudhary", "email": "deepak.c@initech-demo.com", "mobile": "+91-9811122233", "last_login_ip": "203.0.113.45", "created_at": "2024-03-11T09:12:44Z"}]`,
-[['Deepak Choudhary','Person Name'],['deepak.c@initech-demo.com','Email Address'],['+91-9811122233','Contact Number'],['203.0.113.45','IP Address']],
+[['Deepak Choudhary','Person Name'],['deepak.c@initech-demo.com','Email Address'],['+91-9811122233','Indian Mobile Number'],['203.0.113.45','IP Address']],
 ['77812','2024-03-11T09:12:44Z','created_at','last_login_ip']);
 
 same('server log',
@@ -241,7 +241,7 @@ Mobile: +91 99001 22334
 Alt: 99001-22335
 Fax: 1800 425 1234
 Ext: 4521`,
-[['080-2345 6789','Contact Number'],['+91 99001 22334','Contact Number'],['99001-22335','Contact Number']],['4521']);
+[['080-2345 6789','International Phone Number'],['+91 99001 22334','Indian Mobile Number'],['99001-22335','Indian Mobile Number']],['4521']);
 
 same('version numbers are not IPs',`Upgrade from version 1.2.3.4 to v2.0.0.1 today.`,[],['1.2.3.4','2.0.0.1']);
 
@@ -266,7 +266,7 @@ same('indian complete address',`Address: Flat 302, Tower B, Prestige Lakeside, V
 diff('number overscrub',`Total items: 42 boxes`,`Total items: 42 qelvorans`,[['qelvorans','Overscrubbed']]);
 diff('name surname changed only',`Signed: Pooja Hegde`,`Signed: Pooja Varnoth`,[['Pooja','Person Name']],['Varnoth']);
 same('whatsapp export',`12/03/25, 9:14 pm - Nikhil Joshi: reached?\n12/03/25, 9:15 pm - Ananya Rao: 5 min`,[['Nikhil Joshi','Person Name'],['Ananya Rao','Person Name']],['12/03/25','9:14 pm']);
-same('signature block',`Best,\nKaran Malhotra\nProduct Lead | Initech Software Pvt Ltd\nM: +91 98200 11223`,[['Karan Malhotra','Person Name'],['Initech Software Pvt Ltd','Business Name'],['+91 98200 11223','Contact Number']],['Product Lead','Best']);
+same('signature block',`Best,\nKaran Malhotra\nProduct Lead | Initech Software Pvt Ltd\nM: +91 98200 11223`,[['Karan Malhotra','Person Name'],['Initech Software Pvt Ltd','Business Name'],['+91 98200 11223','Indian Mobile Number']],['Product Lead','Best']);
 
 
 // ---------- Round 4: spreadsheet exports (support tickets, lecture list) ----------

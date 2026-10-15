@@ -7,7 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const { JSDOM } = require('jsdom');
 const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'content.js'), 'utf8');
-const PAL = { 'Account Number': [114, 46, 209], 'Address': [229, 57, 53], 'Business Name': [19, 194, 194], 'Contact Number': [250, 140, 22],
+const PAL = { 'Account Number': [114, 46, 209], 'Address': [229, 57, 53], 'Business Name': [19, 194, 194], 'Indian Mobile Number': [250, 140, 22], 'International Phone Number': [0, 150, 80], 'Postal Code': [120, 40, 40],
   'Credentials': [255, 122, 69], 'Date': [235, 47, 150], 'Email Address': [56, 158, 13], 'IP Address': [92, 219, 211], 'Overscrubbed': [255, 227, 227],
   'Person Name': [22, 119, 255], 'URL/Link': [250, 173, 20], 'Person Username': [47, 84, 235], 'Vehicle Number Plate': [160, 217, 17] };
 const LABELS = Object.keys(PAL);
@@ -69,14 +69,19 @@ const cases = [];   // [name, left, right, word, correctLabel ('' = must stay un
 const same = (name, line, word, label, wrongTry) => cases.push([name, [line], [line], word, label, wrongTry]);
 const diff = (name, l, r, word, label, wrongTry) => cases.push([name, [l], [r], word, label, wrongTry]);
 // one case per label (identical value on both sides)
-same('Account Number', 'Account Number: 50100234567891', '50100234567891', 'Account Number', 'Contact Number');
+same('Account Number', 'Account Number: 50100234567891', '50100234567891', 'Account Number', 'Indian Mobile Number');
 same('Address', 'Address: Flat 302, Tower B, Prestige Lakeside, Varthur Road, Bengaluru 560087', 'Flat 302, Tower B, Prestige Lakeside, Varthur Road, Bengaluru 560087', 'Address', 'Business Name');
 same('Business Name', 'She works at Infosys Limited in Pune.', 'Infosys Limited', 'Business Name', 'Person Name');
-same('Contact Number', 'Mobile: +91 98450 12345', '+91 98450 12345', 'Contact Number', 'Account Number');
+same('Indian Mobile Number', 'Mobile: +91 98450 12345', '+91 98450 12345', 'Indian Mobile Number', 'Account Number');
+// (v11.4.0) Contact group of the new label set
+same('International Phone Number', 'US desk: +1 (415) 732-0198', '+1 (415) 732-0198', 'International Phone Number', 'Indian Mobile Number');
+same('Indian landline', 'Office: 080-2345 6789', '080-2345 6789', 'International Phone Number', 'Indian Mobile Number');
+same('Postal Code', 'Pincode: 560087', '560087', 'Postal Code', 'Address');
+same('partial address', 'Meet at MG Road tomorrow', 'MG Road', 'Address', 'Postal Code');
 same('Credentials', 'PAN: ABCDE1234F', 'ABCDE1234F', 'Credentials', 'Vehicle Number Plate');
 same('Date', 'DOB: 05-11-1988', '05-11-1988', 'Date', 'Credentials');
 same('Email Address', 'Mail priya.raghavan@northwind-demo.com today', 'priya.raghavan@northwind-demo.com', 'Email Address', 'URL/Link');
-same('IP Address', 'Server 192.168.10.25 is down', '192.168.10.25', 'IP Address', 'Contact Number');
+same('IP Address', 'Server 192.168.10.25 is down', '192.168.10.25', 'IP Address', 'Indian Mobile Number');
 diff('Overscrubbed', 'The Council Member approved it.', 'The Council Beagenhydra approved it.', 'Beagenhydra', 'Overscrubbed', 'Date');
 same('Person Name', 'Hi Rahul Sharma, welcome aboard.', 'Rahul Sharma', 'Person Name', 'Business Name');
 same('URL/Link', 'Docs: https://docs.acmecorp-demo.io/setup', 'https://docs.acmecorp-demo.io/setup', 'URL/Link', 'Email Address');
@@ -87,7 +92,7 @@ same('unchanged word ("exclusive")', 'Deliver at least 3-5 exclusive/original st
 same('unchanged JSON key', '"dependencies": {', 'dependencies', '', 'Overscrubbed');
 diff('scrubbed person name', 'I met Furkan at the airport.', 'I met Dalvorin at the airport.', 'Dalvorin', '', 'Overscrubbed');
 diff('scrubbed company', 'She joined Accenture in 2019.', 'She joined Velmoratech in 2019.', 'Velmoratech', '', 'Business Name');
-diff('scrubbed phone', 'Call 9876543210 today', 'Call 9123456780 today', '9123456780', '', 'Contact Number');
+diff('scrubbed phone', 'Call 9876543210 today', 'Call 9123456780 today', '9123456780', '', 'Indian Mobile Number');
 same('statement date (not DOB)', 'Statement Date: 12-01-2026', '12-01-2026', '', 'Date');
 same('city alone', 'Location: Bengaluru', 'Bengaluru', '', 'Address');
 same('http link', 'Old: http://legacy.acmecorp-demo.io', 'http://legacy.acmecorp-demo.io', '', 'URL/Link');
