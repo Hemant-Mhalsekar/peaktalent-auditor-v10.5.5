@@ -290,6 +290,19 @@ same('signature block',`Best,\nKaran Malhotra\nProduct Lead | Initech Software P
   same('languages are not names', `Languages: English, Bengali, Hindi, Tamil`, [], ['English','Bengali','Hindi','Tamil']);
 }
 
+
+// ---------- Round 6: code files (YAML permissions, Vue hidden inputs, PHP imports) ----------
+same('yaml permissions are not credentials', "permissions:\n  contents: read\n  pages: write\n  id-token: write\n\njobs:\n  deploy:\n    environment:\n      name: github-pages", [], ['write','read','github','github-pages']);
+same('html name attributes are not people', '<input type="hidden" name="CUST_ID" v-model="genChecksum.CUST_ID">\n<input type="hidden" name="WEBSITE" v-model="genChecksum.WEBSITE">\n<input type="hidden" name="CHECKSUMHASH" v-model="genChecksum.checksum">', [], ['WEBSITE','CHECKSUMHASH','CUST_ID']);
+same('php imports', 'use App\\Http\\Controllers\\Controller;\nuse App\\Models\\Match;', [], ['Controller','Match']);
+
+
+// ---------- Round 7: project notes table (brand + ordinary word, scrubbed dotted handles) ----------
+{
+  const MT = require('./fixture_meta');
+  diff('project notes table', MT.left, MT.right, [['Meta','Business Name']], ['Meta token','Jordan.Miller','Morgan.Bennett','Casey.Wilson','Jamie.Parker','Alex','Taylor']);
+}
+
 // ---------- Run ----------
 let fail=0, pass=0;
 for (const [name,l,r,must,mustNot] of C) {

@@ -143,6 +143,26 @@ same('language', 'Languages: English, Bengali, Hindi', 'Bengali', '', 'Person Na
     p.close();
   }
 
+  // Reported case: README "# Droom Chat" - the reviewer labels "Droom" (identical) as Business Name twice. The pane
+  // header contains the file name and a light-blue "Annotate here" chip; neither is a label.
+  {
+    const p = await page(['# Droom Chat', '', 'Chat Plugin for Droom'], ['# Droom Chat', '', 'Chat Plugin for Droom']);
+    const hdr = p.w.document.createElement('div');
+    const [r, g, b] = PAL['Person Name'];
+    hdr.innerHTML = `<span>right.md-d146149f</span><span style="background-color: rgba(${r}, ${g}, ${b}, 0.12); color: rgb(${r}, ${g}, ${b}); border-radius: 6px">Annotate here</span>`
+      // the same title row as on a .gitkeep file, with an icon inside the chip
+      + `<div><span>right.gitkeep-03956dc6</span><a style="background-color: rgba(${r}, ${g}, ${b}, 0.12); color: rgb(${r}, ${g}, ${b})"><i>\u270E</i> Annotate here</a></div>`;
+    p.Rp.insertBefore(hdr, p.Rp.firstChild);
+    await p.settle();
+    await p.annotate('Droom', 'Business Name');
+    await p.annotate('Droom', 'Business Name');
+    const chip = Array.from(p.Rp.querySelectorAll('span')).find(s => s.textContent === 'Annotate here');
+    const chip2 = p.Rp.querySelector('a');
+    check(!chip.getAttribute('data-ptc') && !chip2.getAttribute('data-ptc') && !p.w.document.querySelector('[data-ptc="wrong"]') && !/Mistake/.test(p.status()),
+      'pane header ("Annotate here" chip, file name) is never judged; correct Business Name labels -> no mistake', { chip: chip.getAttribute('data-ptc'), status: p.status() });
+    p.close();
+  }
+
   // Partial label: Overscrubbed covering unchanged text too.
   {
     const p = await page(['| Total Transfer-Ins/VDRs for the year | 0 |'], ['| Total Galeonorb-Ins/VDRs for the year | 0 |']);

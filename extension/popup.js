@@ -29,6 +29,7 @@ async function refresh() {
   const res = await send(tab.id, { action: 'status' });
   if (!res) { setStatus('warn', 'Reload the PeakTalent tab to start the auditor'); return; }
   $('rescan').disabled = false;
+  $('diag').disabled = false;
   if (!res.onReviewScreen) { setStatus('', 'Waiting for a side-by-side review screen'); return; }
   $('stats').hidden = false;
   $('tags').textContent = res.tags;
@@ -44,6 +45,18 @@ $('rescan').addEventListener('click', async () => {
   $('rescan').disabled = true;
   await send(tab.id, { action: 'rescan' });
   setTimeout(() => { $('rescan').disabled = false; refresh(); }, 400);
+});
+
+$('diag').addEventListener('click', async () => {
+  const tab = await activeTab();
+  if (!tab) return;
+  const res = await send(tab.id, { action: 'diagnostics' });
+  const text = (res && res.text) || 'No answer from the page - reload the PeakTalent tab and try again.';
+  $('diagtext').hidden = false;
+  $('diagtext').value = text;
+  $('diagtext').select();
+  try { await navigator.clipboard.writeText(text); $('diag').textContent = 'Copied - paste it in your message'; }
+  catch (e) { try { document.execCommand('copy'); $('diag').textContent = 'Copied - paste it in your message'; } catch (x) { $('diag').textContent = 'Select the text below and copy it'; } }
 });
 
 refresh();

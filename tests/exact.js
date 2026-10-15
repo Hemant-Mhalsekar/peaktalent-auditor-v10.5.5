@@ -79,7 +79,7 @@ doc('Support ticket CSV',
 `ticket_id,customer,phone,issue,agent
 4102434713937455,Sneha Iyer,9845098450,Login failed after velmarish,bournika.j
 4102649426338705,Torvan Quist,9988776655,Refund not received,bournika.j`,
-[['Sneha Iyer','Person Name'],['9845098450','Contact Number'],['velmarish','Overscrubbed']]);
+[['Sneha Iyer','Person Name'],['9845098450','Contact Number'],['velmarish','Overscrubbed'],['bournika.j','Person Name']]);
 
 doc('Code + config',
 `// Author: Karthik Rao
