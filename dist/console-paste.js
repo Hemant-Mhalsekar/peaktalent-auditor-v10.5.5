@@ -1,4 +1,4 @@
-// PeakTalent Auditor v11.4.2 - console build.
+// PeakTalent Auditor v11.4.3 - console build.
 // Open the PeakTalent review tab, open the browser console (Safari: Develop > Show JavaScript Console,
 // Chrome: Cmd/Ctrl+Option/Alt+J), paste this whole file and press Enter. Pasting again replaces the old copy.
 // GENERATED FILE - edit src/content.js and run `node scripts/build.js`.
@@ -20,7 +20,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.4.2";
+    const PT_VERSION = "11.4.3";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -578,7 +578,7 @@
         }
 
         // b. entity label on unchanged text
-        const isEmail = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/.test(T);
+        const isEmail = isEmailAddressFormat(T);   // (v11.4.3) the same rule as the suggestions: no placeholders, no icon@2x.png
         const strong = isEmail ? "Email Address" : (/^https:\/\/\S+$/i.test(T) && !isFileAssetLink(T)) ? "URL/Link" : isIpAddressFormat(T) ? "IP Address" :
             /^@[A-Za-z_][\w.]{1,29}$/.test(T) ? "Person Username" : isVehiclePlateFormat(T) ? "Vehicle Number Plate" :
             phoneLabelFor(T);
@@ -593,7 +593,10 @@
         const ordinaryWord = plain && plain === T.replace(/\s+/g, " ").trim() && isOrdinaryPhrase(plain);
         const digits = T.replace(/\D/g, "");
         switch (L) {
-            case "Email Address": return isEmail ? null : wrong(PTC_NONE, "This is not an e-mail address.");
+            case "Email Address":
+                if (isEmail) return null;
+                if (isDefaultOrPlaceholderEmail(T)) return wrong(PTC_NONE, "This is a placeholder address (example.com, test.com, ...), not personal data.");
+                return wrong(PTC_NONE, "This is not an e-mail address.");
             case "URL/Link":
                 if (/^http:\/\//i.test(T) || /^www\./i.test(T)) return wrong(PTC_NONE, "Only https:// links are labeled.");
                 if (isFileAssetLink(T)) return wrong(PTC_NONE, "This links to a file (image, script, style, font, archive, media, data or code). File links are not labeled (documents are).");
@@ -1054,7 +1057,7 @@
         if (!str) return false;
         const s = str.trim().toLowerCase();
         if (/@(?:example\.(?:com|org|net)|test\.(?:com|org)|dummy\.(?:com|org)|sample\.(?:com|org)|placeholder\.(?:com|org)|domain\.com)\b/i.test(s)) return true;
-        if (/^(?:user|test|email|dummy|placeholder|name|sample)@/i.test(s)) return true;
+        // (v11.4.3) the name part alone does not make a placeholder: test@acmecorp-demo.io is a real company's mailbox
         return false;
     }
 
@@ -2593,6 +2596,7 @@
 
     const NON_EMAIL_FILE_EXTENSIONS = /\.(?:png|jpe?g|gif|svg|webp|ico|bmp|tiff|heic|mp4|mp3|wav|mov|avi|js|ts|jsx|tsx|css|scss|html|xml|json|ya?ml|md|txt|csv|tar|gz|zip|rar|7z|exe|dmg|apk|ipa|bin|pdf|docx?|xlsx?|pptx?)$/i;
 
+    const EMAIL_LOCAL = "[A-Za-z0-9._%+-]+(?:'[A-Za-z0-9._%+-]+)*";
     function isEmailAddressFormat(str) {
         if (!str) return false;
         const s = str.trim();
@@ -2602,9 +2606,12 @@
         // Never match filenames with media, code, or document extensions
         if (NON_EMAIL_FILE_EXTENSIONS.test(s)) return false;
         // Must match authentic email pattern with valid internet domain
-        if (!/^[A-Za-z0-9._%+-]+@[A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z]{2,}$/.test(s)) return false;
+        // (v11.4.3) an apostrophe inside the name part belongs to it ("sean.o'brien@...")
+        if (!new RegExp("^" + EMAIL_LOCAL + "@[A-Za-z0-9][A-Za-z0-9.-]*\\.[A-Za-z]{2,}$").test(s)) return false;
         const parts = s.split("@");
         if (parts.length !== 2) return false;
+        // (v11.4.3) a name part cannot start or end with a dot or hold two dots in a row ("priya.@", "priya..r@")
+        if (/^\.|\.$|\.\./.test(parts[0]) || /\.\./.test(parts[1])) return false;
         const domainParts = parts[1].split(".");
         if (domainParts.length < 2) return false;
         const sld = domainParts[0].toLowerCase();
@@ -4760,13 +4767,67 @@
 
         // Step 6: Scan for Email Addresses that exist identically in BOTH left and right documents
         // Rule: "mail should same as left then label it if not no"
-        const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
+        const emailRegex = new RegExp("(?<![A-Za-z0-9._%+-])" + EMAIL_LOCAL + "@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b", "g");
         const rightEmails = rightText.match(emailRegex) || [];
         for (const em of rightEmails) {
             // "git@github.com:acme/tool.git" is an SSH remote, not an e-mail.
             if (/^git@/i.test(em) || new RegExp(em.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ":[\\w~]").test(rightText)) continue;
             if (isEmailAddressFormat(em) && leftText.includes(em)) {
                 addTarget(em, "Email Address", "pt-email", 90);
+            }
+        }
+
+        // (v11.4.3) An e-mail broken over two lines ("priya.raghavan@northwind-" + "demo.com", "priya.raghavan" + "@northwind-demo.com").
+        // Joined only when the break is inside the domain, right before the "@", or after a . _ - in the name part, the joined
+        // text is a real e-mail, the first piece is not one already, and the left has the same e-mail (line breaks ignored).
+        // A label cannot span lines, so each piece is labeled on its own.
+        {
+            const setDirect = (text, label, cls, priority) => {
+                const ex = targetMap.get(text);
+                if (!ex || priority > ex.priority) targetMap.set(text, { text, label, cls, priority });
+            };
+            const rl = rightText.split("\n");
+            let leftFlatE = null;
+            for (let i = 0; i + 1 < rl.length; i++) {
+                const tm = /(\S+)\s*$/.exec(rl[i]), hm = /^\s*(\S+)/.exec(rl[i + 1]);
+                if (!tm || !hm) continue;
+                const a = tm[1].replace(/^.*[<(\["'`:,;]/, "");
+                const b = hm[1].replace(/[>)\]"'`.,;:!?]+$/, "");
+                if (a.length < 2 || b.length < 2 || (a + b).split("@").length !== 2) continue;
+                const brk = (a.includes("@") && !a.endsWith("@")) || b.startsWith("@") || (/[._-]$/.test(a) && b.includes("@") && !a.includes("@"));
+                if (!brk || isEmailAddressFormat(a) || !isEmailAddressFormat(a + b)) continue;
+                if (leftFlatE === null) leftFlatE = leftText.replace(/\s+/g, "");
+                if (!leftFlatE.includes(a + b)) continue;
+                setDirect(a, "Email Address", "pt-email", 90);
+                setDirect(b, "Email Address", "pt-email", 90);
+            }
+
+            // (v11.4.3) A hidden address ("priya.raghavan [at] northwind-demo [dot] com", "priya(at)northwind-demo.com",
+            // "arjun.mehta at contoso-demo dot co dot in") is not an e-mail label. When the same hidden address is on both
+            // sides, its person name (the name part, if it is a name and not a mailbox like "support") is a Person Name and
+            // its company (the domain's name, unless it is a webmail provider like gmail) is a Business Name.
+            // A spelled-out " at " counts only with a spelled-out " dot " and a name part like "first.last".
+            const AT = "(?:\\s*[\\[({]\\s*at\\s*[\\])}]\\s*|\\s+at\\s+)";
+            const DOT = "(?:\\s*[\\[({]\\s*dot\\s*[\\])}]\\s*|\\s+dot\\s+|\\.)";
+            const hidden = new RegExp("(?<![\\w.@-])([A-Za-z][A-Za-z0-9._-]*?)" + AT + "([A-Za-z0-9][A-Za-z0-9-]*(?:" + DOT + "[A-Za-z0-9][A-Za-z0-9-]*)*" + DOT + "[A-Za-z]{2,})(?![\\w-])", "gi");
+            const WEBMAIL = /^(?:gmail|googlemail|yahoo|ymail|rocketmail|outlook|hotmail|live|msn|icloud|me|mac|aol|proton|protonmail|pm|rediffmail|rediff|gmx|yandex|mail|zohomail|fastmail|tutanota|qq|163)$/i;
+            const MAILBOX = /^(?:support|info|hr|admin|sales|contact|help|noreply|no-reply|no_reply|team|office|careers|jobs|billing|accounts?|enquiry|enquiries|hello|mail|marketing|ops|security|service|services|webmaster|postmaster|feedback|press|media|legal|finance|payroll|recruitment|hiring|it|devops|alerts|notifications)$/i;
+            const normWsE = (x) => x.replace(/\s+/g, " ").trim();
+            const leftNormE = normWsE(leftText);
+            let hm2;
+            while ((hm2 = hidden.exec(rightText)) !== null) {
+                const whole = hm2[0];
+                if (/@/.test(whole)) continue;
+                const bracketAt = /[\[({]\s*at\s*[\])}]/i.test(whole);
+                if (!bracketAt && !(/\sdot\s/i.test(whole) && /[._]/.test(hm2[1]))) continue;
+                if (!leftNormE.includes(normWsE(whole))) continue;
+                const local = hm2[1];
+                const labels = hm2[2].split(new RegExp(DOT, "i")).filter(Boolean);
+                if (labels.length < 2) continue;
+                const n = labels.length;
+                const company = (n >= 3 && /^(?:co|com|org|net|ac|gov|edu|or|ne)$/i.test(labels[n - 2]) && labels[n - 1].length === 2) ? labels[n - 3] : labels[n - 2];
+                if (/^[A-Za-z]+(?:[._-][A-Za-z]+){0,3}$/.test(local) && !MAILBOX.test(local)) setDirect(local, "Person Name", "pt-person", 90);
+                if (company && company.length >= 2 && !WEBMAIL.test(company) && /[A-Za-z]/.test(company)) setDirect(company, "Business Name", "pt-business", 90);
             }
         }
 

@@ -96,6 +96,10 @@ diff('scrubbed phone', 'Call 9876543210 today', 'Call 9123456780 today', '912345
 same('statement date (not DOB)', 'Statement Date: 12-01-2026', '12-01-2026', '', 'Date');
 same('city alone', 'Location: Bengaluru', 'Bengaluru', '', 'Address');
 same('link to a file (v11.4.1)', 'Logo: https://cdn.acmecorp-demo.io/static/logo.png', 'https://cdn.acmecorp-demo.io/static/logo.png', '', 'URL/Link');
+same('placeholder e-mail (v11.4.3)', 'Mail priya@example.com today', 'priya@example.com', '', 'Email Address');
+same('test@ on a real domain (v11.4.3)', 'Mail test@acmecorp-demo.io today', 'test@acmecorp-demo.io', 'Email Address', 'URL/Link');
+same('asset file name (v11.4.3)', 'Logo icon@2x.png here', 'icon@2x.png', '', 'Email Address');
+same("apostrophe e-mail (v11.4.3)", "Mail sean.o'brien@initech-demo.com today", "sean.o'brien@initech-demo.com", 'Email Address', 'Person Name');
 same('link to a document (v11.4.2)', 'Payslip: https://hr.acmecorp-demo.io/payslips/2024-03.pdf', 'https://hr.acmecorp-demo.io/payslips/2024-03.pdf', 'URL/Link', 'Date');
 same('Google Sheets link (v11.4.2)', 'Budget: https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/edit', 'https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/edit', 'URL/Link', 'Credentials');
 same('link to a script (v11.4.1)', 'Load https://cdn.acmecorp-demo.io/app/main.js first', 'https://cdn.acmecorp-demo.io/app/main.js', '', 'URL/Link');

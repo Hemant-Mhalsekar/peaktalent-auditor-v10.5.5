@@ -118,6 +118,52 @@ no('Contact: anita.desai@globex-demo.com', 'morvela.quint@globex-demo.com', 'Con
 notAs('Logo: icon@2x.png', 'icon@2x.png');
 notAs('import x from "@angular/core"', '@angular/core');
 notAs('UPI ID: rahul92@okhdfcbank', 'rahul92@okhdfcbank');
+// (v11.4.3) an apostrophe inside the name part is part of the address
+yes("Mail sean.o'brien@initech-demo.com today", "sean.o'brien@initech-demo.com");
+notAs("Mail sean.o'brien@initech-demo.com today", 'brien@initech-demo.com');
+yes("He wrote 'priya@northwind-demo.com' twice", 'priya@northwind-demo.com');
+// (v11.4.3) invalid addresses are not e-mails
+notAs('Mail priya.@northwind-demo.com', 'priya.@northwind-demo.com');
+notAs('Mail priya..r@northwind-demo.com', 'priya..r@northwind-demo.com');
+notAs('Mail .priya@northwind-demo.com', '.priya@northwind-demo.com');
+// (v11.4.3) placeholders: only fake domains are skipped; test@ / user@ on a real domain are e-mails
+notAs('Mail priya@example.com', 'priya@example.com');
+notAs('Mail someone@test.com', 'someone@test.com');
+notAs('Mail anyone@domain.com', 'anyone@domain.com');
+yes('Mail test@acmecorp-demo.io', 'test@acmecorp-demo.io');
+yes('Mail user@acmecorp-demo.io', 'user@acmecorp-demo.io');
+yes('Mail email@acmecorp-demo.io', 'email@acmecorp-demo.io');
+yes('Mail sample@globex-demo.com', 'sample@globex-demo.com');
+// (v11.4.3) an e-mail broken over two lines: each line's piece is labeled
+const EW = 'Mail priya.raghavan@northwind-\ndemo.com today';
+yes(EW, 'priya.raghavan@northwind-');
+yes(EW, 'demo.com');
+const EW2 = 'Mail priya.raghavan\n@northwind-demo.com today';
+yes(EW2, 'priya.raghavan');
+yes(EW2, '@northwind-demo.com');
+yes('Mail priya.raghavan@northwind-demo.com today', 'demo.com', undefined, EW);   // wrapped only on the right
+no(EW, 'demo.com', 'Mail priya.raghavan@velmora-\ndemo.com today');                // domain changed -> scrubbed
+notAs('Ends priya.raghavan@northwind-demo.com\ndemo.com is a site', 'demo.com');  // already a whole e-mail: the next line is not part of it
+// (v11.4.3) hidden addresses: only the person's name and the company name are labeled
+const H1 = 'Mail priya.raghavan [at] northwind-demo [dot] com';
+yes(H1, 'priya.raghavan', 'Person Name');
+yes(H1, 'northwind-demo', 'Business Name');
+notAs(H1, 'priya.raghavan [at] northwind-demo [dot] com');
+const H2 = 'Mail priya(at)northwind-demo.com';
+yes(H2, 'priya', 'Person Name');
+yes(H2, 'northwind-demo', 'Business Name');
+const H3 = 'Write to arjun.mehta at contoso-demo dot co dot in';
+yes(H3, 'arjun.mehta', 'Person Name');
+yes(H3, 'contoso-demo', 'Business Name');
+const H4 = 'Mail support {at} initech-demo {dot} com';
+yes(H4, 'initech-demo', 'Business Name');
+notAs(H4, 'support', 'Person Name');                                               // a role word is not a person
+const H5 = 'Mail rahul.verma [at] gmail [dot] com';
+yes(H5, 'rahul.verma', 'Person Name');
+notAs(H5, 'gmail', 'Business Name');                                               // a webmail provider is not the person's company
+no('Mail priya.raghavan [at] northwind-demo [dot] com', 'northwind-demo', 'Mail zelvora.k [at] northwind-demo [dot] com');   // changed on the right -> nothing
+notAs('We are available at acmecorp-demo.com for questions', 'available', 'Person Name');
+notAs('Meet at office dot com later', 'office', 'Business Name');
 
 // ======================= IP ADDRESS =======================
 label('IP Address');
