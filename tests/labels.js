@@ -167,6 +167,28 @@ notAs('Meet at office dot com later', 'office', 'Business Name');
 
 // ======================= IP ADDRESS =======================
 label('IP Address');
+// (v11.4.5) a full stop after the address, both ends of a range
+yes('Ping 8.8.8.8.', '8.8.8.8');
+yes('Blocked 203.0.113.45, then retried.', '203.0.113.45');
+yes('Range 10.0.0.1-10.0.0.50 reserved', '10.0.0.50');
+yes('Range 10.0.0.1 - 10.0.0.50 reserved', '10.0.0.50');
+// port and range suffix are not part of the label
+yes('Connect to 10.0.0.12:8080 now', '10.0.0.12');
+yes('Allow 10.0.0.0/16 only', '10.0.0.0');
+// (v11.4.5) IPv6 forms
+yes('Link fe80::1ff:fe23:4567:890a up', 'fe80::1ff:fe23:4567:890a');
+yes('Link fe80::1ff:fe23:4567:890a%eth0 up', 'fe80::1ff:fe23:4567:890a');
+yes('Mapped ::ffff:192.168.1.10 ok', '::ffff:192.168.1.10');
+yes('Prefix 2001:db8::/32 owned', '2001:db8::');
+yes('Addr 2001:db8:0:0:1:0:0:1 set', '2001:db8:0:0:1:0:0:1');
+yes('Peer 2001:db8:85a3::8a2e:370:7334.', '2001:db8:85a3::8a2e:370:7334');
+notAs('At 12:30:45 today', '12:30:45');
+notAs('fp aa:bb:cc:dd:ee:ff:00:11:22:33', 'aa:bb:cc:dd:ee:ff:00:11');
+notAs('MAC 00:1A:2B:3C:4D:5E here', '00:1A:2B:3C:4D:5E');
+// (v11.4.5) a version word after the number
+notAs('pkg 10.2.0.15 build', '10.2.0.15');
+notAs('Upgrade to 4.18.0.2 release today', '4.18.0.2');
+yes('Host 10.2.0.15 builds the site', '10.2.0.15');
 yes('Server 192.168.10.25 is down', '192.168.10.25');
 yes('login ok user=ravi ip=172.16.4.21', '172.16.4.21');
 yes('"last_login_ip": "203.0.113.45"', '203.0.113.45');
@@ -436,6 +458,7 @@ yes('Allowed: 10.0.0.1, 10.0.0.2', '10.0.0.2');
 notAs('Price 1.25.30.40 kg', '1.25.30.40');
 notAs('Section 3.2.1.4 of the policy', '3.2.1.4');
 label2('Overscrubbed');
+yes('Server alpha is down', '10.1.2.3', undefined, 'Server 10.1.2.3 is down');   // (v11.4.5) a word replaced by an IP address
 yes('Monthly report attached.', 'velmarish', undefined, 'Monthly velmarish attached.');
 yes('## Project Timeline', 'Zelvorine', undefined, '## Project Zelvorine');
 yes('| Status | Resolved |', 'Quellanor', undefined, '| Status | Quellanor |');

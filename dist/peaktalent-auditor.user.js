@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PeakTalent PII/BII Annotation Auditor
 // @namespace    https://dashboard.peaktalent.ai/
-// @version      11.4.4
+// @version      11.4.5
 // @description  Highlights PII/BII, credentials and overscrubbed text on PeakTalent review screens. Works fully offline.
 // @match        https://dashboard.peaktalent.ai/*
 // @run-at       document-idle
@@ -27,7 +27,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.4.4";
+    const PT_VERSION = "11.4.5";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -594,7 +594,9 @@
 
         // b. entity label on unchanged text
         const isEmail = isEmailAddressFormat(T);   // (v11.4.3) the same rule as the suggestions: no placeholders, no icon@2x.png
-        const strong = isEmail ? "Email Address" : (/^https:\/\/\S+$/i.test(T) && !isFileAssetLink(T)) ? "URL/Link" : isIpAddressFormat(T) ? "IP Address" :
+        // (v11.4.5) a four-part version number ("10.2.0.15 build", "Version 1.2.3.4") is not an IP address
+        const ipVersion = T.includes(".") && new RegExp("\\b(?:v(?:ersion)?|ver|release|build|section|sec|clause|chapter|step|rule|item)\\.?[\\s:=#]*" + escRe(T) + "|" + escRe(T) + "\\s*(?:build|release|rc\\d*|beta|alpha|version|patch|update|firmware|sdk|hotfix|ga|lts)\\b", "i").test(rLine);
+        const strong = isEmail ? "Email Address" : (/^https:\/\/\S+$/i.test(T) && !isFileAssetLink(T)) ? "URL/Link" : (isIpAddressFormat(T) && !ipVersion) ? "IP Address" :
             /^@[A-Za-z_][\w.]{1,29}$/.test(T) ? "Person Username" : isVehiclePlateFormat(T) ? "Vehicle Number Plate" :
             phoneLabelFor(T);
         const strongL = strong ? labelForPage(strong) : null;   // (v11.4.1) as the chips on this page name it
@@ -616,7 +618,9 @@
                 if (/^http:\/\//i.test(T) || /^www\./i.test(T)) return wrong(PTC_NONE, "Only https:// links are labeled.");
                 if (isFileAssetLink(T)) return wrong(PTC_NONE, "This links to a file (image, script, style, font, archive, media, data or code). File links are not labeled (documents are).");
                 return /^https:\/\/\S+$/i.test(T) ? null : wrong(PTC_NONE, "This is not a link.");
-            case "IP Address": return isIpAddressFormat(T) ? null : wrong(PTC_NONE, "This is not a valid IP address.");
+            case "IP Address":
+                if (!isIpAddressFormat(T)) return wrong(PTC_NONE, "This is not a valid IP address.");
+                return ipVersion ? wrong(PTC_NONE, "This is a version / section number, not an IP address.") : null;
             case "Contact Number": {   // (v11.4.0) replaced by Indian Mobile Number / International Phone Number
                 const ph = labelForPage(phoneLabelFor(T));
                 if (ph === "Contact Number") return null;   // (v11.4.1) a page with the old chips only: Contact Number is right
@@ -1509,6 +1513,8 @@
     function cleanWord(str) {
         if (!str) return "";
         let s = str.trim();
+        // (v11.4.5) an IPv6 address keeps its leading / trailing colons ("::ffff:192.168.1.10", "2001:db8::")
+        if (/^[0-9A-Fa-f:.]+$/.test(s) && s.includes("::") && isIpAddressFormat(s)) return s;
         // (v11.4.0) a phone number written with its area code in brackets keeps them: "(022) 2345 6789", "+1 (415) 732-0198"
         if (/^\(\+?\d{1,4}\)[ \t]?\d/.test(s) && phoneLabelFor(s)) return s;
         if (/^_[^_]+_$/.test(s) || /^\*[^\*]+\*$/.test(s)) {
@@ -2642,6 +2648,12 @@
     }
 
     function isIpv6(s) {
+        // (v11.4.5) an IPv4 address written as IPv6 ("::ffff:192.168.1.10"): the IPv4 tail counts as two groups
+        const v4tail = /^(.*:)((?:\d{1,3}\.){3}\d{1,3})$/.exec(s || "");
+        if (v4tail) {
+            if (!/^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/.test(v4tail[2])) return false;
+            return isIpv6(v4tail[1] + "0:0");
+        }
         if (!/^[0-9A-Fa-f:]+$/.test(s) || !s.includes(":")) return false;
         if (/^[0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5}$/.test(s)) return false; // MAC address
         const parts = s.split("::");
@@ -3889,7 +3901,8 @@
                 // Never label vector / path data or coordinates as Overscrubbed
                 // User rule: "and path can be changed r no need to be labeled"
                 if (isVectorOrPathData(cleanText, "")) return;
-                if (/^[cMmLlHhVvSsQqTtAaZz0-9.,\s\-]+$/.test(cleanText) && /\d/.test(cleanText) && !/[a-zA-Z]{3,}/.test(cleanText)) return;
+                // (v11.4.5) ...except an IP address that replaced an ordinary word ("Server alpha" -> "Server 10.1.2.3")
+                if (!(fromOrdinary && isIpAddressFormat(cleanText)) && /^[cMmLlHhVvSsQqTtAaZz0-9.,\s\-]+$/.test(cleanText) && /\d/.test(cleanText) && !/[a-zA-Z]{3,}/.test(cleanText)) return;
                 if (/^\d+(?:\.\d+)?$/.test(cleanText)) return;
 
                 // Never label a URL, link, domain name, footnote anchor, or partial URL as Overscrubbed
@@ -4199,6 +4212,12 @@
                     const kindOf = (x) => isEmailAddressFormat(x) || /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/.test(x) ? "email" : /^https?:\/\//i.test(x) ? "url" :
                         (phoneLabelFor(x) || isContactNumberFormat(x)) ? "phone" : /^\d(?:[\d\s.,\/:-]*\d)?$/.test(x) ? "number" :
                         /^[A-Za-z][A-Za-z'\-]*$/.test(x) ? "word" : "other";
+                    // (v11.4.5) the other way round too: an ordinary word replaced by an IP address ("Server alpha" -> "Server 10.1.2.3")
+                    if (o && ch && kindOf(o) === "word" && isIpAddressFormat(ch) && isCommonWord(o.toLowerCase()) && !couldBeName(o) && !leftText.includes(ch)) {
+                        __ptOrdinaryOrigins.add(ch);   // the original was ordinary: the changed-PII guard must not hide it
+                        addTarget(ch, "Overscrubbed", "pt-overscrub", 66);
+                        continue;
+                    }
                     if (o && ch && /^(?:email|url|phone|number)$/.test(kindOf(o)) && kindOf(ch) === "word" && ch.length >= 2 &&
                         !isDateFormat(o) && !new RegExp("(?:^|[^A-Za-z])" + ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?![A-Za-z])", "i").test(leftText)) {
                         addTarget(ch, "Overscrubbed", "pt-overscrub", 66);
@@ -4889,17 +4908,24 @@
 
         // Step 7B (v10.5.1): IP addresses identical on both sides (IPv4 and IPv6; MAC addresses and version strings excluded).
         {
-            const ipv4 = rightText.match(/(?<![\w.:-])(?:\d{1,3}\.){3}\d{1,3}(?![\w.]|:\d{1,2}\b(?!\d))/g) || [];
-            const ipv6 = rightText.match(/(?<![\w:])(?:[0-9a-fA-F]{1,4}:){2,7}:?(?:[0-9a-fA-F]{1,4})?(?:::)?(?:[0-9a-fA-F]{1,4})?(?![\w:])/g) || [];
+            // (v11.4.5) a full stop after the address ends the sentence ("Ping 8.8.8.8."); the second address of a range
+            // ("10.0.0.1-10.0.0.50") is found too. Port (":8080") and range suffix ("/16") are never part of the label.
+            const ipv4 = rightText.match(/(?<![\w.:])(?<![A-Za-z_]-)(?:\d{1,3}\.){3}\d{1,3}(?![\w]|\.\w|:\d{1,2}\b(?!\d))/g) || [];
+            // (v11.4.5) every IPv6 form: "::" anywhere ("fe80::1ff:fe23:4567:890a", "::1", "2001:db8::"), an IPv4 tail
+            // ("::ffff:192.168.1.10"); a zone ("%eth0") and a range suffix ("/32") stop the match
+            const ipv6 = (rightText.match(/(?<![\w:.])(?:[0-9A-Fa-f]{1,4}|:)(?::[0-9A-Fa-f]{0,4}){1,7}(?:\.\d{1,3}){0,3}(?![\w:]|\.\w)/g) || [])
+                .map(x => x.replace(/\.$/, ""));
             for (const ip of ipv4.concat(ipv6)) {
-                const t = ip.replace(/[.:]+$/, "");
+                const t = ip.replace(/\.+$/, "").replace(/(?<!:):$/, "");   // (v11.4.5) keep a closing "::" ("2001:db8::")
                 if (!isIpAddressFormat(t) || !leftText.includes(t)) continue;
                 if (/^(?:[0-9a-f]{2}:){5}[0-9a-f]{2}$/i.test(t)) continue;                         // MAC address
                 const line = lineContaining(t, rightText);
                 const escIp = t.replace(/\./g, "\\.");
                 // Version / section / price numbers that happen to have four parts are not IP addresses.
                 if (new RegExp("\\b(?:v(?:ersion)?|ver|release|build|section|sec|clause|chapter|ch|step|figure|fig|table|para|rule|item|rs|inr|price|cost)\\.?[\\s:=#]*" + escIp, "i").test(line)) continue;
-                if (new RegExp(escIp + "\\s*(?:kg|g|km|m|cm|mm|ml|l|%|units?|pcs|inr|usd|rs)\\b", "i").test(line)) continue;
+                if (new RegExp(escIp + "\\s*(?:(?:kg|g|km|m|cm|mm|ml|l|units?|pcs|inr|usd|rs)\\b|%(?![A-Za-z]))", "i").test(line)) continue;
+                // (v11.4.5) ...nor is a version followed by a version word ("pkg 10.2.0.15 build", "4.18.0.2 release")
+                if (t.includes(".") && new RegExp(escIp + "\\s*(?:build|release|rc\\d*|beta|alpha|version|patch|update|firmware|sdk|hotfix|ga|lts)\\b", "i").test(line)) continue;
                 // All four parts below 10 ("3.2.1.4") looks like numbering unless the line talks about networks.
                 if (t.includes(".") && t.split(".").every(o => Number(o) < 10) && !/\b(?:ip|host|server|addr|address|gateway|dns|subnet|proxy|ping|allow(?:ed)?|deny|connect|nat|vpn|router|lan|wan|cidr|inet)\b|[=@]\s*$/i.test(line.slice(0, line.indexOf(t)))) continue;
                 addTarget(t, "IP Address", "pt-ip", 90);
