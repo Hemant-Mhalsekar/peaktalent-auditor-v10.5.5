@@ -96,6 +96,8 @@ diff('scrubbed phone', 'Call 9876543210 today', 'Call 9123456780 today', '912345
 same('statement date (not DOB)', 'Statement Date: 12-01-2026', '12-01-2026', '', 'Date');
 same('city alone', 'Location: Bengaluru', 'Bengaluru', '', 'Address');
 same('link to a file (v11.4.1)', 'Logo: https://cdn.acmecorp-demo.io/static/logo.png', 'https://cdn.acmecorp-demo.io/static/logo.png', '', 'URL/Link');
+same('link to a document (v11.4.2)', 'Payslip: https://hr.acmecorp-demo.io/payslips/2024-03.pdf', 'https://hr.acmecorp-demo.io/payslips/2024-03.pdf', 'URL/Link', 'Date');
+same('Google Sheets link (v11.4.2)', 'Budget: https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/edit', 'https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/edit', 'URL/Link', 'Credentials');
 same('link to a script (v11.4.1)', 'Load https://cdn.acmecorp-demo.io/app/main.js first', 'https://cdn.acmecorp-demo.io/app/main.js', '', 'URL/Link');
 same('http link', 'Old: http://legacy.acmecorp-demo.io', 'http://legacy.acmecorp-demo.io', '', 'URL/Link');
 same('language', 'Languages: English, Bengali, Hindi', 'Bengali', '', 'Person Name');
