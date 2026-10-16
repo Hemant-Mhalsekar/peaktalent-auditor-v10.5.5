@@ -1,5 +1,13 @@
 # Changelog
 
+## 11.4.1 - October 2026
+
+- **Suggestions follow the label chips on the page.** The dashboard currently shows the 13 old chips, so there a phone is suggested as `Contact Number` (Indian mobiles and every other phone number, which 11.4.0 now finds), postal codes are not suggested, and a phone labeled Contact Number is correct. The new labels (Indian Mobile Number, International Phone Number, Postal Code, ...) are used only when their chips are on the page. The 13 old labels are always kept.
+
+URL/Link:
+- **Wrapped links are found wherever the line breaks.** Before, a link was only joined when its line ended in `/ - _ = & ? % ~ +` and the next line looked like a path. Now a break mid-word (`.../inst` + `allation-steps`), before the domain ending (`acmecorp-demo` + `.io/guides`) or inside a query (`?ref=ema` + `il&id=42`) is recognised too. A word joined by `-` or `_` counts only when the link's line is (almost) the longest line, i.e. it was really wrapped; a plain word counts only when the left document has the whole link on one line. List markers, brackets, `e.g.`, other links and capitalised words never continue a link.
+- **Links to files are not labeled**: styles, scripts, images, fonts, archives and packages, documents, audio and video, data and config, and code files (the full list is in GUIDELINES.md 5.9), judged on the end of the path before `?` / `#`. Pages (`.html`, `.php`, `?file=a.pdf`) and GitHub / GitLab / Bitbucket repositories are still links. The mistake check flags a URL/Link label on a file link.
+
 ## 11.4.0 - October 2026
 
 New label set (Complete PII Type List), Contact group. Scope column of the list is not followed: every type is labeled.

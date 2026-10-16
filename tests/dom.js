@@ -50,6 +50,8 @@ const checks = [
     ['link followed by a comma is tagged', () => assert.deepStrictEqual(tagText('<p>See ' + L + ', then go</p>', [L]), [L])],
     ['a link that is only the start of a longer link is not tagged', () => assert.deepStrictEqual(tagText('<p>Get ' + L + '.html now</p>', [L]), [])],
     ['a link with its own brackets is tagged whole', () => assert.deepStrictEqual(tagText('<p>Film https://en.wikipedia.org/wiki/Heat_(film) ok</p>', ['https://en.wikipedia.org/wiki/Heat_(film)']), ['https://en.wikipedia.org/wiki/Heat_(film)'])],
+    ['each line of a link wrapped mid-word is tagged (v11.4.1)', () => assert.deepStrictEqual(tagText('<div>See https://docs.acmecorp-demo.io/guides/inst</div><div>allation-steps for details</div>', ['https://docs.acmecorp-demo.io/guides/inst', 'allation-steps']), ['https://docs.acmecorp-demo.io/guides/inst', 'allation-steps'])],
+    ['each line of a link wrapped before the domain ending is tagged (v11.4.1)', () => assert.deepStrictEqual(tagText('<div>See https://docs.acmecorp-demo</div><div>.io/guides/setup now</div>', ['https://docs.acmecorp-demo', '.io/guides/setup']), ['https://docs.acmecorp-demo', '.io/guides/setup'])],
     ['each line of a wrapped link is tagged', () => assert.deepStrictEqual(tagText('<div>Open https://acmecorp-demo.io/very/long/</div><div>path/to/page now</div>', ['https://acmecorp-demo.io/very/long/', 'path/to/page']), ['https://acmecorp-demo.io/very/long/', 'path/to/page'])],
   );
 }

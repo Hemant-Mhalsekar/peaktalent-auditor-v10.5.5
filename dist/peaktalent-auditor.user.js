@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PeakTalent PII/BII Annotation Auditor
 // @namespace    https://dashboard.peaktalent.ai/
-// @version      11.4.0
+// @version      11.4.1
 // @description  Highlights PII/BII, credentials and overscrubbed text on PeakTalent review screens. Works fully offline.
 // @match        https://dashboard.peaktalent.ai/*
 // @run-at       document-idle
@@ -27,7 +27,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.4.0";
+    const PT_VERSION = "11.4.1";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -586,12 +586,13 @@
 
         // b. entity label on unchanged text
         const isEmail = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/.test(T);
-        const strong = isEmail ? "Email Address" : /^https:\/\/\S+$/i.test(T) ? "URL/Link" : isIpAddressFormat(T) ? "IP Address" :
+        const strong = isEmail ? "Email Address" : (/^https:\/\/\S+$/i.test(T) && !isFileAssetLink(T)) ? "URL/Link" : isIpAddressFormat(T) ? "IP Address" :
             /^@[A-Za-z_][\w.]{1,29}$/.test(T) ? "Person Username" : isVehiclePlateFormat(T) ? "Vehicle Number Plate" :
             phoneLabelFor(T);
+        const strongL = strong ? labelForPage(strong) : null;   // (v11.4.1) as the chips on this page name it
         // (v11.4.0) a postal code can have a phone-like shape ("08139-555"): with a postal label it is judged as a postal code below
         const postalL = L === LBL_POSTAL || L === LBL_KODEPOS || L === LBL_CEP;
-        if (strong && strong !== L && !(L === "Credentials" && PHONE_LABELS.has(strong)) && !(postalL && isPostalCodeShape(T))) return wrong(strong, `This is a ${strong}.`);
+        if (strongL && strongL !== L && !(L === "Credentials" && PHONE_LABELS.has(strongL)) && !(postalL && isPostalCodeShape(T))) return wrong(strongL, `This is a ${strongL}.`);
         const keyLike = /^["']?[A-Za-z_][\w.-]*["']?$/.test(T) && new RegExp('["\']?' + escRe(T) + '["\']?\\s*[:=]').test(rLine);
         if (keyLike && !/^@/.test(T)) return wrong(PTC_NONE, `This is a field name / key, not a ${L}.`);
         if (isFieldLabelOrHeader(T)) return wrong(PTC_NONE, `This is a field label or column header, not a ${L}.`);
@@ -602,10 +603,12 @@
             case "Email Address": return isEmail ? null : wrong(PTC_NONE, "This is not an e-mail address.");
             case "URL/Link":
                 if (/^http:\/\//i.test(T) || /^www\./i.test(T)) return wrong(PTC_NONE, "Only https:// links are labeled.");
+                if (isFileAssetLink(T)) return wrong(PTC_NONE, "This links to a file (image, script, style, font, archive, document, media, data or code). File links are not labeled.");
                 return /^https:\/\/\S+$/i.test(T) ? null : wrong(PTC_NONE, "This is not a link.");
             case "IP Address": return isIpAddressFormat(T) ? null : wrong(PTC_NONE, "This is not a valid IP address.");
             case "Contact Number": {   // (v11.4.0) replaced by Indian Mobile Number / International Phone Number
-                const ph = phoneLabelFor(T);
+                const ph = labelForPage(phoneLabelFor(T));
+                if (ph === "Contact Number") return null;   // (v11.4.1) a page with the old chips only: Contact Number is right
                 return ph ? wrong(ph, `Phone numbers now use ${LBL_IN_MOBILE} or ${LBL_INTL_PHONE}; this one is an ${ph}.`) : wrong(PTC_NONE, "This is not a phone number.");
             }
             case LBL_IN_MOBILE:
@@ -638,7 +641,7 @@
             }
             case "Address":   // (v11.4.0) full or partial; a city, state, country or postal code alone is not an address
                 if (isCompleteAddress(T) || isPartialAddress(T)) return null;
-                if (isPostalCodeShape(T) && !/\s\S+\s/.test(T)) return wrong(LBL_POSTAL, "A postal code on its own is labeled Postal Code, not Address.");
+                if (isPostalCodeShape(T) && !/\s\S+\s/.test(T)) return labelForPage(LBL_POSTAL) ? wrong(LBL_POSTAL, "A postal code on its own is labeled Postal Code, not Address.") : wrong(PTC_NONE, "A postal code on its own is not an address.");
                 return wrong(PTC_NONE, "Not an address (a city, state or country alone is not labeled).");
             case "Credentials":
                 if (ordinaryWord) return wrong(PTC_NONE, "This is an ordinary word, not a credential.");
@@ -1031,6 +1034,21 @@
         return isWebUrl(str);
     }
 
+    // (v11.4.1) A link to a file (style, script, image, font, archive, document, media, data or code file) is not labeled.
+    // Judged on the last part of the path, before "?" or "#": ".../report.pdf?v=2" is a file, ".../r?file=a.pdf" is a page.
+    // A repository on GitHub / GitLab / Bitbucket ("github.com/acme/three.js") is a page, whatever its name ends with.
+    const FILE_LINK_EXT = new Set(("css js mjs map wasm png jpg jpeg gif svg ico webp bmp avif woff woff2 ttf otf eot " +
+        "tgz tar gz zip 7z rar bz2 xz whl jar war deb rpm apk exe msi dmg pkg pdf doc docx xls xlsx ppt pptx csv txt md " +
+        "mp3 wav mp4 mov avi webm json xml yaml yml lock py java ts go sh").split(" "));
+    function isFileAssetLink(str) {
+        const m = /^(?:https?:)?\/\/([^\/?#\s]+)([^?#\s]*)/i.exec((str || "").trim());
+        if (!m || !m[2] || m[2] === "/") return false;
+        const segs = m[2].split("/").filter(Boolean);
+        if (/^(?:www\.)?(?:github\.com|gitlab\.com|bitbucket\.org)$/i.test(m[1]) && segs.length === 2) return false;
+        const ext = /\.([A-Za-z0-9]{1,6})$/.exec(segs[segs.length - 1] || "");
+        return !!ext && FILE_LINK_EXT.has(ext[1].toLowerCase());
+    }
+
     function isDefaultOrPlaceholderLink(str) {
         if (!str) return false;
         const s = str.trim().toLowerCase();
@@ -1276,7 +1294,7 @@
         // (v11.4.0) ...but only for chips that are on the page (or when no chip was found at all): the new label set dropped
         // none of the old chips yet, and a built-in colour for a chip that is not there would invent a shared colour.
         for (const [name, rgb] of Object.entries(DEFAULT_LABEL_COLOURS)) if (!have.has(name) && (seen.size === 0 || seen.has(name))) list.push({ name, rgb, builtin: true });
-        __ptPalette = { t: now, list, learned: have.size };
+        __ptPalette = { t: now, list, learned: have.size, seen };
         return list;
     }
     function matchPlatformPalette(els) {
@@ -3505,7 +3523,35 @@
     // Result cache: re-audits after a click or a new label usually see the same document text, so the full
     // analysis (the expensive part on long documents) is reused instead of recomputed.
     const __ptTargetsCache = new Map();
+    // (v11.4.1) Suggestions follow the label chips on the page. The engine knows the new label set, but a dashboard that only
+    // shows the 13 old chips gets the old labels: a phone is "Contact Number", and labels with no chip (Postal Code, ...) are
+    // not suggested. The 13 old labels are always kept. When no chip was found at all, nothing is changed.
+    const OLD_LABELS = new Set(["Account Number", "Address", "Business Name", "Contact Number", "Credentials", "Date", "Email Address",
+        "IP Address", "Overscrubbed", "Person Name", "URL/Link", "Person Username", "Vehicle Number Plate"]);
+    const CHIP_FALLBACK = { "Indian Mobile Number": "Contact Number", "International Phone Number": "Contact Number" };
+    function pageChipNames() {
+        try { learnPalette(); } catch (e) {}
+        return (__ptPalette && __ptPalette.seen) || new Set();
+    }
+    // The label to use on this page for `label`, or null when this page has no chip for it.
+    function labelForPage(label, chips = pageChipNames()) {
+        if (!label || OLD_LABELS.has(label) || !chips || chips.size === 0 || chips.has(label)) return label;
+        const fb = CHIP_FALLBACK[label];
+        return fb && chips.has(fb) ? fb : null;
+    }
+    function adaptTargetsToPage(targets) {
+        const chips = pageChipNames();
+        if (!chips || chips.size === 0) return targets;
+        const out = [];
+        for (const t of targets) { const l = labelForPage(t.label, chips); if (l) { if (l !== t.label) t.label = l; out.push(t); } }
+        out.scrubbedNames = targets.scrubbedNames; out.ordinaryWords = targets.ordinaryWords;
+        return out;
+    }
+
     function extractDynamicTargets(leftPane, rightPane, texts) {
+        return adaptTargetsToPage(extractDynamicTargetsCached(leftPane, rightPane, texts));
+    }
+    function extractDynamicTargetsCached(leftPane, rightPane, texts) {
         const leftText = (texts && texts.left != null) ? texts.left : (leftPane.innerText || "");
         const rightText = (texts && texts.right != null) ? texts.right : (rightPane.innerText || "");
         // Keyed by the texts themselves (native string hashing is much faster than hashing in JS).
@@ -3763,6 +3809,7 @@
             if (label === "URL/Link") {
                 // Project rule: only https:// links are labeled (http:// and bare www. links are left alone).
                 if (!cleanText.startsWith("https://")) return;
+                if (isFileAssetLink(cleanText)) return;   // (v11.4.1) .png, .js, .pdf, ... links are not labeled
             }
 
             if (label !== "Overscrubbed") {
@@ -4483,10 +4530,25 @@
             let leftFlat = null;
             const flat = () => (leftFlat === null ? (leftFlat = leftText.replace(/\s+/g, "")) : leftFlat);
             const WRAP_END = /[\/\-_=&?%~+]$/;
-            // a piece has path punctuation ("path/to/page", "?id=4") or is a file name ("index.html"); "and/or", "he/she", "1/2" are not
-            const isWrapPiece = (tok) => !/^[a-z][a-z0-9+.-]*:\/\//i.test(tok) &&
-                ((/[\/?=&#%]/.test(tok) && !/^[A-Za-z]{1,5}\/[A-Za-z]{1,5}$/.test(tok) && !/^\d{1,4}(?:\/\d{1,4}){1,2}$/.test(tok)) ||
-                 /^[\w-]+\.[A-Za-z0-9]{2,5}$/.test(tok));
+            // (v11.4.1) A wrap can fall anywhere in a link: mid-word (".../inst" + "allation-steps"), before the domain ending
+            // ("acmecorp-demo" + ".io/guides"), inside a query ("?ref=ema" + "il&id=42"). The next line's first word continues the link when:
+            //   - it has link punctuation ( / ? = & # % ) or starts with "." + letters (".io/x"), and is not "and/or", a date, a list number; or
+            //   - it is a word joined by - or _ ("allation-steps") and the link's line is (almost) the longest line, so it was wrapped; or
+            //   - it is a file name ("index.html") after a line ending in / - _ = & ? % ~ +; or
+            //   - the left document has the joined link on one line (then even a plain word: "a/b/c/" + "page").
+            // Never: another link, a list marker ("-", "2."), a bracket or quote, "e.g.", or a capitalised word ("Install").
+            let maxLine = 0;
+            for (const l of rightText.split("\n")) if (l.length > maxLine) maxLine = l.length;
+            const notPiece = (tok) => /^[a-z][a-z0-9+.-]*:\/\//i.test(tok) || /^(?:[-*\u2022\u2013]|\d{1,3}[.)])$/.test(tok) ||
+                /^[(\["'`<{]/.test(tok) || /^(?:e\.g\.?|i\.e\.?|etc\.?|vs\.?)[,;:]?$/i.test(tok) ||
+                /^[A-Za-z]{1,5}\/[A-Za-z]{1,5}$/.test(tok) || /^\d{1,4}(?:\/\d{1,4}){1,2}$/.test(tok) ||
+                (/^[A-Z][a-z]+[.,;:!?]?$/.test(tok));
+            const isWrapPiece = (tok, prev, lineLen) => {
+                if (notPiece(tok)) return false;
+                if (/[\/?=&#%]/.test(tok) || /^\.[A-Za-z]{2,}/.test(tok)) return true;
+                if (/^[\w.~]+[-_][\w.~-]*$/.test(tok) && lineLen >= 40 && lineLen >= maxLine * 0.8) return true;
+                return WRAP_END.test(prev) && /^[\w-]+\.[A-Za-z0-9]{2,5}$/.test(tok);
+            };
             const putUrl = (text) => {
                 const ex = targetMap.get(text);
                 if (!ex || 85 > ex.priority) targetMap.set(text, { text, label: "URL/Link", cls: "pt-url", priority: 85 });
@@ -4501,7 +4563,11 @@
                     if (!nx) break;
                     // a line that starts with a query ("?q=a&page=2", "&x=1") continues the link whatever the previous line ended with
                     const startsQuery = /^[?&][^\s]/.test(nx[1]);
-                    if (!startsQuery && !(WRAP_END.test(pieces[pieces.length - 1]) && isWrapPiece(nx[1]))) break;
+                    const prev = pieces[pieces.length - 1];
+                    const lineLen = end - (rightText.lastIndexOf("\n", end - 1) + 1);
+                    const tok = trimUrlEnd(nx[1]);
+                    const literalLeft = !notPiece(tok) && /^[\w.~-]+$/.test(tok) && leftText.includes(pieces.join("") + tok);
+                    if (!startsQuery && !isWrapPiece(nx[1], prev, lineLen) && !literalLeft) break;
                     pieces.push(nx[1]);
                     end += nx[0].length;
                 }
@@ -4510,7 +4576,7 @@
                 if (!joined.startsWith("https://") || joined.length <= 8) continue;
                 if (pieces.length === 1 && leftText.includes(joined)) { addTarget(joined, "URL/Link", "pt-url", 85); continue; }
                 // wrapped on one side only, or wrapped differently on the two sides
-                if (!flat().includes(joined) || isDefaultOrPlaceholderLink(joined) || joined.length > MAX_TOKEN_LEN * 2) continue;
+                if (!flat().includes(joined) || isDefaultOrPlaceholderLink(joined) || isFileAssetLink(joined) || joined.length > MAX_TOKEN_LEN * 2) continue;
                 for (const p of pieces) if (p.length >= 2) putUrl(p);
             }
         }

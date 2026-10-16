@@ -223,6 +223,51 @@ notAs('Panel: https://203.0.113.45/admin', '203.0.113.45', 'IP Address');
 yes('Server 203.0.113.45 and https://203.0.113.45/admin', '203.0.113.45', 'IP Address');   // the same IP outside a link is still an IP
 yes('Mail pass@git.acmecorp-demo.io and https://user:pass@git.acmecorp-demo.io/r.git', 'pass@git.acmecorp-demo.io', 'Email Address');
 
+// (v11.4.1) links wrapped anywhere: mid-word, before ".io", inside a query; each line's piece is labeled
+const W1 = 'See https://docs.acmecorp-demo.io/guides/inst\nallation-steps for details';
+yes(W1, 'https://docs.acmecorp-demo.io/guides/inst');
+yes(W1, 'allation-steps');
+const W2 = 'See https://docs.acmecorp-demo.io/guides/\ninstallation-steps for details';
+yes(W2, 'installation-steps');
+const W3 = 'See https://docs.acmecorp-demo\n.io/guides/setup now';
+yes(W3, 'https://docs.acmecorp-demo');
+yes(W3, '.io/guides/setup');
+const W4 = 'Link: https://acmecorp-demo.io/reports/2024/q3-summary?ref=ema\nil&id=42';
+yes(W4, 'il&id=42');
+const W5 = 'https://github.com/acmecorp-demo/very-long-repository-na\nme/blob/main/README';
+yes(W5, 'me/blob/main/README');
+const W6 = 'Ref https://acmecorp-demo.io/a/b/c/\nd/e/f/\ng/h/page end';
+yes(W6, 'd/e/f/');
+yes(W6, 'g/h/page');
+yes('Ref https://acmecorp-demo.io/a/b/c/page end', 'page', undefined, 'Ref https://acmecorp-demo.io/a/b/c/\npage end');   // a plain word: joined when the left has the link on one line
+no('See https://docs.acmecorp-demo.io/guides/inst\nallation-steps', 'allation-steps', 'See https://docs.velmora-demo.io/guides/inst\nallation-steps');   // domain scrubbed
+// a new line that is NOT the rest of the link
+notAs('Docs: https://acmecorp-demo.io/setup\nInstall the CLI first.', 'Install');
+notAs('See https://acmecorp-demo.io/docs\nand then run it', 'and');
+notAs('See https://acmecorp-demo.io/docs\ne.g. the setup page', 'e.g.');
+notAs('Links:\nhttps://acmecorp-demo.io/docs\n- second item here', '-');
+notAs('Steps https://acmecorp-demo.io/docs\n2. run the build', '2.');
+notAs('Read https://acmecorp-demo.io/docs\n(optional) later', '(optional)');
+// (v11.4.1) links to files are not labeled (styles, scripts, images, fonts, archives, documents, media, data, code)
+for (const ext of ['css', 'js', 'mjs', 'map', 'wasm', 'png', 'jpg', 'jpeg', 'gif', 'svg', 'ico', 'webp', 'bmp', 'avif', 'woff', 'woff2', 'ttf', 'otf', 'eot',
+  'tgz', 'tar', 'gz', 'zip', '7z', 'rar', 'bz2', 'xz', 'whl', 'jar', 'war', 'deb', 'rpm', 'apk', 'exe', 'msi', 'dmg', 'pkg',
+  'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'csv', 'txt', 'md', 'mp3', 'wav', 'mp4', 'mov', 'avi', 'webm',
+  'json', 'xml', 'yaml', 'yml', 'lock', 'py', 'java', 'ts', 'go', 'sh']) {
+  notAs(`File https://cdn.acmecorp-demo.io/assets/file-v2.${ext} here`, `https://cdn.acmecorp-demo.io/assets/file-v2.${ext}`);
+}
+notAs('Doc https://acmecorp-demo.io/files/report.pdf?v=2', 'https://acmecorp-demo.io/files/report.pdf?v=2');
+notAs('Logo https://acmecorp-demo.io/static/LOGO.PNG#top', 'https://acmecorp-demo.io/static/LOGO.PNG#top');
+notAs('Get https://acmecorp-demo.io/dist/app-1.2.3.tar.gz now', 'https://acmecorp-demo.io/dist/app-1.2.3.tar.gz');
+notAs('Img https://acmecorp-demo.io/img/very/long/\nphoto.jpg here', 'photo.jpg');
+notAs('Img https://acmecorp-demo.io/img/very/long/\nphoto.jpg here', 'https://acmecorp-demo.io/img/very/long/');
+// pages are still links, also when they look like a file name or have a dot in the path
+yes('Page https://acmecorp-demo.io/about.html', 'https://acmecorp-demo.io/about.html');
+yes('Page https://acmecorp-demo.io/index.php?id=4', 'https://acmecorp-demo.io/index.php?id=4');
+yes('Repo https://github.com/acmecorp-demo/tool.js', 'https://github.com/acmecorp-demo/tool.js');
+yes('Site https://docs.acmecorp-demo.io', 'https://docs.acmecorp-demo.io');
+yes('Pkg https://acmecorp-demo.io/v1.2/download', 'https://acmecorp-demo.io/v1.2/download');
+yes('Mail https://acmecorp-demo.io/r?file=a.pdf', 'https://acmecorp-demo.io/r?file=a.pdf');
+
 // ======================= PERSON USERNAME =======================
 label('Person Username');
 yes('Ping @rahul_92 on Slack', '@rahul_92');

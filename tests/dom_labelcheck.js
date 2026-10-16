@@ -95,6 +95,8 @@ diff('scrubbed company', 'She joined Accenture in 2019.', 'She joined Velmoratec
 diff('scrubbed phone', 'Call 9876543210 today', 'Call 9123456780 today', '9123456780', '', 'Indian Mobile Number');
 same('statement date (not DOB)', 'Statement Date: 12-01-2026', '12-01-2026', '', 'Date');
 same('city alone', 'Location: Bengaluru', 'Bengaluru', '', 'Address');
+same('link to a file (v11.4.1)', 'Logo: https://cdn.acmecorp-demo.io/static/logo.png', 'https://cdn.acmecorp-demo.io/static/logo.png', '', 'URL/Link');
+same('link to a script (v11.4.1)', 'Load https://cdn.acmecorp-demo.io/app/main.js first', 'https://cdn.acmecorp-demo.io/app/main.js', '', 'URL/Link');
 same('http link', 'Old: http://legacy.acmecorp-demo.io', 'http://legacy.acmecorp-demo.io', '', 'URL/Link');
 same('language', 'Languages: English, Bengali, Hindi', 'Bengali', '', 'Person Name');
 
@@ -347,6 +349,39 @@ same('language', 'Languages: English, Bengali, Hindi', 'Bengali', '', 'Person Na
       const m = await p.annotate(EMAIL, 'Person Name');
       const st = p.state(m), s = stats(p);
       check(st.mark === 'wrong' && st.expected === 'Email Address' && (s.ambiguous | 0) === 0 && /1 Mistake/.test(p.status()), 'T6: no tie -> e-mail labeled Person Name is a normal mistake, ambiguous == 0', { st, s });
+      p.close();
+    }
+  }
+
+  // (v11.4.1) Suggestions follow the label chips on the page. The old dashboard (13 chips) gets the old labels.
+  {
+    const OLD = Object.assign({}, PAL);
+    OLD['Contact Number'] = OLD['Indian Mobile Number'];
+    for (const k of ['Indian Mobile Number', 'International Phone Number', 'Postal Code']) delete OLD[k];
+    const NEW = Object.assign({}, PAL, { 'Contact Number': [250, 140, 22] });
+    const tags = (p) => Array.from(p.Rp.querySelectorAll('span.pt-tag')).map(t => [t.textContent, t.getAttribute('data-label')]);
+    const doc = ['Call 9876543210 today', 'Office: 080-2345 6789', 'Pincode: 560087'];
+    {
+      const p = await page(doc, doc, OLD);
+      const t = tags(p);
+      check(t.some(([x, l]) => x === '9876543210' && l === 'Contact Number') && t.some(([x, l]) => x === '080-2345 6789' && l === 'Contact Number'),
+        'old chips: phones are suggested as Contact Number', t);
+      check(!t.some(([x]) => x === '560087'), 'old chips: a postal code is not suggested', t);
+      const m = await p.annotate('9876543210', 'Contact Number', true);
+      check(p.state(m).mark === 'ok' && !/Mistake/.test(p.status()), 'old chips: a phone labeled Contact Number is correct', { st: p.state(m), status: p.status() });
+      p.close();
+    }
+    {
+      const p = await page(doc, doc, OLD);
+      const m = await p.annotate('560087', 'Address');
+      check(p.state(m).mark === 'wrong' && p.state(m).expected === 'No label', 'old chips: a PIN labeled Address -> mistake, no label (Postal Code is not on the page)', p.state(m));
+      p.close();
+    }
+    {
+      const p = await page(doc, doc, NEW);
+      const t = tags(p);
+      check(t.some(([x, l]) => x === '9876543210' && l === 'Indian Mobile Number') && t.some(([x, l]) => x === '080-2345 6789' && l === 'International Phone Number') &&
+        t.some(([x, l]) => x === '560087' && l === 'Postal Code'), 'new chips: Indian Mobile Number, International Phone Number and Postal Code are suggested', t);
       p.close();
     }
   }
