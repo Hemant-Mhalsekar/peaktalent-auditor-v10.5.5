@@ -93,6 +93,11 @@ same('unchanged JSON key', '"dependencies": {', 'dependencies', '', 'Overscrubbe
 diff('scrubbed person name', 'I met Furkan at the airport.', 'I met Dalvorin at the airport.', 'Dalvorin', '', 'Overscrubbed');
 diff('scrubbed company', 'She joined Accenture in 2019.', 'She joined Velmoratech in 2019.', 'Velmoratech', '', 'Business Name');
 diff('scrubbed phone', 'Call 9876543210 today', 'Call 9123456780 today', '9123456780', '', 'Indian Mobile Number');
+// (v11.4.5) IP Address
+same('IPv6 with a :: in the middle', 'Link fe80::1ff:fe23:4567:890a up', 'fe80::1ff:fe23:4567:890a', 'IP Address', 'Credentials');
+same('IP before a full stop', 'Ping 8.8.8.8.', '8.8.8.8', 'IP Address', 'Date');
+same('version number after which "build"', 'pkg 10.2.0.15 build', '10.2.0.15', '', 'IP Address');
+diff('word replaced by an IP', 'Server alpha is down', 'Server 10.1.2.3 is down', '10.1.2.3', 'Overscrubbed', 'IP Address');
 // (v11.4.4) Overscrubbed rules
 diff('number replaced by a word', 'Order 12345 shipped', 'Order hello shipped', 'hello', 'Overscrubbed', 'Date');
 diff('number replaced by a number', 'Order 12345 shipped', 'Order 00000 shipped', '00000', '', 'Overscrubbed');

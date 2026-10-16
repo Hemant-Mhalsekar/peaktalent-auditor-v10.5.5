@@ -1,5 +1,15 @@
 # Changelog
 
+## 11.4.5 - October 2026
+
+IP Address:
+- **A full stop after the address** no longer hides it (`Ping 8.8.8.8.`).
+- **Both ends of a range** are labeled (`10.0.0.1-10.0.0.50`: the second one was missed).
+- **IPv6**: `::` in the middle (`fe80::1ff:fe23:4567:890a`), a network-card suffix (`%eth0`, not labeled), an IPv4 tail (`::ffff:192.168.1.10`), a closing `::` before a range suffix (`2001:db8::/32` → `2001:db8::`) were all missed.
+- **Version numbers with a version word after them** (`10.2.0.15 build`, `4.18.0.2 release`) are not IP addresses; the mistake check flags an IP label on them.
+- **An ordinary word replaced by an IP address is Overscrubbed** (`Server alpha` → `Server 10.1.2.3`).
+- Unchanged by choice: the port and the range suffix stay outside the label; loopback, `0.0.0.0` and masks are labeled as before.
+
 ## 11.4.4 - October 2026
 
 Overscrubbed:
