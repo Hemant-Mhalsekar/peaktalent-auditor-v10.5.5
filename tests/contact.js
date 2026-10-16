@@ -72,6 +72,13 @@ notAs('Timestamp 1712345678', '1712345678', INTL);
 notAs('Price $1,250,000', '1,250,000', INTL);
 notAs('EIN 12-3456789', '12-3456789', INTL);
 notAs('Ext: 4521', '4521', INTL);
+// (v11.4.2) only the fictional range 555-0100 to 555-0199 is skipped; other 555 numbers are real phones
+notAs('US desk: (415) 555-0132', '(415) 555-0132', INTL);
+notAs('Call 555-0199 now', '555-0199', INTL);
+notAs('US desk: +1 415 555 0100', '+1 415 555 0100', INTL);
+yes('US desk: (415) 555-0232', '(415) 555-0232', INTL);
+yes('US desk: +1 415-555-7788', '+1 415-555-7788', INTL);
+yes('Call 415.555.2671 after 5', '415.555.2671', INTL);
 notAs('Total 4157320198 views', '4157320198', INTL);
 
 // ---------------- Email Address ----------------

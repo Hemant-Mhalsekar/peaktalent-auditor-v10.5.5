@@ -1,5 +1,11 @@
 # Changelog
 
+## 11.4.2 - October 2026
+
+- **URL/Link: links to documents are labeled again**: `.pdf .doc .docx .xls .xlsx .ppt .pptx .csv .txt .md` may hold personal data. Other file links (styles, scripts, images, fonts, archives, media, data, code) stay unlabeled.
+- **URL/Link: Google Drive / Docs / Sheets / Slides / Forms links** are covered by tests in every form (plain, Markdown, table, JSON, with `#gid=` / `?usp=`), and a link broken in the middle of its long document id (`.../d/1AbCdEfGhIjKlMn` + `OpQrStUvWxYz0123456789`) is now joined.
+- **Phones: only the fictional US range 555-0100 to 555-0199 is skipped.** Other 555 numbers (`(415) 555-0232`, `+1 415-555-7788`) are labeled. `415.555.2671` is no longer read as a version number.
+
 ## 11.4.1 - October 2026
 
 - **Suggestions follow the label chips on the page.** The dashboard currently shows the 13 old chips, so there a phone is suggested as `Contact Number` (Indian mobiles and every other phone number, which 11.4.0 now finds), postal codes are not suggested, and a phone labeled Contact Number is correct. The new labels (Indian Mobile Number, International Phone Number, Postal Code, ...) are used only when their chips are on the page. The 13 old labels are always kept.

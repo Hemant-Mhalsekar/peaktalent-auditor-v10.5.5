@@ -15,7 +15,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.4.1";
+    const PT_VERSION = "11.4.2";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -591,7 +591,7 @@
             case "Email Address": return isEmail ? null : wrong(PTC_NONE, "This is not an e-mail address.");
             case "URL/Link":
                 if (/^http:\/\//i.test(T) || /^www\./i.test(T)) return wrong(PTC_NONE, "Only https:// links are labeled.");
-                if (isFileAssetLink(T)) return wrong(PTC_NONE, "This links to a file (image, script, style, font, archive, document, media, data or code). File links are not labeled.");
+                if (isFileAssetLink(T)) return wrong(PTC_NONE, "This links to a file (image, script, style, font, archive, media, data or code). File links are not labeled (documents are).");
                 return /^https:\/\/\S+$/i.test(T) ? null : wrong(PTC_NONE, "This is not a link.");
             case "IP Address": return isIpAddressFormat(T) ? null : wrong(PTC_NONE, "This is not a valid IP address.");
             case "Contact Number": {   // (v11.4.0) replaced by Indian Mobile Number / International Phone Number
@@ -1022,11 +1022,12 @@
         return isWebUrl(str);
     }
 
-    // (v11.4.1) A link to a file (style, script, image, font, archive, document, media, data or code file) is not labeled.
+    // (v11.4.1) A link to a file (style, script, image, font, archive, media, data or code file) is not labeled.
+    // (v11.4.2) Documents (.pdf .doc .docx .xls .xlsx .ppt .pptx .csv .txt .md) ARE labeled: they may hold personal data.
     // Judged on the last part of the path, before "?" or "#": ".../report.pdf?v=2" is a file, ".../r?file=a.pdf" is a page.
     // A repository on GitHub / GitLab / Bitbucket ("github.com/acme/three.js") is a page, whatever its name ends with.
     const FILE_LINK_EXT = new Set(("css js mjs map wasm png jpg jpeg gif svg ico webp bmp avif woff woff2 ttf otf eot " +
-        "tgz tar gz zip 7z rar bz2 xz whl jar war deb rpm apk exe msi dmg pkg pdf doc docx xls xlsx ppt pptx csv txt md " +
+        "tgz tar gz zip 7z rar bz2 xz whl jar war deb rpm apk exe msi dmg pkg " +
         "mp3 wav mp4 mov avi webm json xml yaml yml lock py java ts go sh").split(" "));
     function isFileAssetLink(str) {
         const m = /^(?:https?:)?\/\/([^\/?#\s]+)([^?#\s]*)/i.exec((str || "").trim());
@@ -1057,7 +1058,8 @@
         const s = str.trim().replace(/[^0-9]/g, "");
         if (/^(?:1234567890|0123456789|0000000000|9999999999|1111111111|2222222222|3333333333|4444444444|5555555555|6666666666|7777777777|8888888888)$/.test(s)) return true;
         // US fictional 555 numbers; an Indian mobile (starting 6-9, e.g. 9065558612) is real
-        if ((/^555\d{7}$/.test(s) || /^1?[2-9]\d{2}555\d{4}$/.test(s)) && !/^[6-9]\d{9}$/.test(s)) return true;   // (v11.4.0) US shape only: "(021) 5551234" is Jakarta
+        // (v11.4.2) only the US range reserved for fiction, 555-0100 to 555-0199, is fake; other 555 numbers are real phones
+        if (/^(?:1?[2-9]\d{2})?55501\d{2}$/.test(s) && !/^[6-9]\d{9}$/.test(s)) return true;
         if (/(\d)\1{5,}/.test(s.slice(-10))) return true;            // "7000000000": six identical digits in a row is not a phone
         return false;
     }
@@ -2507,7 +2509,7 @@
     // Shapes that look like a phone number but are something else: dates, IP and version numbers, SSN, CPF, EIN, ZIP+4, CEP, year ranges.
     function isNotAPhoneShape(s) {
         if (isDateFormat(s) || isIpAddressFormat(s)) return true;
-        if (/^\d{1,4}(?:\.\d{1,4}){2,}$/.test(s)) return true;                           // 1.2.3.4
+        if (/^\d{1,4}(?:\.\d{1,4}){2,}$/.test(s) && !/^[2-9]\d{2}\.\d{3}\.\d{4}$/.test(s)) return true;   // 1.2.3.4 (not the US "415.555.2671")
         if (/^\d{3}-\d{2}-\d{4}$/.test(s) || /^\d{2}-\d{7}$/.test(s)) return true;          // SSN, EIN
         if (/^\d{3}\.\d{3}\.\d{3}-\d{2}$/.test(s)) return true;                            // CPF
         if (/^\d{5}-\d{3,4}$/.test(s)) return true;                                         // CEP, ZIP+4
@@ -4535,6 +4537,8 @@
                 if (notPiece(tok)) return false;
                 if (/[\/?=&#%]/.test(tok) || /^\.[A-Za-z]{2,}/.test(tok)) return true;
                 if (/^[\w.~]+[-_][\w.~-]*$/.test(tok) && lineLen >= 40 && lineLen >= maxLine * 0.8) return true;
+                // (v11.4.2) the middle of a long document id ("1AbCdEfGhIjKlMn" + "OpQrStUvWxYz0123456789"): letters and digits mixed
+                if (/^[A-Za-z0-9]{10,}$/.test(tok) && /\d/.test(tok) && /[A-Za-z]/.test(tok) && /[A-Za-z0-9]{6,}$/.test(prev) && lineLen >= 40 && lineLen >= maxLine * 0.8) return true;
                 return WRAP_END.test(prev) && /^[\w-]+\.[A-Za-z0-9]{2,5}$/.test(tok);
             };
             const putUrl = (text) => {

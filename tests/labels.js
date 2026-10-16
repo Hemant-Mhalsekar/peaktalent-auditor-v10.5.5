@@ -251,11 +251,38 @@ notAs('Read https://acmecorp-demo.io/docs\n(optional) later', '(optional)');
 // (v11.4.1) links to files are not labeled (styles, scripts, images, fonts, archives, documents, media, data, code)
 for (const ext of ['css', 'js', 'mjs', 'map', 'wasm', 'png', 'jpg', 'jpeg', 'gif', 'svg', 'ico', 'webp', 'bmp', 'avif', 'woff', 'woff2', 'ttf', 'otf', 'eot',
   'tgz', 'tar', 'gz', 'zip', '7z', 'rar', 'bz2', 'xz', 'whl', 'jar', 'war', 'deb', 'rpm', 'apk', 'exe', 'msi', 'dmg', 'pkg',
-  'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'csv', 'txt', 'md', 'mp3', 'wav', 'mp4', 'mov', 'avi', 'webm',
+  'mp3', 'wav', 'mp4', 'mov', 'avi', 'webm',
   'json', 'xml', 'yaml', 'yml', 'lock', 'py', 'java', 'ts', 'go', 'sh']) {
   notAs(`File https://cdn.acmecorp-demo.io/assets/file-v2.${ext} here`, `https://cdn.acmecorp-demo.io/assets/file-v2.${ext}`);
 }
-notAs('Doc https://acmecorp-demo.io/files/report.pdf?v=2', 'https://acmecorp-demo.io/files/report.pdf?v=2');
+// (v11.4.2) documents may hold personal data, so links to them ARE labeled
+for (const ext of ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'csv', 'txt', 'md']) {
+  yes(`File https://cdn.acmecorp-demo.io/assets/file-v2.${ext} here`, `https://cdn.acmecorp-demo.io/assets/file-v2.${ext}`);
+}
+yes('Doc https://acmecorp-demo.io/files/report.pdf?v=2', 'https://acmecorp-demo.io/files/report.pdf?v=2');
+yes('Img https://acmecorp-demo.io/hr/very/long/\nsalaries-2024.xlsx here', 'salaries-2024.xlsx');
+// (v11.4.2) Google Drive / Docs / Sheets / Slides / Forms links are labeled, also when wrapped inside the document id
+const G = {
+  sheet: 'https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/edit#gid=0',
+  doc: 'https://docs.google.com/document/d/1ZyXwVuTsRqPoNmLkJiHgFeDcBa9876543210/edit?usp=sharing',
+  slides: 'https://docs.google.com/presentation/d/1QwErTyUiOpAsDfGhJkLzXcVbNm0123456789/edit',
+  form: 'https://docs.google.com/forms/d/e/1FAIpQLSdAbCdEfGh123456/viewform',
+  file: 'https://drive.google.com/file/d/1aBcDeFgHiJkLmNoPqRsTuVwXyZ012345/view?usp=sharing',
+  folder: 'https://drive.google.com/drive/folders/1aBcDeFgHiJkLmNoPqRsTuVwXyZ012345',
+  open: 'https://drive.google.com/open?id=1aBcDeFgHiJkLmNoPqRsTuVwXyZ012345',
+  download: 'https://drive.google.com/uc?export=download&id=1aBcDeFgHiJkLmNoPqRsTuVwXyZ012345',
+};
+for (const u of Object.values(G)) {
+  yes(`Shared: ${u} today`, u);
+  yes(`See [the file](${u}) now`, u);
+  yes(`| Doc | ${u} |`, u);
+  yes(`{"url": "${u}"}`, u);
+}
+no(`Shared: ${G.sheet} today`, G.sheet.replace('1AbCdEf', '9QzXwVu'), `Shared: ${G.sheet.replace('1AbCdEf', '9QzXwVu')} today`);   // id changed -> scrubbed
+const GW = 'Budget sheet: https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMn\nOpQrStUvWxYz0123456789\n/edit#gid=0 thanks';
+yes(GW, 'https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMn');
+yes(GW, 'OpQrStUvWxYz0123456789');
+yes(GW, '/edit#gid=0');
 notAs('Logo https://acmecorp-demo.io/static/LOGO.PNG#top', 'https://acmecorp-demo.io/static/LOGO.PNG#top');
 notAs('Get https://acmecorp-demo.io/dist/app-1.2.3.tar.gz now', 'https://acmecorp-demo.io/dist/app-1.2.3.tar.gz');
 notAs('Img https://acmecorp-demo.io/img/very/long/\nphoto.jpg here', 'photo.jpg');
