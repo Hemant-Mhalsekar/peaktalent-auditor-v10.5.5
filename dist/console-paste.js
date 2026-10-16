@@ -1,4 +1,4 @@
-// PeakTalent Auditor v11.4.2 - console build.
+// PeakTalent Auditor v11.4.4 - console build.
 // Open the PeakTalent review tab, open the browser console (Safari: Develop > Show JavaScript Console,
 // Chrome: Cmd/Ctrl+Option/Alt+J), paste this whole file and press Enter. Pasting again replaces the old copy.
 // GENERATED FILE - edit src/content.js and run `node scripts/build.js`.
@@ -20,7 +20,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.4.2";
+    const PT_VERSION = "11.4.4";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -559,6 +559,14 @@
         // d / c for Overscrubbed
         if (L === "Overscrubbed") {
             if (inLeft) return wrong(PTC_NONE, "This text is identical in the left document - nothing was changed, so nothing was overscrubbed.");
+            // (v11.4.4) dates: a changed date of birth is correct redaction; any other changed date is overscrubbing
+            const dobLine = /\b(?:dob|d\.o\.b|date\s*of\s*birth|birth\s*date|birthday|born|date_of_birth|birth_date|birthdate)\b/i.test(rLine);
+            if (isDateFormat(T) || /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/i.test(T) && /\d/.test(T)) {
+                if (dobLine) return wrong(PTC_NONE, "A changed date of birth is correct redaction, not overscrubbing.");
+                return null;
+            }
+            // (v11.4.4) a number, phone or e-mail replaced by another of the same kind is correct redaction
+            if (/^\+?\d[\d\s().,\/:-]*$/.test(T) || isEmailAddressFormat(T)) return wrong(PTC_NONE, "A value replaced by another of the same kind (number, phone, e-mail) is correct redaction, not overscrubbing.");
             if (words.length && words.every(w => scrubbed.has(w))) return wrong(PTC_NONE, "This replaced a name, company, address, credential or code - that is correct redaction, not overscrubbing.");
             const changedParts = words.filter(w => { const m = sugg(w); return m && m.label === "Overscrubbed"; });
             const unchanged = words.filter(w => w.length >= 3 && /[A-Za-z]/.test(w) && !sugg(w) && new RegExp("(?:^|[^A-Za-z0-9])" + escRe(w) + "(?![A-Za-z0-9])").test(leftText || ""));
@@ -578,7 +586,7 @@
         }
 
         // b. entity label on unchanged text
-        const isEmail = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/.test(T);
+        const isEmail = isEmailAddressFormat(T);   // (v11.4.3) the same rule as the suggestions: no placeholders, no icon@2x.png
         const strong = isEmail ? "Email Address" : (/^https:\/\/\S+$/i.test(T) && !isFileAssetLink(T)) ? "URL/Link" : isIpAddressFormat(T) ? "IP Address" :
             /^@[A-Za-z_][\w.]{1,29}$/.test(T) ? "Person Username" : isVehiclePlateFormat(T) ? "Vehicle Number Plate" :
             phoneLabelFor(T);
@@ -593,7 +601,10 @@
         const ordinaryWord = plain && plain === T.replace(/\s+/g, " ").trim() && isOrdinaryPhrase(plain);
         const digits = T.replace(/\D/g, "");
         switch (L) {
-            case "Email Address": return isEmail ? null : wrong(PTC_NONE, "This is not an e-mail address.");
+            case "Email Address":
+                if (isEmail) return null;
+                if (isDefaultOrPlaceholderEmail(T)) return wrong(PTC_NONE, "This is a placeholder address (example.com, test.com, ...), not personal data.");
+                return wrong(PTC_NONE, "This is not an e-mail address.");
             case "URL/Link":
                 if (/^http:\/\//i.test(T) || /^www\./i.test(T)) return wrong(PTC_NONE, "Only https:// links are labeled.");
                 if (isFileAssetLink(T)) return wrong(PTC_NONE, "This links to a file (image, script, style, font, archive, media, data or code). File links are not labeled (documents are).");
@@ -1054,7 +1065,7 @@
         if (!str) return false;
         const s = str.trim().toLowerCase();
         if (/@(?:example\.(?:com|org|net)|test\.(?:com|org)|dummy\.(?:com|org)|sample\.(?:com|org)|placeholder\.(?:com|org)|domain\.com)\b/i.test(s)) return true;
-        if (/^(?:user|test|email|dummy|placeholder|name|sample)@/i.test(s)) return true;
+        // (v11.4.3) the name part alone does not make a placeholder: test@acmecorp-demo.io is a real company's mailbox
         return false;
     }
 
@@ -2593,6 +2604,7 @@
 
     const NON_EMAIL_FILE_EXTENSIONS = /\.(?:png|jpe?g|gif|svg|webp|ico|bmp|tiff|heic|mp4|mp3|wav|mov|avi|js|ts|jsx|tsx|css|scss|html|xml|json|ya?ml|md|txt|csv|tar|gz|zip|rar|7z|exe|dmg|apk|ipa|bin|pdf|docx?|xlsx?|pptx?)$/i;
 
+    const EMAIL_LOCAL = "[A-Za-z0-9._%+-]+(?:'[A-Za-z0-9._%+-]+)*";
     function isEmailAddressFormat(str) {
         if (!str) return false;
         const s = str.trim();
@@ -2602,9 +2614,12 @@
         // Never match filenames with media, code, or document extensions
         if (NON_EMAIL_FILE_EXTENSIONS.test(s)) return false;
         // Must match authentic email pattern with valid internet domain
-        if (!/^[A-Za-z0-9._%+-]+@[A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z]{2,}$/.test(s)) return false;
+        // (v11.4.3) an apostrophe inside the name part belongs to it ("sean.o'brien@...")
+        if (!new RegExp("^" + EMAIL_LOCAL + "@[A-Za-z0-9][A-Za-z0-9.-]*\\.[A-Za-z]{2,}$").test(s)) return false;
         const parts = s.split("@");
         if (parts.length !== 2) return false;
+        // (v11.4.3) a name part cannot start or end with a dot or hold two dots in a row ("priya.@", "priya..r@")
+        if (/^\.|\.$|\.\./.test(parts[0]) || /\.\./.test(parts[1])) return false;
         const domainParts = parts[1].split(".");
         if (domainParts.length < 2) return false;
         const sld = domainParts[0].toLowerCase();
@@ -4169,12 +4184,29 @@
             if (isVectorOrPathData("", docContext)) return;
 
             for (const diff of diffs) {
+                // (v11.4.4) A value replaced by something of another kind is Overscrubbed: a number, phone, e-mail or link
+                // replaced by a plain word ("Order 12345" -> "Order hello"). The same kind ("12345" -> "00000",
+                // "Hemant" -> "Alex", one e-mail for another) is correct redaction and is judged below as before.
+                {
+                    const o = cleanWord(diff.original || ""), ch = cleanWord(diff.changed || "");
+                    const kindOf = (x) => isEmailAddressFormat(x) || /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/.test(x) ? "email" : /^https?:\/\//i.test(x) ? "url" :
+                        (phoneLabelFor(x) || isContactNumberFormat(x)) ? "phone" : /^\d(?:[\d\s.,\/:-]*\d)?$/.test(x) ? "number" :
+                        /^[A-Za-z][A-Za-z'\-]*$/.test(x) ? "word" : "other";
+                    if (o && ch && /^(?:email|url|phone|number)$/.test(kindOf(o)) && kindOf(ch) === "word" && ch.length >= 2 &&
+                        !isDateFormat(o) && !new RegExp("(?:^|[^A-Za-z])" + ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?![A-Za-z])", "i").test(leftText)) {
+                        addTarget(ch, "Overscrubbed", "pt-overscrub", 66);
+                        continue;
+                    }
+                }
                 // (v11.3.4) a dotted / underscored person handle replaced by another ("kartik.nayyar" -> "Jordan.Miller",
                 // "Rahul.chaturvedi" -> "Morgan.Bennett"): a scrubbed name, never Overscrubbed
                 {
                     const o = cleanWord(diff.original || "").replace(/\*/g, ""), ch = cleanWord(diff.changed || "").replace(/\*/g, "");
                     const handle = /^[A-Za-z]{2,}[._][A-Za-z]{2,}$/;
-                    if (handle.test(o) && handle.test(ch) && /[a-z]/.test(o) && /[a-z]/.test(ch)) {   // not CONSTANT_NAMES
+                    // (v11.4.4) ...but "calculate_total" -> "calculate_zelvor" is a code name: the part both sides share is an ordinary word
+                    const op = o.split(/[._]/), cp = ch.split(/[._]/);
+                    const sharesOrdinary = op.some(w => cp.some(x => x.toLowerCase() === w.toLowerCase()) && isCommonWord(w.toLowerCase()) && !couldBeName(w));
+                    if (!sharesOrdinary && handle.test(o) && handle.test(ch) && /[a-z]/.test(o) && /[a-z]/.test(ch)) {   // not CONSTANT_NAMES
                         const nameish = (s) => s.split(/[._]/).some(w => couldBeName(w)) || s.split(/[._]/).every(w => !isCommonWord(w.toLowerCase()));
                         if (nameish(o) || nameish(ch)) { for (const w of ch.split(/[._]/).concat([ch])) __ptScrubbedNameWords.add(w); continue; }
                     }
@@ -4261,6 +4293,29 @@
                 // A changed value on a credential line ("Password - x", "PAN: y") was correctly scrubbed: no label.
                 if (isOnCredentialValue(diff.changed, rightText) || isOnCredentialValue(diff.original, leftText)) { markRedacted(diff); continue; }
 
+                // (v11.4.4) A code name with one part changed ("calculate_total" -> "calculate_zelvor", "OrderService" ->
+                // "QuarvinService", "maxRetryCount" -> "maxZelvoCount"): when the parts both sides share are ordinary words,
+                // each changed part replaced an ordinary word -> Overscrubbed, that part only. A joined-up name
+                // ("OrlaKestrelbrook" -> "ZelvaQuornfield") shares no part and is judged as before.
+                {
+                    const splitId = (x) => x.split(/[_.-]+|(?<=[a-z0-9])(?=[A-Z])/).filter(Boolean);
+                    const o = cleanWord(diff.original || ""), ch = cleanWord(diff.changed || "");
+                    if (/^[A-Za-z][A-Za-z0-9_.-]*$/.test(o) && /^[A-Za-z][A-Za-z0-9_.-]*$/.test(ch) && o !== ch) {
+                        const op = splitId(o), cp = splitId(ch);
+                        if (op.length >= 2 && op.length === cp.length) {
+                            const same = op.map((w, i) => w.toLowerCase() === cp[i].toLowerCase());
+                            const kept = op.filter((w, i) => same[i]);
+                            if (kept.length && kept.every(w => isCommonWord(w.toLowerCase()) && !couldBeName(w))) {
+                                let any = false;
+                                for (let i = 0; i < op.length; i++) {
+                                    if (!same[i] && isCommonWord(op[i].toLowerCase()) && !couldBeName(op[i]) && cp[i].length >= 2) { addTarget(cp[i], "Overscrubbed", "pt-overscrub", 65); any = true; }
+                                }
+                                if (any) continue;
+                            }
+                        }
+                    }
+                }
+
                 const cl = classifyDiff(diff.original, diff.changed, fullContext);
                 if (cl && cl.label === "Overscrubbed" && origOrdinaryForOverscrub(diff.original)) {
                     for (const w of cleanWord(diff.changed).split(/[\s\-_\/.:]+/)) if (w) __ptOrdinaryOrigins.add(cleanWord(w));
@@ -4286,26 +4341,17 @@
                     let prefix = changed.slice(0, pLen);
                     let suffix = changed.slice(changed.length - sLen);
 
-                    // Delimiter boundary snap: ensure suffix starts with or prefix ends with a delimiter
-                    while (sLen > 0 && !/[\-_/\.:@\s]/.test(changed[changed.length - sLen])) {
-                        sLen--;
-                    }
-                    while (pLen > 0 && !/[\-_/\.:@\s]/.test(changed[pLen - 1])) {
-                        pLen--;
-                    }
+                    // Delimiter boundary snap: the kept prefix / suffix must end / start at a word boundary of the changed text:
+                    // a delimiter ( - _ / . : @ space brackets , ; ) or (v11.4.4) a camelCase step ("getUser|Velmora", "Quarvin|Service").
+                    const DELIM = /[\-_/\.:@\s()\[\]{},;]/;
+                    const camelAt = (str, i) => i > 0 && i < str.length && /[a-z0-9]/.test(str[i - 1]) && /[A-Z]/.test(str[i]);
+                    const boundaryAt = (str, i) => i <= 0 || i >= str.length || DELIM.test(str[i - 1]) || DELIM.test(str[i]) || camelAt(str, i);
+                    while (sLen > 0 && !boundaryAt(changed, changed.length - sLen)) sLen--;
+                    while (pLen > 0 && !boundaryAt(changed, pLen)) pLen--;
 
                     prefix = changed.slice(0, pLen);
                     suffix = changed.slice(changed.length - sLen);
                     let mid = changed.slice(pLen, changed.length - sLen);
-
-                    // Delimiter boundary check: only trim prefix/suffix if bounded by punctuation/delimiters
-                    if (sLen > 0 && !/[\-_/\.:@0-9]/.test(suffix[0]) && !/[\-_/\.:@]/.test(mid[mid.length - 1] || '')) {
-                        sLen = 0;
-                    }
-                    if (pLen > 0 && !/[\-_/\.:@0-9]/.test(prefix[prefix.length - 1]) && !/[\-_/\.:@]/.test(mid[0] || '')) {
-                        pLen = 0;
-                    }
-                    mid = changed.slice(pLen, changed.length - sLen);
 
                     const cleanMid = cleanWord(mid);
                     if (cleanMid && cleanMid.length >= 2) {
@@ -4760,13 +4806,67 @@
 
         // Step 6: Scan for Email Addresses that exist identically in BOTH left and right documents
         // Rule: "mail should same as left then label it if not no"
-        const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
+        const emailRegex = new RegExp("(?<![A-Za-z0-9._%+-])" + EMAIL_LOCAL + "@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b", "g");
         const rightEmails = rightText.match(emailRegex) || [];
         for (const em of rightEmails) {
             // "git@github.com:acme/tool.git" is an SSH remote, not an e-mail.
             if (/^git@/i.test(em) || new RegExp(em.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ":[\\w~]").test(rightText)) continue;
             if (isEmailAddressFormat(em) && leftText.includes(em)) {
                 addTarget(em, "Email Address", "pt-email", 90);
+            }
+        }
+
+        // (v11.4.3) An e-mail broken over two lines ("priya.raghavan@northwind-" + "demo.com", "priya.raghavan" + "@northwind-demo.com").
+        // Joined only when the break is inside the domain, right before the "@", or after a . _ - in the name part, the joined
+        // text is a real e-mail, the first piece is not one already, and the left has the same e-mail (line breaks ignored).
+        // A label cannot span lines, so each piece is labeled on its own.
+        {
+            const setDirect = (text, label, cls, priority) => {
+                const ex = targetMap.get(text);
+                if (!ex || priority > ex.priority) targetMap.set(text, { text, label, cls, priority });
+            };
+            const rl = rightText.split("\n");
+            let leftFlatE = null;
+            for (let i = 0; i + 1 < rl.length; i++) {
+                const tm = /(\S+)\s*$/.exec(rl[i]), hm = /^\s*(\S+)/.exec(rl[i + 1]);
+                if (!tm || !hm) continue;
+                const a = tm[1].replace(/^.*[<(\["'`:,;]/, "");
+                const b = hm[1].replace(/[>)\]"'`.,;:!?]+$/, "");
+                if (a.length < 2 || b.length < 2 || (a + b).split("@").length !== 2) continue;
+                const brk = (a.includes("@") && !a.endsWith("@")) || b.startsWith("@") || (/[._-]$/.test(a) && b.includes("@") && !a.includes("@"));
+                if (!brk || isEmailAddressFormat(a) || !isEmailAddressFormat(a + b)) continue;
+                if (leftFlatE === null) leftFlatE = leftText.replace(/\s+/g, "");
+                if (!leftFlatE.includes(a + b)) continue;
+                setDirect(a, "Email Address", "pt-email", 90);
+                setDirect(b, "Email Address", "pt-email", 90);
+            }
+
+            // (v11.4.3) A hidden address ("priya.raghavan [at] northwind-demo [dot] com", "priya(at)northwind-demo.com",
+            // "arjun.mehta at contoso-demo dot co dot in") is not an e-mail label. When the same hidden address is on both
+            // sides, its person name (the name part, if it is a name and not a mailbox like "support") is a Person Name and
+            // its company (the domain's name, unless it is a webmail provider like gmail) is a Business Name.
+            // A spelled-out " at " counts only with a spelled-out " dot " and a name part like "first.last".
+            const AT = "(?:\\s*[\\[({]\\s*at\\s*[\\])}]\\s*|\\s+at\\s+)";
+            const DOT = "(?:\\s*[\\[({]\\s*dot\\s*[\\])}]\\s*|\\s+dot\\s+|\\.)";
+            const hidden = new RegExp("(?<![\\w.@-])([A-Za-z][A-Za-z0-9._-]*?)" + AT + "([A-Za-z0-9][A-Za-z0-9-]*(?:" + DOT + "[A-Za-z0-9][A-Za-z0-9-]*)*" + DOT + "[A-Za-z]{2,})(?![\\w-])", "gi");
+            const WEBMAIL = /^(?:gmail|googlemail|yahoo|ymail|rocketmail|outlook|hotmail|live|msn|icloud|me|mac|aol|proton|protonmail|pm|rediffmail|rediff|gmx|yandex|mail|zohomail|fastmail|tutanota|qq|163)$/i;
+            const MAILBOX = /^(?:support|info|hr|admin|sales|contact|help|noreply|no-reply|no_reply|team|office|careers|jobs|billing|accounts?|enquiry|enquiries|hello|mail|marketing|ops|security|service|services|webmaster|postmaster|feedback|press|media|legal|finance|payroll|recruitment|hiring|it|devops|alerts|notifications)$/i;
+            const normWsE = (x) => x.replace(/\s+/g, " ").trim();
+            const leftNormE = normWsE(leftText);
+            let hm2;
+            while ((hm2 = hidden.exec(rightText)) !== null) {
+                const whole = hm2[0];
+                if (/@/.test(whole)) continue;
+                const bracketAt = /[\[({]\s*at\s*[\])}]/i.test(whole);
+                if (!bracketAt && !(/\sdot\s/i.test(whole) && /[._]/.test(hm2[1]))) continue;
+                if (!leftNormE.includes(normWsE(whole))) continue;
+                const local = hm2[1];
+                const labels = hm2[2].split(new RegExp(DOT, "i")).filter(Boolean);
+                if (labels.length < 2) continue;
+                const n = labels.length;
+                const company = (n >= 3 && /^(?:co|com|org|net|ac|gov|edu|or|ne)$/i.test(labels[n - 2]) && labels[n - 1].length === 2) ? labels[n - 3] : labels[n - 2];
+                if (/^[A-Za-z]+(?:[._-][A-Za-z]+){0,3}$/.test(local) && !MAILBOX.test(local)) setDirect(local, "Person Name", "pt-person", 90);
+                if (company && company.length >= 2 && !WEBMAIL.test(company) && /[A-Za-z]/.test(company)) setDirect(company, "Business Name", "pt-business", 90);
             }
         }
 
@@ -5216,6 +5316,48 @@
                     if (t.label !== "Email Address" && t.label !== "IP Address") continue;
                     const occ = occurrencesOf(t.text, rightText);
                     if (occ.length > 0 && occ.every(i => spans.some(([a, b]) => i >= a && i < b))) targetMap.delete(key);
+                }
+            }
+        }
+
+        // (v11.4.4) A changed ordinary date is Overscrubbed: only a date of birth may be scrubbed. The label covers the changed
+        // part of the date ("12 March 2025" -> "19 April 2025": "19 April"; "12-03-2025" -> "19-04-2025": "19-04"); when only the
+        // day changed, the whole date (a bare "19" would also match other numbers on the page). A changed DOB gets no label.
+        {
+            const MON = "(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\\.?";
+            const DATE_SRC = "(?:\\d{1,2}[-/.]\\d{1,2}[-/.]\\d{2,4}|\\d{4}[-/.]\\d{1,2}[-/.]\\d{1,2}|\\d{1,2}(?:st|nd|rd|th)?\\s+" + MON + "(?:,?\\s+\\d{4})?|" + MON + "\\s+\\d{1,2}(?:st|nd|rd|th)?(?:,?\\s+\\d{4})?)";
+            const DATE_IN = new RegExp("(?<![\\w/.-])" + DATE_SRC + "(?![\\w/-]|\\.\\d)", "gi");
+            const DATE_ALL = new RegExp("^" + DATE_SRC + "$", "i");
+            const DOB_RE = /\b(?:dob|d\.o\.b|date\s*of\s*birth|birth\s*date|birthday|born|date_of_birth|birth_date|birthdate)\b/i;
+            const lLines = leftText.split("\n");
+            for (const rLine of rightText.split("\n")) {
+                if (rLine.length > 1000) continue;
+                DATE_IN.lastIndex = 0;
+                let dm;
+                while ((dm = DATE_IN.exec(rLine)) !== null) {
+                    const dr = dm[0];
+                    const P = rLine.slice(0, dm.index), Sx = rLine.slice(dm.index + dr.length);
+                    let dl = null, lLine = null;
+                    for (const l of lLines) {
+                        if (l.length > P.length + Sx.length && l.startsWith(P) && l.endsWith(Sx)) {
+                            const mid = l.slice(P.length, l.length - Sx.length);
+                            if (mid !== dr && DATE_ALL.test(mid)) { dl = mid; lLine = l; break; }
+                        }
+                    }
+                    if (!dl || DOB_RE.test(rLine) || DOB_RE.test(lLine)) continue;
+                    const tok = (x) => x.match(/\d+|[A-Za-z]+\.?|[^A-Za-z\d]+/g) || [];
+                    const lt = tok(dl), rt = tok(dr);
+                    let span = dr;
+                    if (lt.length === rt.length) {
+                        let a = 0, b = rt.length - 1;
+                        while (a < rt.length && lt[a] === rt[a]) a++;
+                        while (b > a && lt[b] === rt[b]) b--;
+                        span = rt.slice(a, b + 1).join("").trim();
+                        if (/^\d{1,3}$/.test(span) || span.length < 2) span = dr;
+                    }
+                    const ex = targetMap.get(span);
+                    if (!ex || ex.priority < 70) targetMap.set(span, { text: span, label: "Overscrubbed", cls: "pt-overscrub", priority: 70 });
+                    for (const [k, t] of targetMap) if (t.label === "Overscrubbed" && k !== span && span.includes(k) && dr.includes(k)) targetMap.delete(k);
                 }
             }
         }

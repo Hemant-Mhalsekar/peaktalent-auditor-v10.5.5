@@ -93,9 +93,20 @@ same('unchanged JSON key', '"dependencies": {', 'dependencies', '', 'Overscrubbe
 diff('scrubbed person name', 'I met Furkan at the airport.', 'I met Dalvorin at the airport.', 'Dalvorin', '', 'Overscrubbed');
 diff('scrubbed company', 'She joined Accenture in 2019.', 'She joined Velmoratech in 2019.', 'Velmoratech', '', 'Business Name');
 diff('scrubbed phone', 'Call 9876543210 today', 'Call 9123456780 today', '9123456780', '', 'Indian Mobile Number');
+// (v11.4.4) Overscrubbed rules
+diff('number replaced by a word', 'Order 12345 shipped', 'Order hello shipped', 'hello', 'Overscrubbed', 'Date');
+diff('number replaced by a number', 'Order 12345 shipped', 'Order 00000 shipped', '00000', '', 'Overscrubbed');
+diff('changed ordinary date', 'Meeting on 12 March 2025', 'Meeting on 19 April 2025', '19 April', 'Overscrubbed', 'Date');
+diff('changed date of birth', 'DOB: 05-11-1988', 'DOB: 17-02-1991', '17-02-1991', '', 'Overscrubbed');
+diff('changed part of a code name', 'def calculate_total(items):', 'def calculate_zelvor(items):', 'zelvor', 'Overscrubbed', 'Credentials');
+diff('changed camelCase part', 'const getUserProfile = 1;', 'const getUserVelmora = 1;', 'Velmora', 'Overscrubbed', 'Person Name');
 same('statement date (not DOB)', 'Statement Date: 12-01-2026', '12-01-2026', '', 'Date');
 same('city alone', 'Location: Bengaluru', 'Bengaluru', '', 'Address');
 same('link to a file (v11.4.1)', 'Logo: https://cdn.acmecorp-demo.io/static/logo.png', 'https://cdn.acmecorp-demo.io/static/logo.png', '', 'URL/Link');
+same('placeholder e-mail (v11.4.3)', 'Mail priya@example.com today', 'priya@example.com', '', 'Email Address');
+same('test@ on a real domain (v11.4.3)', 'Mail test@acmecorp-demo.io today', 'test@acmecorp-demo.io', 'Email Address', 'URL/Link');
+same('asset file name (v11.4.3)', 'Logo icon@2x.png here', 'icon@2x.png', '', 'Email Address');
+same("apostrophe e-mail (v11.4.3)", "Mail sean.o'brien@initech-demo.com today", "sean.o'brien@initech-demo.com", 'Email Address', 'Person Name');
 same('link to a document (v11.4.2)', 'Payslip: https://hr.acmecorp-demo.io/payslips/2024-03.pdf', 'https://hr.acmecorp-demo.io/payslips/2024-03.pdf', 'URL/Link', 'Date');
 same('Google Sheets link (v11.4.2)', 'Budget: https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/edit', 'https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/edit', 'URL/Link', 'Credentials');
 same('link to a script (v11.4.1)', 'Load https://cdn.acmecorp-demo.io/app/main.js first', 'https://cdn.acmecorp-demo.io/app/main.js', '', 'URL/Link');

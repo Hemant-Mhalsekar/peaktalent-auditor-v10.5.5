@@ -118,6 +118,52 @@ no('Contact: anita.desai@globex-demo.com', 'morvela.quint@globex-demo.com', 'Con
 notAs('Logo: icon@2x.png', 'icon@2x.png');
 notAs('import x from "@angular/core"', '@angular/core');
 notAs('UPI ID: rahul92@okhdfcbank', 'rahul92@okhdfcbank');
+// (v11.4.3) an apostrophe inside the name part is part of the address
+yes("Mail sean.o'brien@initech-demo.com today", "sean.o'brien@initech-demo.com");
+notAs("Mail sean.o'brien@initech-demo.com today", 'brien@initech-demo.com');
+yes("He wrote 'priya@northwind-demo.com' twice", 'priya@northwind-demo.com');
+// (v11.4.3) invalid addresses are not e-mails
+notAs('Mail priya.@northwind-demo.com', 'priya.@northwind-demo.com');
+notAs('Mail priya..r@northwind-demo.com', 'priya..r@northwind-demo.com');
+notAs('Mail .priya@northwind-demo.com', '.priya@northwind-demo.com');
+// (v11.4.3) placeholders: only fake domains are skipped; test@ / user@ on a real domain are e-mails
+notAs('Mail priya@example.com', 'priya@example.com');
+notAs('Mail someone@test.com', 'someone@test.com');
+notAs('Mail anyone@domain.com', 'anyone@domain.com');
+yes('Mail test@acmecorp-demo.io', 'test@acmecorp-demo.io');
+yes('Mail user@acmecorp-demo.io', 'user@acmecorp-demo.io');
+yes('Mail email@acmecorp-demo.io', 'email@acmecorp-demo.io');
+yes('Mail sample@globex-demo.com', 'sample@globex-demo.com');
+// (v11.4.3) an e-mail broken over two lines: each line's piece is labeled
+const EW = 'Mail priya.raghavan@northwind-\ndemo.com today';
+yes(EW, 'priya.raghavan@northwind-');
+yes(EW, 'demo.com');
+const EW2 = 'Mail priya.raghavan\n@northwind-demo.com today';
+yes(EW2, 'priya.raghavan');
+yes(EW2, '@northwind-demo.com');
+yes('Mail priya.raghavan@northwind-demo.com today', 'demo.com', undefined, EW);   // wrapped only on the right
+no(EW, 'demo.com', 'Mail priya.raghavan@velmora-\ndemo.com today');                // domain changed -> scrubbed
+notAs('Ends priya.raghavan@northwind-demo.com\ndemo.com is a site', 'demo.com');  // already a whole e-mail: the next line is not part of it
+// (v11.4.3) hidden addresses: only the person's name and the company name are labeled
+const H1 = 'Mail priya.raghavan [at] northwind-demo [dot] com';
+yes(H1, 'priya.raghavan', 'Person Name');
+yes(H1, 'northwind-demo', 'Business Name');
+notAs(H1, 'priya.raghavan [at] northwind-demo [dot] com');
+const H2 = 'Mail priya(at)northwind-demo.com';
+yes(H2, 'priya', 'Person Name');
+yes(H2, 'northwind-demo', 'Business Name');
+const H3 = 'Write to arjun.mehta at contoso-demo dot co dot in';
+yes(H3, 'arjun.mehta', 'Person Name');
+yes(H3, 'contoso-demo', 'Business Name');
+const H4 = 'Mail support {at} initech-demo {dot} com';
+yes(H4, 'initech-demo', 'Business Name');
+notAs(H4, 'support', 'Person Name');                                               // a role word is not a person
+const H5 = 'Mail rahul.verma [at] gmail [dot] com';
+yes(H5, 'rahul.verma', 'Person Name');
+notAs(H5, 'gmail', 'Business Name');                                               // a webmail provider is not the person's company
+no('Mail priya.raghavan [at] northwind-demo [dot] com', 'northwind-demo', 'Mail zelvora.k [at] northwind-demo [dot] com');   // changed on the right -> nothing
+notAs('We are available at acmecorp-demo.com for questions', 'available', 'Person Name');
+notAs('Meet at office dot com later', 'office', 'Business Name');
 
 // ======================= IP ADDRESS =======================
 label('IP Address');
@@ -134,6 +180,33 @@ notAs('Time 10:30:45', '10:30:45');
 
 // ======================= OVERSCRUBBED =======================
 label('Overscrubbed');
+// (v11.4.4) a word joined by _ or written in camelCase: only the changed part
+yes('def calculate_total(items):', 'zelvor', undefined, 'def calculate_zelvor(items):');
+notAs('def calculate_total(items):', 'calculate_zelvor', undefined, 'def calculate_zelvor(items):');
+yes('MAX_RETRY_COUNT = 5', 'VELMORA', undefined, 'MAX_VELMORA_COUNT = 5');
+yes('const getUserProfile = 1;', 'Velmora', undefined, 'const getUserVelmora = 1;');
+notAs('const getUserProfile = 1;', 'getUserVelmora', undefined, 'const getUserVelmora = 1;');
+yes('class OrderService {}', 'Quarvin', undefined, 'class QuarvinService {}');
+yes('let maxRetryCount = 3;', 'Zelvo', undefined, 'let maxZelvoCount = 3;');
+// (v11.4.4) a value replaced by something of another kind is Overscrubbed; the same kind is correct redaction
+yes('Order 12345 shipped', 'hello', undefined, 'Order hello shipped');
+no('Order 12345 shipped', '00000', 'Order 00000 shipped');
+no('Order 12345 shipped', '98765', 'Order 98765 shipped');
+yes('Call 9876543210 today', 'quarvel', undefined, 'Call quarvel today');
+no('Call 9876543210 today', '9123456780', 'Call 9123456780 today');
+yes('Mail priya@northwind-demo.com today', 'velmorine', undefined, 'Mail velmorine today');
+no('Mail priya@northwind-demo.com today', 'zelvor@quellan-demo.com', 'Mail zelvor@quellan-demo.com today');
+no('I met Hemant at the airport.', 'Alex', 'I met Alex at the airport.');
+no('Ask the Member first.', 'Manager', 'Ask the Manager first.');
+// (v11.4.4) a changed ordinary date is Overscrubbed (only a date of birth may be scrubbed): the changed part
+yes('Meeting on 12 March 2025', '19 April', undefined, 'Meeting on 19 April 2025');
+yes('Invoice date: 12-03-2025', '19-04', undefined, 'Invoice date: 19-04-2025');
+yes('Released 2024-10-15 to all', '2023-07-02', undefined, 'Released 2023-07-02 to all');
+yes('Due on March 12, 2025.', 'April 19', undefined, 'Due on April 19, 2025.');
+no('DOB: 05-11-1988', '17-02-1991', 'DOB: 17-02-1991');
+no('Date of Birth: 12 March 1990', '19 April', 'Date of Birth: 19 April 1990');
+// (v11.4.4) an added word is Overscrubbed
+yes('the report is ready', 'final', undefined, 'the final report is ready');
 yes('The Council Member approved it.', 'Beagenhydra', undefined, 'The Council Beagenhydra approved it.');
 yes('for the end-client team', 'lyroranim', undefined, 'for the end-lyroranim team');
 yes('"CreateDate": "2012-10-17"', 'hydragenzen', undefined, '"CreateDate": "hydragenzen-10-17"');

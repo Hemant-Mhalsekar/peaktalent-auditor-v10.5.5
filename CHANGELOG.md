@@ -1,5 +1,24 @@
 # Changelog
 
+## 11.4.4 - October 2026
+
+Overscrubbed:
+- **Words joined by `_` are split**: `calculate_total` → `calculate_zelvor` got no label (an older rule took it for a person's handle like `kartik.nayyar`); now `zelvor` is Overscrubbed.
+- **camelCase / PascalCase parts are isolated**: `getUserVelmora` → `Velmora`, `QuarvinService` → `Quarvin`, `maxZelvoCount` → `Zelvo` (the whole name was labeled, or nothing).
+- **A value replaced by another kind is Overscrubbed**: a number, phone, e-mail or link replaced by a plain word (`12345` → `hello`). The same kind (`12345` → `00000`, `Hemant` → `Alex`, one e-mail for another) stays correct redaction.
+- **Changed ordinary dates are Overscrubbed** on their changed part (`19 April`, `19-04`); only a date of birth may be scrubbed. Before, only a changed month word was labeled.
+- **Mistake check**: an Overscrubbed label on a changed DOB, or on a number / phone / e-mail replaced by the same kind, is flagged; an Overscrubbed label on a changed ordinary date is accepted.
+
+## 11.4.3 - October 2026
+
+Email Address:
+- **An apostrophe in the name part** is part of the e-mail: `sean.o'brien@initech-demo.com` was labeled as `brien@initech-demo.com`.
+- **Invalid addresses** (`priya.@...`, `priya..r@...`, `.priya@...`) are not e-mails.
+- **Placeholders by domain only.** `test@`, `user@`, `email@`, `name@`, `sample@` on a real company domain are now labeled; addresses at `example.com`, `test.com`, `domain.com`, ... are still skipped.
+- **An e-mail broken over two lines** is found (inside the domain, before the `@`, or after a `. _ -` in the name); each line's piece is labeled.
+- **Hidden addresses** (`[at]`, `(at)`, `{at}`, `[dot]`, or `first.last at company dot com`): the person's name gets Person Name and the company gets Business Name when the same hidden address is on both sides. Mailbox names (support, hr, ...) and webmail providers (gmail, outlook, ...) are left out.
+- **The mistake check uses the same rule as the suggestions**: an Email label on `priya@example.com` or `icon@2x.png` is now flagged (it was accepted).
+
 ## 11.4.2 - October 2026
 
 - **URL/Link: links to documents are labeled again**: `.pdf .doc .docx .xls .xlsx .ppt .pptx .csv .txt .md` may hold personal data. Other file links (styles, scripts, images, fonts, archives, media, data, code) stay unlabeled.
