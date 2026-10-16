@@ -180,6 +180,33 @@ notAs('Time 10:30:45', '10:30:45');
 
 // ======================= OVERSCRUBBED =======================
 label('Overscrubbed');
+// (v11.4.4) a word joined by _ or written in camelCase: only the changed part
+yes('def calculate_total(items):', 'zelvor', undefined, 'def calculate_zelvor(items):');
+notAs('def calculate_total(items):', 'calculate_zelvor', undefined, 'def calculate_zelvor(items):');
+yes('MAX_RETRY_COUNT = 5', 'VELMORA', undefined, 'MAX_VELMORA_COUNT = 5');
+yes('const getUserProfile = 1;', 'Velmora', undefined, 'const getUserVelmora = 1;');
+notAs('const getUserProfile = 1;', 'getUserVelmora', undefined, 'const getUserVelmora = 1;');
+yes('class OrderService {}', 'Quarvin', undefined, 'class QuarvinService {}');
+yes('let maxRetryCount = 3;', 'Zelvo', undefined, 'let maxZelvoCount = 3;');
+// (v11.4.4) a value replaced by something of another kind is Overscrubbed; the same kind is correct redaction
+yes('Order 12345 shipped', 'hello', undefined, 'Order hello shipped');
+no('Order 12345 shipped', '00000', 'Order 00000 shipped');
+no('Order 12345 shipped', '98765', 'Order 98765 shipped');
+yes('Call 9876543210 today', 'quarvel', undefined, 'Call quarvel today');
+no('Call 9876543210 today', '9123456780', 'Call 9123456780 today');
+yes('Mail priya@northwind-demo.com today', 'velmorine', undefined, 'Mail velmorine today');
+no('Mail priya@northwind-demo.com today', 'zelvor@quellan-demo.com', 'Mail zelvor@quellan-demo.com today');
+no('I met Hemant at the airport.', 'Alex', 'I met Alex at the airport.');
+no('Ask the Member first.', 'Manager', 'Ask the Manager first.');
+// (v11.4.4) a changed ordinary date is Overscrubbed (only a date of birth may be scrubbed): the changed part
+yes('Meeting on 12 March 2025', '19 April', undefined, 'Meeting on 19 April 2025');
+yes('Invoice date: 12-03-2025', '19-04', undefined, 'Invoice date: 19-04-2025');
+yes('Released 2024-10-15 to all', '2023-07-02', undefined, 'Released 2023-07-02 to all');
+yes('Due on March 12, 2025.', 'April 19', undefined, 'Due on April 19, 2025.');
+no('DOB: 05-11-1988', '17-02-1991', 'DOB: 17-02-1991');
+no('Date of Birth: 12 March 1990', '19 April', 'Date of Birth: 19 April 1990');
+// (v11.4.4) an added word is Overscrubbed
+yes('the report is ready', 'final', undefined, 'the final report is ready');
 yes('The Council Member approved it.', 'Beagenhydra', undefined, 'The Council Beagenhydra approved it.');
 yes('for the end-client team', 'lyroranim', undefined, 'for the end-lyroranim team');
 yes('"CreateDate": "2012-10-17"', 'hydragenzen', undefined, '"CreateDate": "hydragenzen-10-17"');

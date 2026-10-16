@@ -208,6 +208,10 @@ The platform mandates that the following **15 categories are strictly classified
   - `"job-beaexbright"` (from `"job-function"`): Annotate **`beaexbright`** only.
 - **The original decides**: if the original text is ordinary words ("Chance R", "Kickoff", "Cricket") or a place ("Ireland"), its replacement is Overscrubbed, even when the replacement looks like a name ("Yelanando N").
 - **Scrubbed names are not Overscrubbed**: if the original is a name ("Furkan", "Roni S"), its replacement is correct redaction -> no label.
+- **Code names (v11.4.4)**: a part of a name joined by `_` or written in camelCase is isolated like a `-` part: `calculate_total` → `calculate_zelvor`: **`zelvor`**; `getUserProfile` → `getUserVelmora`: **`Velmora`**; `OrderService` → `QuarvinService`: **`Quarvin`**.
+- **Same kind is fine, another kind is Overscrubbed (v11.4.4)**: a value replaced by one of the same kind is correct redaction (`Hemant` → `Alex`, `12345` → `00000`, one e-mail or phone for another, `Member` → `Manager`). A number, phone, e-mail or link replaced by a plain word is **Overscrubbed** (`12345` → `hello`).
+- **Dates (v11.4.4)**: only a date of birth may be scrubbed. Any other changed date is **Overscrubbed**, on its changed part (`12 March 2025` → `19 April 2025`: **`19 April`**; `12-03-2025` → `19-04-2025`: **`19-04`**). A changed DOB gets no label.
+- **Added words** are Overscrubbed (`the report` → `the final report`: **`final`**).
 - **Renamed keys are Overscrubbed**: in config files, a renamed key (`API_KEY = …` → `BRYENA_STELWICK = …`) is Overscrubbed, even though the value next to it is a secret.
 - **Overscrubbing Exclusions**:
   - If the original text was a genuine **Person Name** or **Business Name**, its replacement is NOT overscrubbed ("if it's scrubbed, no need to label anything").
