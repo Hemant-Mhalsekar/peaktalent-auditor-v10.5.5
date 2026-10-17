@@ -1,4 +1,4 @@
-// PeakTalent Auditor v11.4.6 - console build.
+// PeakTalent Auditor v11.4.7 - console build.
 // Open the PeakTalent review tab, open the browser console (Safari: Develop > Show JavaScript Console,
 // Chrome: Cmd/Ctrl+Option/Alt+J), paste this whole file and press Enter. Pasting again replaces the old copy.
 // GENERATED FILE - edit src/content.js and run `node scripts/build.js`.
@@ -20,7 +20,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.4.6";
+    const PT_VERSION = "11.4.7";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -660,6 +660,8 @@
                 return null;
             case "Person Name":
                 if (ordinaryWord || isLanguageWord(plain)) return wrong(PTC_NONE, "This is an ordinary word, place or language, not a person's name.");
+                // (v11.4.7) a place name inside a suggested address ("Anna Salai", "Baker Street") is part of the Address
+                for (const t of lookup.values()) if (t && t.label === "Address" && t.text !== T && t.text.includes(T) && rLine.includes(t.text)) return wrong(PTC_NONE, "This is a place inside an address, not a person's name. Label the whole address as Address instead.");
                 if (/\d/.test(T)) return wrong(PTC_NONE, "This is not a person's name.");
                 if (KNOWN_BUSINESS_NAMES.has(T.toLowerCase())) return wrong("Business Name", "This is a company name.");
                 if (TECH_TOOLS.has(T.toLowerCase())) return wrong(PTC_NONE, "This is a software / technology name.");
@@ -2583,15 +2585,21 @@
     // Street words that are often ordinary words (Drive, Way, Place, Court, Square) need a house number in front.
     const ADDR_NAME = "(?:[A-Z][A-Za-z'\u00C0-\u017F.-]*|\\d+(?:st|nd|rd|th))";
     const ADDR_PREMISE = "(?:(?:[Ff]lat|[Pp]lot|[Hh]ouse|[Dd]oor|[Ss]hop|[Uu]nit|[Oo]ffice|[Aa]pt\\.?|[Aa]partment|[Nn]o\\.?|#)\\s*(?:[Nn]o\\.?\\s*)?#?\\d+[A-Za-z]?(?:[-/]\\d+[A-Za-z]?)?|\\d+[A-Za-z]?(?:[-/]\\d+[A-Za-z]?)?)";
-    const ADDR_SUFFIX_SAFE = "Road|Rd|Street|St|Lane|Ln|Avenue|Ave|Boulevard|Blvd|Marg|Nagar|Layout|Colony|Chowk|Gali|Galli|Enclave|Vihar|Puram|Peth|Highway|Hwy";
+    const ADDR_SUFFIX_SAFE = "Road|Rd|Street|St|Lane|Ln|Avenue|Ave|Boulevard|Blvd|Marg|Nagar|Layout|Colony|Chowk|Gali|Galli|Enclave|Vihar|Puram|Peth|Highway|Hwy|Parkway|Pkwy|Expressway|Expy|Freeway|Turnpike";
     const ADDR_SUFFIX_RISKY = "Drive|Dr|Way|Court|Ct|Place|Pl|Square|Sq|Terrace|Path|Close|Crescent";
-    const ADDR_PREFIX = "(?:Rua|R\\.|Avenida|Av\\.|Travessa|Alameda|Pra[c\u00E7]a|Rodovia|Estrada|Jl\\.|Jalan|Gg\\.|Gang)";
-    const ADDR_PLACES = "(?:,\\s*(?:" + ADDR_NAME + "(?:\\s+" + ADDR_NAME + "){0,3}|[1-9]\\d{2}\\s?\\d{3}|\\d{5}(?:-\\d{3,4})?)(?:\\s+[1-9]\\d{2}\\s?\\d{3})?)*";
+    const ADDR_PREFIX = "(?:Rua|R\\.|Avenida|Av\\.|Travessa|Alameda|Pra[c\u00E7]a|Rodovia|Estrada|Jl\\.|Jalan|Gg\\.|Gang|Rue|Calle|Avenue\\s+de|Village|Vill\\.|Gram|Mohalla)";
+    // (v11.4.7) What follows the street, comma by comma, up to the end of the address: unit, locality, city, state, postcode of
+    // any country ("Apt 4", "Suite 3300", "London NW1 6XE", "NY 10118", "Sao Paulo - SP", "01304-001", "Jakarta Selatan 12190",
+    // "10115 Berlin", "Dist. Gorakhpur"). Each part starts with a capital or a digit, so "MG Road, then go home" stops at the road.
+    const ADDR_WORD = "(?:[A-Z0-9#][A-Za-z0-9'\u00C0-\u017F./#&-]*|de|da|do|dos|das|di|of|the|and|el|la|le)";
+    const ADDR_PLACES = "(?:,[ \\t]*" + ADDR_WORD + "(?:(?:[ \\t]+-[ \\t]+|[ \\t]+)" + ADDR_WORD + "){0,5})*(?=[ \\t]*(?:[.,;)\\]\"']|$|\\s))";
     const PARTIAL_ADDRESS_SOURCE =
         "(?<![A-Za-z0-9])(?:" +
             "(?:" + ADDR_PREMISE + ",?\\s+)?(?:" + ADDR_NAME + "\\s+){1,4}(?:" + ADDR_SUFFIX_SAFE + ")\\b\\.?" +
             "|" + ADDR_PREMISE + ",?\\s+(?:" + ADDR_NAME + "\\s+){1,4}(?:" + ADDR_SUFFIX_RISKY + ")\\b\\.?" +
             "|" + ADDR_PREFIX + "\\s+(?:" + ADDR_NAME + "\\s*){1,4}(?:,?\\s*(?:No\\.?\\s*)?\\d+[A-Za-z]?)?" +
+            "|[A-Z][a-z\u00E4\u00F6\u00FC\u00DF]+(?:strasse|stra\u00DFe|str\\.|weg|platz|allee|gasse|damm|ring)\\s+\\d+[a-z]?" +   // Hauptstrasse 5
+            "|(?:P\\.?\\s?O\\.?\\s?Box|Post\\s+Box|PO\\s+Box)\\s*\\d+" +
         ")(?!\\s+[A-Z][a-z])" + ADDR_PLACES;
     const NOT_STREET_START = /^(?:the|a|an|this|that|these|those|our|your|my|their|his|her|its|on|in|at|to|from|via|main|new|old|next|last|each|every|any|no|wall|easy|sesame|memory|fast|silk|abbey|google|test|high|one|two|first|second)$/i;
     function isPartialAddress(str) {
@@ -4248,6 +4256,21 @@
                     const kindOf = (x) => /^@[A-Za-z_][\w.-]*$/.test(x) ? "handle" : isEmailAddressFormat(x) || /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/.test(x) ? "email" : /^https?:\/\//i.test(x) ? "url" :
                         (phoneLabelFor(x) || isContactNumberFormat(x)) ? "phone" : /^\d(?:[\d\s.,\/:-]*\d)?$/.test(x) ? "number" :
                         /^[A-Za-z][A-Za-z'\-]*$/.test(x) ? "word" : "other";
+                    // (v11.4.7) an address replaced by a plain word, or a plain word by an address ("Ship to 12, MG Road, Pune 411001" <-> "Ship to hello")
+                    {
+                        const ow = (diff.original || "").replace(/\s+([,.])/g, "$1").trim(), cw = (diff.changed || "").replace(/\s+([,.])/g, "$1").trim();
+                        const isAddr = (x) => x.length >= 5 && (isCompleteAddress(x) || isPartialAddress(x));
+                        if (ow && cw && isAddr(ow) && /^[A-Za-z][A-Za-z'\-]*$/.test(cw) && !isAddr(cw) && !new RegExp("(?:^|[^A-Za-z])" + cw + "(?![A-Za-z])", "i").test(leftText)) {
+                            addTarget(cw, "Overscrubbed", "pt-overscrub", 66); continue;
+                        }
+                        const owWords = ow.split(/\s+/);
+                        if (ow && cw && isAddr(cw) && !isAddr(ow) && owWords.length <= 3 && owWords.every(w => isCommonWord(w.toLowerCase()) && !couldBeName(w)) && !leftText.includes(cw)) {
+                            __ptOrdinaryOrigins.add(cw);
+                            const ex = targetMap.get(cw);
+                            if (!ex || ex.priority < 66) targetMap.set(cw, { text: cw, label: "Overscrubbed", cls: "pt-overscrub", priority: 66 });
+                            continue;
+                        }
+                    }
                     // (v11.4.5) the other way round too: an ordinary word replaced by an IP address ("Server alpha" -> "Server 10.1.2.3")
                     if (o && ch && kindOf(o) === "word" && isIpAddressFormat(ch) && isCommonWord(o.toLowerCase()) && !couldBeName(o) && !leftText.includes(ch)) {
                         __ptOrdinaryOrigins.add(ch);   // the original was ordinary: the changed-PII guard must not hide it
@@ -5285,7 +5308,19 @@
         // Address - the address was redacted, so nothing is labeled.
         const normWs = (s) => s.replace(/\s+/g, " ").trim();
         const leftNorm = normWs(leftText);
-        const isAddrLine = (l) => { const t = l.trim(); return t.length > 0 && t.length <= 120 && !t.includes("|") && (looksLikeAddressPart(t) || containsPlace(t) || /^(?:[A-Z][a-z]+\s?){1,3},?$/.test(t) && containsPlace(t)); };
+        // (v11.4.7) also a street of any country ("221B Baker Street, Apt 4,") and a city + postcode line of any country
+        // ("London NW1 6XE", "New York, NY 10118", "10115 Berlin")
+        // the address that ends a line after other words ("Lives at 221B Baker Street, Apt 4,")
+        const addrTail = (l) => {
+            const t = l.replace(/[,\s]+$/, "");
+            const re = new RegExp(PARTIAL_ADDRESS_SOURCE, "g");
+            let m, last = null;
+            while ((m = re.exec(t)) !== null) { if (m.index + m[0].length === t.length && isPartialAddress(m[0])) { last = m[0]; break; } if (m[0].length === 0) re.lastIndex++; }
+            return last;
+        };
+        const isAddrLine = (l) => { const t = l.trim(); return t.length > 0 && t.length <= 120 && !t.includes("|") && (looksLikeAddressPart(t) || containsPlace(t) || /^(?:[A-Z][a-z]+\s?){1,3},?$/.test(t) && containsPlace(t) || !!addrTail(t) ||
+            isPartialAddress(t.replace(/^[A-Za-z][A-Za-z /]{1,24}:\s*/, "").replace(/[,\s]+$/, "")) ||
+            /^(?:[A-Z][a-z]+(?:\s[A-Z][a-z]+)*,?\s+)?(?:[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}|[A-Z]{2}\s+\d{5}(?:-\d{4})?|\d{5}(?:-\d{3,4})?(?:\s+[A-Z][a-z]+)?)$/.test(t)); };
         const blockAround = (i) => {
             let a = i, b = i;
             while (a - 1 >= 0 && isAddrLine(rightLines[a - 1]) && i - a < 5) a--;
@@ -5300,6 +5335,8 @@
             for (const piece of pieces) {
                 // (v10.5.4) a field label in front ("Ship to: ", "Address: ") is not part of the address.
                 let cand = piece.replace(/^[\s\-:]+/, "").replace(/^[A-Za-z][A-Za-z /]{1,24}:\s*(?=\S)/, "").replace(/[\s\-:]+$/, "").trim();
+                // (v11.4.7) a quoted CSV / JSON cell ("1,\"12, MG Road, Pune 411001\"") holds the address: only what is inside the quotes
+                { const q = /"([^"]{15,})"/.exec(cand); if (q) cand = q[1].trim(); }
                 // (v10.5.4) an address inside a sentence ("Delivered to 5th Floor, ..., Hyderabad 500081 yesterday"):
                 // keep only the part from the first house / floor / plot number to the PIN code.
                 {
@@ -5323,9 +5360,20 @@
             const block = blockAround(i);
             if (block.length < 2) continue;
             const joined = block.join(", ");
-            if (!isCompleteAddress(joined) && !isCompleteAddress(block.join(" "))) continue;
-            if (!leftNorm.includes(normWs(block.join(" ")))) continue;
-            for (const l of block) addTarget(l.replace(/[,\s]+$/, ""), "Address", "pt-address", 85, true);
+            // (v11.4.7) a line broken in the middle of a word ("Beng" / "aluru 560087") is joined without a space
+            const glue = (b) => b.reduce((acc, l, k) => k === 0 ? l : (/[A-Za-z]$/.test(acc) && /^[a-z]/.test(l) ? acc + l : acc + " " + l), "");
+            const strip = (l) => { const k = l.replace(/^[A-Za-z][A-Za-z /]{1,24}:\s*(?=\S)/, ""); if (k !== l) return k; const tail = addrTail(l); return tail && !isPartialAddress(l.replace(/[,\s]+$/, "")) && !isCompleteAddress(l) ? tail : l; };   // "Ship to: ", "Lives at " are not part of the address
+            const glued = glue(block.map(strip));
+            if (!isCompleteAddress(joined) && !isCompleteAddress(block.join(" ")) && !isCompleteAddress(glued) && !isPartialAddress(glued.replace(/[,\s]+$/, ""))) continue;
+            if (!leftNorm.includes(normWs(block.join(" "))) && !leftNorm.includes(normWs(glue(block)))) continue;
+            for (const l of block) {
+                const piece = strip(l).replace(/[,\s]+$/, "");
+                if (piece.length < 2) continue;
+                const ex = targetMap.get(piece);
+                if (!ex || ex.priority < 85) targetMap.set(piece, { text: piece, label: "Address", cls: "pt-address", priority: 85 });
+                const withKey = l.replace(/[,\s]+$/, "");
+                if (withKey !== piece && targetMap.get(withKey) && targetMap.get(withKey).label === "Address") targetMap.delete(withKey);
+            }
         }
         // (v11.4.0) Partial addresses count too: a street on its own ("MG Road", "221B Baker Street, London", "Rua Augusta
         // 1500", "Jl. Sudirman No. 12") with whatever place names follow it on the line. A city, state, country or PIN alone
@@ -5425,6 +5473,38 @@
                     if (t.label !== "Email Address" && t.label !== "IP Address") continue;
                     const occ = occurrencesOf(t.text, rightText);
                     if (occ.length > 0 && occ.every(i => spans.some(([a, b]) => i >= a && i < b))) targetMap.delete(key);
+                }
+            }
+        }
+
+        // (v11.4.7) Inside an address: a company named first ("Infosys Ltd, Electronics City, Hosur Road, Bengaluru 560100") is the
+        // Business Name and the rest is the Address; place names inside the address ("Anna Salai", "Baker Street", "Sao Paulo")
+        // are not people.
+        {
+            const biz = Array.from(targetMap.values()).filter(t => t.label === "Business Name");
+            for (const a of Array.from(targetMap.values())) {
+                if (a.label !== "Address") continue;
+                for (const b of biz) {
+                    if (!a.text.startsWith(b.text + ",")) continue;
+                    const rest = a.text.slice(b.text.length + 1).trim();
+                    if (rest.length >= 5 && (isCompleteAddress(rest) || isPartialAddress(rest))) {
+                        targetMap.delete(a.text);
+                        if (!targetMap.has(rest)) targetMap.set(rest, Object.assign({}, a, { text: rest }));
+                    }
+                    break;
+                }
+            }
+            const spans = [];
+            for (const t of targetMap.values()) {
+                if (t.label !== "Address") continue;
+                let i = rightText.indexOf(t.text);
+                while (i !== -1) { spans.push([i, i + t.text.length]); i = rightText.indexOf(t.text, i + 1); }
+            }
+            if (spans.length) {
+                for (const [k, t] of Array.from(targetMap)) {
+                    if (t.label !== "Person Name") continue;
+                    const occ = occurrencesOf(t.text, rightText);
+                    if (occ.length && occ.every(i => spans.some(([a, b]) => i >= a && i + t.text.length <= b))) targetMap.delete(k);
                 }
             }
         }

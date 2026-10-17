@@ -93,6 +93,11 @@ same('unchanged JSON key', '"dependencies": {', 'dependencies', '', 'Overscrubbe
 diff('scrubbed person name', 'I met Furkan at the airport.', 'I met Dalvorin at the airport.', 'Dalvorin', '', 'Overscrubbed');
 diff('scrubbed company', 'She joined Accenture in 2019.', 'She joined Velmoratech in 2019.', 'Velmoratech', '', 'Business Name');
 diff('scrubbed phone', 'Call 9876543210 today', 'Call 9123456780 today', '9123456780', '', 'Indian Mobile Number');
+// (v11.4.7) Address
+same('UK address, whole line', 'Visit 10 Downing Street, London SW1A 2AA', '10 Downing Street, London SW1A 2AA', 'Address', 'Person Name');
+same('PO box', 'Mail to P.O. Box 1234, Dubai, UAE', 'P.O. Box 1234, Dubai, UAE', 'Address', 'Credentials');
+same('place inside an address', 'Door No. 12/3, Anna Salai, Chennai 600002', 'Anna Salai', '', 'Person Name');
+diff('address replaced by a word', 'Ship to 12, MG Road, Pune 411001 today', 'Ship to hello today', 'hello', 'Overscrubbed', 'Address');
 // (v11.4.6) Person Username
 same('capitalised handle', 'Follow @RahulVerma on X', '@RahulVerma', 'Person Username', 'Person Name');
 same('hyphen handle', 'Assigned to @rahul-verma today', '@rahul-verma', 'Person Username', 'Credentials');
