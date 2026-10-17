@@ -227,6 +227,9 @@ The platform mandates that the following **15 categories are strictly classified
 
 ### 5.7 Date (DOB Strictly Only)
 - Only annotate as `Date` if it is explicitly a **Date of Birth** (accompanied by field indicators: `DOB`, `Date of Birth`, `Birth Date`, `Born On`) **and identical on both sides**. A DOB that was changed was correctly scrubbed — leave it blank.
+- **(v11.4.9) Keys**: DOB, D.O.B., Date of Birth (`date_of_birth`, `dateOfBirth`), Birth Date, Birthday, Born, the short `b.`, and Hindi `Janm Tithi`, Indonesian `Tanggal Lahir` / `Tgl Lahir`, Portuguese `Data de Nascimento`, Spanish `Fecha de Nacimiento`; also as a table / CSV column.
+- **(v11.4.9) Only a full date** (day, month and year), in any written form: `05-11-1988`, `1988-11-05`, `5th November, 1988`, `November 5, 1988`, `05-Nov-1988`. A month and year (`Sept 1996`) or a year alone is not labeled. A date of death is not labeled.
+- **(v11.4.9)** A renamed DOB key (`DOB:` → `Zelvo:`) is Overscrubbed and the unchanged date stays a Date. A DOB replaced by a word is Overscrubbed.
 - General operational dates, statement dates, policy periods, transaction timestamps (`12-01-2026`, `22 Dec 2025 12:00 PM`) must **NOT** be annotated as `Date`.
 
 ### 5.8 Person Username & System IDs

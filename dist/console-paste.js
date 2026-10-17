@@ -1,4 +1,4 @@
-// PeakTalent Auditor v11.4.8 - console build.
+// PeakTalent Auditor v11.4.9 - console build.
 // Open the PeakTalent review tab, open the browser console (Safari: Develop > Show JavaScript Console,
 // Chrome: Cmd/Ctrl+Option/Alt+J), paste this whole file and press Enter. Pasting again replaces the old copy.
 // GENERATED FILE - edit src/content.js and run `node scripts/build.js`.
@@ -20,7 +20,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.4.8";
+    const PT_VERSION = "11.4.9";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -654,8 +654,10 @@
             case "Account Number": return (/^\d[\d -]{7,22}\d$/.test(T) && digits.length >= 9 && digits.length <= 18) ? null : wrong(PTC_NONE, "This is not a bank account number (9-18 digits).");
             case "Date": {
                 if (!isDateFormat(T)) return wrong(ordinaryWord ? PTC_NONE : PTC_NONE, "This is not a date.");
-                const ctxTxt = (rLine + " " + lineOf(leftText, T)).toLowerCase();
-                return /\b(?:dob|d\.o\.b|date\s*of\s*birth|birth\s*date|birthday|born|date_of_birth|birth_date)\b/.test(ctxTxt) ? null : wrong(PTC_NONE, "Only dates of birth are labeled.");
+                // (v11.4.9) only a full date (day, month, year), behind a DOB key (any spelling or language, "b.")
+                if (!isFullDate(T)) return wrong(PTC_NONE, "Only a full date of birth (day, month and year) is labeled, not a month or a year alone.");
+                const ctxTxt = rLine + " " + lineOf(leftText, T);
+                return DOB_KEY_RE.test(ctxTxt) ? null : wrong(PTC_NONE, "Only dates of birth are labeled.");
             }
             case "Address":   // (v11.4.0) full or partial; a city, state, country or postal code alone is not an address
                 if (isCompleteAddress(T) || isPartialAddress(T)) return null;
@@ -2481,6 +2483,15 @@
 
     // NOTE: v10.4 removed the background Wikipedia / DuckDuckGo / Gemini / OpenAI lookups. Document text never leaves the browser.
 
+    // ---- (v11.4.9) Date of birth ----
+    // Keys that announce a date of birth, also in Hindi, Indonesian, Portuguese and Spanish, and the short "b." (born).
+    const DOB_MON = "(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|June?|July?|Aug(?:ust)?|Sept?(?:ember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\\.?";
+    const DOB_KEY_SRC = "(?:d\\.?o\\.?b\\.?|date[\\s_]*of[\\s_]*birth|birth[\\s_]*date|birthdate|birthday|born(?:\\s+on)?|(?<![A-Za-z])b\\.|janm(?:a)?\\s*tithi|tanggal\\s*lahir|(?:tempat\\s*\\/\\s*)?tgl\\.?\\s*lahir|data\\s+de\\s+nascimento|fecha\\s+de\\s+nacimiento)";
+    // A full date only (day, month and year): "05-11-1988", "1988-11-05", "5th November, 1988", "November 5, 1988", "05-Nov-1988".
+    const FULL_DATE_SRC = "\\d{1,2}[\\/\\-.]\\d{1,2}[\\/\\-.]\\d{2,4}|\\d{4}[\\/\\-.]\\d{1,2}[\\/\\-.]\\d{1,2}|\\d{1,2}(?:st|nd|rd|th)?[\\s-]+" + DOB_MON + "[\\s,-]+\\d{2,4}|" + DOB_MON + "\\s+\\d{1,2}(?:st|nd|rd|th)?,?\\s+\\d{4}";
+    const DOB_KEY_RE = new RegExp("(?:\\b|(?<![A-Za-z]))" + DOB_KEY_SRC, "i");
+    function isFullDate(str) { return new RegExp("^(?:" + FULL_DATE_SRC + ")$", "i").test((str || "").trim()); }
+
     function isDateFormat(str) {
         if (!str) return false;
         const s = str.trim();
@@ -2489,6 +2500,8 @@
         // Common written forms: Jan 1, 2024 / 1 Jan 2024 / January 1, 2024
         if (/^(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2},?\s+\d{2,4}$/i.test(s)) return true;
         if (/^\d{1,2}\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{2,4}$/i.test(s)) return true;
+        // (v11.4.9) "5th November, 1988", "05-Nov-1988", "November 5th, 1988"
+        if (isFullDate(s)) return true;
         // ISO 8601: 2024-01-15 or 2024-01-15T10:30:00
         if (/^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:\d{2})?)?$/.test(s)) return true;
         // Year only: 1900-2100
@@ -4313,7 +4326,7 @@
                         continue;
                     }
                     if (o && ch && /^(?:email|url|phone|number|handle)$/.test(kindOf(o)) && kindOf(ch) === "word" && ch.length >= 2 &&
-                        !isDateFormat(o) && !new RegExp("(?:^|[^A-Za-z])" + ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?![A-Za-z])", "i").test(leftText)) {
+                        !new RegExp("(?:^|[^A-Za-z])" + ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?![A-Za-z])", "i").test(leftText)) {
                         addTarget(ch, "Overscrubbed", "pt-overscrub", 66);
                         continue;
                     }
@@ -5306,8 +5319,10 @@
 
         // Step 9: Scan for Date of Birth (DOB)
         // User rule: "if dob date of birth then it should be labeled as date"
+        // (v11.4.9) every DOB key (also camelCase "dateOfBirth", "Born:", "Birthday -", "b.", other languages) and every full-date
+        // format; a place may sit between key and date ("Tempat/Tgl Lahir: Jakarta, 21-09-1996"). Month + year or a year alone is not labeled.
         const dobPatterns = [
-            /(?:dob|d\.o\.b\.?|date\s+of\s+birth|birth\s*date|birthdate|born\s+on)[\s:=|]+([0-9]{1,4}[\/\-\.][0-9]{1,2}[\/\-\.][0-9]{1,4}|[0-9]{1,2}\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)[a-z]*\s+[0-9]{2,4})/gi,
+            new RegExp("(?:(?<![A-Za-z])|\\b)" + DOB_KEY_SRC + "[\"'*]*(?:\\s*[:=|\\-\\u2013]\\s*|\\s+)(?:is\\s+|on\\s+)?[\"']?(?:[A-Za-z][A-Za-z .]{0,24},\\s*)?(" + FULL_DATE_SRC + ")(?![\\w\\/-])", "gi"),
             /(?:["']?(?:dob|date_of_birth|birth_date|birthdate)["']?\s*[:=]\s*["'])([^"'\n\r]+)["']/gi
         ];
         for (const pat of dobPatterns) {
@@ -5320,17 +5335,38 @@
             }
         }
 
+        // (v11.4.9) A renamed DOB key ("DOB: 05-11-1988" -> "Zelvo: 05-11-1988"): the date is still a date of birth (the left says
+        // so) and the new key replaced an ordinary word -> Overscrubbed.
+        {
+            const keyLine = new RegExp("^\\s*([A-Za-z][\\w ./]{0,30}?)\\s*[:=\\-]\\s*[\"']?(" + FULL_DATE_SRC + ")[\"']?\\s*$", "i");
+            const leftDob = new Map();   // date -> left key
+            for (const l of leftText.split("\n")) { const m = keyLine.exec(l); if (m && DOB_KEY_RE.test(m[1])) leftDob.set(m[2], m[1].trim()); }
+            if (leftDob.size) {
+                for (const l of rightText.split("\n")) {
+                    const m = keyLine.exec(l);
+                    if (!m || DOB_KEY_RE.test(m[1]) || !leftDob.has(m[2])) continue;
+                    const rk = m[1].trim();
+                    if (rk === leftDob.get(m[2]) || leftText.includes(rk + ":")) continue;
+                    addTarget(m[2], "Date", "pt-date", 95);
+                    const ex = targetMap.get(rk);
+                    if (!ex || ex.priority < 70) targetMap.set(rk, { text: rk, label: "Overscrubbed", cls: "pt-overscrub", priority: 70 });
+                }
+            }
+        }
+
         const rDocLines = rightText.split('\n');
         for (let li = 0; li < rDocLines.length; li++) {
             const line = rDocLines[li];
-            if (/\|\s*(?:dob|date\s+of\s+birth|birth\s*date)\s*\|/i.test(line)) {
-                const headerCells = line.split('|').map(c => c.trim().toLowerCase());
-                const dobColIdx = headerCells.findIndex(c => /^(?:dob|date\s+of\s+birth|birth\s*date)$/i.test(c));
+            // (v11.4.9) a DOB column in a table, a CSV or a tab-separated file
+            const sep = line.includes('|') ? '|' : line.includes('\t') ? '\t' : line.includes(',') ? ',' : null;
+            if (sep) {
+                const headerCells = line.split(sep).map(c => c.trim().replace(/^["']|["']$/g, "").toLowerCase());
+                const dobColIdx = headerCells.findIndex(c => new RegExp("^(?:" + DOB_KEY_SRC + ")$", "i").test(c));
                 if (dobColIdx !== -1) {
-                    for (let r = li + 1; r < Math.min(rDocLines.length, li + 50); r++) {
+                    for (let r = li + 1; r < Math.min(rDocLines.length, li + 5000); r++) {
                         const rowLine = rDocLines[r];
-                        if (!rowLine.includes('|')) break;
-                        const rowCells = rowLine.split('|').map(c => c.trim());
+                        if (!rowLine.includes(sep)) break;
+                        const rowCells = rowLine.split(sep).map(c => c.trim().replace(/^["']|["']$/g, ""));
                         if (rowCells[dobColIdx]) {
                             const cellVal = rowCells[dobColIdx];
                             if (isDateFormat(cellVal)) {

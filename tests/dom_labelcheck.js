@@ -93,6 +93,12 @@ same('unchanged JSON key', '"dependencies": {', 'dependencies', '', 'Overscrubbe
 diff('scrubbed person name', 'I met Furkan at the airport.', 'I met Dalvorin at the airport.', 'Dalvorin', '', 'Overscrubbed');
 diff('scrubbed company', 'She joined Accenture in 2019.', 'She joined Velmoratech in 2019.', 'Velmoratech', '', 'Business Name');
 diff('scrubbed phone', 'Call 9876543210 today', 'Call 9123456780 today', '9123456780', '', 'Indian Mobile Number');
+// (v11.4.9) Date of birth
+same('DOB month first', 'Birth Date: November 5, 1988', 'November 5, 1988', 'Date', 'Credentials');
+same('DOB Indonesian key', 'Tanggal Lahir: 21-09-1996', '21-09-1996', 'Date', 'Credentials');
+same('DOB month and year only', 'DOB: Sept 1996', 'Sept 1996', '', 'Date');
+same('date of death', 'Date of Death: 03-02-2020', '03-02-2020', '', 'Date');
+diff('DOB replaced by a word', 'DOB: 05-11-1988', 'DOB: velmora', 'velmora', 'Overscrubbed', 'Date');
 // (v11.4.8) Credentials
 same('SSN', 'SSN: 123-45-6789', '123-45-6789', 'Credentials', 'Date');
 same('passport', 'Passport Number: J8369854', 'J8369854', 'Credentials', 'Vehicle Number Plate');
