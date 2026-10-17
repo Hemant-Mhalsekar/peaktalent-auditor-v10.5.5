@@ -1,5 +1,13 @@
 # Changelog
 
+## 11.4.9 - October 2026
+
+Date (date of birth):
+- **More formats**: `1988-11-05` behind a plain key, `5th November, 1988`, `November 5, 1988`, `05-Nov-1988`.
+- **More keys**: `Born:`, `Birthday -`, `dateOfBirth`, a `dob` column in a CSV / tab file, the short `b.` (`Rahul (b. 05-11-1988)`), and Hindi / Indonesian / Portuguese / Spanish keys (`Janm Tithi`, `Tanggal Lahir`, `Tgl Lahir`, `Data de Nascimento`, `Fecha de Nacimiento`).
+- **Only full dates**: a month + year or a year alone is not a DOB; the mistake check flags a Date label on one. A date of death is not labeled.
+- **A renamed DOB key** is Overscrubbed and the unchanged date stays a Date; **a DOB replaced by a word** is Overscrubbed.
+
 ## 11.4.8 - October 2026
 
 Credentials (every government ID and secret of the Complete PII Type List):

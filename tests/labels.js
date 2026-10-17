@@ -180,6 +180,31 @@ notAs('{"id": "26527fe0-1234-4abc-9def-001122334455"}', '26527fe0-1234-4abc-9def
 
 // ======================= DATE =======================
 label('Date');
+// (v11.4.9) more written formats and keys for a date of birth
+yes('date_of_birth: 1988-11-05', '1988-11-05');
+yes('Date of Birth: 5th November, 1988', '5th November, 1988');
+yes('Birth Date: November 5, 1988', 'November 5, 1988');
+yes('DOB: 05-Nov-1988', '05-Nov-1988');
+yes('Born: 12 Jan 1990', '12 Jan 1990');
+yes('Birthday - 14/08/1992', '14/08/1992');
+yes('{"dateOfBirth": "1988-11-05"}', '1988-11-05');
+yes('{"date_of_birth": "05/11/1988"}', '05/11/1988');
+yes('name,dob,city\nKavya,21-09-1996,Pune', '21-09-1996');
+yes('Rahul (b. 05-11-1988) joined', '05-11-1988');
+yes('Janm Tithi: 21-09-1996', '21-09-1996');
+yes('Tanggal Lahir: 21-09-1996', '21-09-1996');
+yes('Data de Nascimento: 21/09/1996', '21/09/1996');
+yes('Fecha de Nacimiento: 21/09/1996', '21/09/1996');
+yes('Tempat/Tgl Lahir: Jakarta, 21-09-1996', '21-09-1996');
+// only full dates
+notAs('DOB: Sept 1996', 'Sept 1996');
+notAs('Year of birth: 1996', '1996');
+// a date of death is not labeled
+notAs('Date of Death: 03-02-2020', '03-02-2020');
+notAs('Due on 15/10/2026 (b. 2020 batch)', '15/10/2026');
+// (v11.4.9) a renamed DOB key: the key is Overscrubbed, the unchanged date is still a Date
+yes('DOB: 05-11-1988', '05-11-1988', 'Date', 'Zelvo: 05-11-1988');
+yes('DOB: 05-11-1988', 'Zelvo', 'Overscrubbed', 'Zelvo: 05-11-1988');
 yes('DOB: 05-11-1988', '05-11-1988');
 yes('Date of Birth: 14/08/1992', '14/08/1992');
 yes('Born on 12 March 1990', '12 March 1990');
@@ -575,6 +600,7 @@ yes('Allowed: 10.0.0.1, 10.0.0.2', '10.0.0.2');
 notAs('Price 1.25.30.40 kg', '1.25.30.40');
 notAs('Section 3.2.1.4 of the policy', '3.2.1.4');
 label2('Overscrubbed');
+yes('DOB: 05-11-1988', 'velmora', undefined, 'DOB: velmora');   // (v11.4.9) a date of birth replaced by a word
 yes('Ship to 12, MG Road, Pune 411001 today', 'hello', undefined, 'Ship to hello today');   // (v11.4.7) an address replaced by a word
 yes('Ship to the warehouse today', '12, MG Road, Pune 411001', undefined, 'Ship to 12, MG Road, Pune 411001 today');   // a word replaced by an address
 yes('Ping @rahul_92 on chat', 'hello', undefined, 'Ping hello on chat');   // (v11.4.6) a handle replaced by a plain word
