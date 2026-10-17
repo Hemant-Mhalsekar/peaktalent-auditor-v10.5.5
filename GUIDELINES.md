@@ -142,6 +142,10 @@ The platform mandates that the following **15 categories are strictly classified
 - **Condition**: Must be identical in both documents (Left == Right).
 - **Strict rule for every credential type**: the same value on both sides -> `Credentials`. A changed value was correctly scrubbed -> **no label at all** (not Credentials, not Overscrubbed).
 - **Key formats understood**: `Key: value`, `Key - value`, `Key = value`, `Key is value`, with optional quotes, e.g. `Password - customerdelivery2@admin123!`, `PAN: ABCDE1234F`, `OTP is 482913`. Only the value is labeled, never the key.
+- **Government IDs and secrets of the Complete PII Type List are all Credentials** (v11.4.8): SSN (`123-45-6789`), passports (`J8369854`, `A12345678`, US `123456789`), driver licences (US `D1234567`, UK `MORGA753116SM9IJ`, India), Aadhaar (also `2345-6789-0123`), voter ID (also `AB/12/345/678901`), UAN, PAN; the token after `Bearer` (token only); vendor keys (`GOCSPX-`, `glrt-`, `dckr_pat_`, `xkeysib-`, `sntrys_`, `pypi-`, Stripe, Slack, GitHub, GitLab, AWS, Google, OpenAI, Anthropic, npm, SendGrid, JWT, ...); secrets behind `secret`, `credentials`, `signature`, `server key`; passphrases (all their words). An ID number needs its key word in front ("SSN", "Passport no.", "DL#"); the number alone is not enough. Indian number plates stay **Vehicle Number Plate**.
+- **Connection URLs** (v11.4.8): only the password is labeled (`postgres://admin:**S3cretPass**@db...`); nothing else in the URL.
+- **Private key blocks** (v11.4.8): only the key lines between `-----BEGIN ... PRIVATE KEY-----` and `-----END ...-----`, each line on its own.
+- **Placeholders are not secrets**: `YOUR_API_KEY_HERE`, `<your-token>`, `xxxxxxxx`, `********`, `changeme`. (AWS's documented example keys, `AKIAIOSFODNN7EXAMPLE`, are labeled: test documents use them as real keys.)
 - **Short values behind a key** (CVV `789`, PIN `4821`, expiry `11/28`) are Credentials only when they sit directly after their key (`"cvv": "789"`). A bare 3–4 digit number is never a credential.
 - **Card numbers**: grouped `4-4-4-4` numbers are accepted on format; ungrouped 13–19 digit numbers must pass the Luhn checksum.
 - **Bank UTR / transaction references** are recognised behind keys such as `UTR No:`, `Txn ID:`, `Transaction Ref:`.
@@ -192,7 +196,12 @@ The platform mandates that the following **15 categories are strictly classified
   - A floor on its own (`3rd Floor`) is not an address; ordinary phrases that end in a street word (`Wall Street Journal`, `Google Drive`) are not either.
 - **Verification Requirement**: The address must exist identically in **BOTH Left and Right panes**. If scrubbed or altered, do not annotate.
 - **Scrubbed address -> no label at all**: if any part of the address changed (street, plot number, PIN), do not label the address, its unchanged fragments (e.g. `Sector 127, Noida`), or the replacement text (`937 Garnthwaite Road`) - not Address, not Overscrubbed.
-- **Multi-line addresses**: when the whole block is identical on both sides, label each line of it as Address.
+- **Multi-line addresses**: when the whole block is identical on both sides, label each line of it as Address (the country line too). A key in front ("Ship to: ", "Lives at ") is not part of the label.
+- **Wrapped addresses** (v11.4.7): an address that runs onto the next line, also mid-word ("Beng" / "aluru 560087"), is labeled piece by piece, one per line.
+- **Every country** (v11.4.7): the label runs to the end of the address: unit, city, state and postcode (`221B Baker Street, Apt 4, London NW1 6XE`, `350 Fifth Avenue, Suite 3300, New York, NY 10118`, `Rua Augusta 1500, Consolacao, Sao Paulo - SP, 01304-001`, `Hauptstrasse 5, 10115 Berlin`). Village addresses (`Village Rampur, Post Sadar, Dist. Gorakhpur, UP 273001`) and **PO boxes** (`P.O. Box 1234, Dubai, UAE`) are addresses.
+- **A company first, then its address** (v11.4.7): `Infosys Ltd, Electronics City, Hosur Road, Bengaluru 560100` → `Infosys Ltd` is a Business Name, the rest is the Address.
+- **Place names inside an address are not people** (`Anna Salai`, `Baker Street`, `Sao Paulo`).
+- An address replaced by a plain word, or a plain word by an address, is **Overscrubbed**. Addresses inside code (`const street = "MG Road";`) are not labeled.
 
 ### 5.6 Overscrubbed (Partial Isolation Rule)
 - **Definition**: Non-sensitive generic words, verbs, technical phrases, or structural elements that were unnecessarily altered during redaction.

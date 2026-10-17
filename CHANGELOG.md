@@ -1,5 +1,26 @@
 # Changelog
 
+## 11.4.8 - October 2026
+
+Credentials (every government ID and secret of the Complete PII Type List):
+- **Found for the first time**: SSN, passports (US, India, any country), US and UK driver licences, Aadhaar with dashes, the old voter-ID format (`AB/12/345/678901`), the token after `Bearer` (non-JWT), Google OAuth `GOCSPX-`, GitLab `glrt-` / `glptt-`, Docker `dckr_pat_`, secrets with `=` or `:` inside (base64, `id:secret`, Firebase server keys), secrets behind `secret` / `credentials` / `signature`, passphrases with spaces.
+- **Brevo `xkeysib-` keys** are labeled whole (only the middle was).
+- **Connection URLs**: only the password is labeled; `mongodb+srv://app:Pa55w0rd@...` no longer gives an e-mail and a company, `https://user:pass@...` no longer a URL/Link.
+- **Private key blocks**: the key lines are labeled, one per line, not the BEGIN / END lines.
+- **Placeholders** (`YOUR_API_KEY_HERE`, `<your-token>`, `xxxx`) are not credentials.
+- The mistake check flags a whole connection URL (only the password), a BEGIN / END line and a placeholder.
+
+## 11.4.7 - October 2026
+
+Address:
+- **The label runs to the end of the address** for every country: unit, city, state and postcode were cut off (`221B Baker Street, Apt` → `…, Apt 4, London NW1 6XE`; `10 Downing Street, London SW` → `… SW1A 2AA`; Sao Paulo, Jakarta, New York the same).
+- **New forms found**: `Parkway` and other road words (`1600 Amphitheatre Parkway, Mountain View, CA 94043`), German streets (`Hauptstrasse 5, 10115 Berlin`), village addresses (`Village Rampur, Post Sadar, Dist. Gorakhpur, UP 273001`), PO boxes.
+- **Wrapped addresses**: the first line no longer carries its key ("Ship to: "), a break in the middle of a word is joined, and a city + postcode line of any country ("London NW1 6XE") belongs to the block.
+- **Place names inside an address are not people** (`Anna Salai`, `Baker Street`, `Sao Paulo` were Person Name); the mistake check flags a Person Name label on them.
+- **A company first**: `Infosys Ltd, …` → `Infosys Ltd` is the Business Name, the rest the Address.
+- **Quoted CSV cells**: `1,"12, MG Road, Pune 411001"` no longer gets an extra label with the row number and quote.
+- **An address replaced by a word (or the reverse) is Overscrubbed.**
+
 ## 11.4.6 - October 2026
 
 Person Username:
