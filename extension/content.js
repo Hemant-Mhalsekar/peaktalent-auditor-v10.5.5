@@ -15,7 +15,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.4.5";
+    const PT_VERSION = "11.4.6";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -585,7 +585,7 @@
         // (v11.4.5) a four-part version number ("10.2.0.15 build", "Version 1.2.3.4") is not an IP address
         const ipVersion = T.includes(".") && new RegExp("\\b(?:v(?:ersion)?|ver|release|build|section|sec|clause|chapter|step|rule|item)\\.?[\\s:=#]*" + escRe(T) + "|" + escRe(T) + "\\s*(?:build|release|rc\\d*|beta|alpha|version|patch|update|firmware|sdk|hotfix|ga|lts)\\b", "i").test(rLine);
         const strong = isEmail ? "Email Address" : (/^https:\/\/\S+$/i.test(T) && !isFileAssetLink(T)) ? "URL/Link" : (isIpAddressFormat(T) && !ipVersion) ? "IP Address" :
-            /^@[A-Za-z_][\w.]{1,29}$/.test(T) ? "Person Username" : isVehiclePlateFormat(T) ? "Vehicle Number Plate" :
+            isHandleLabelText(T, rLine) ? "Person Username" : isVehiclePlateFormat(T) ? "Vehicle Number Plate" :
             phoneLabelFor(T);
         const strongL = strong ? labelForPage(strong) : null;   // (v11.4.1) as the chips on this page name it
         // (v11.4.0) a postal code can have a phone-like shape ("08139-555"): with a postal label it is judged as a postal code below
@@ -635,7 +635,11 @@
                 if (/^\d{5}-?\d{3}$/.test(T)) return null;
                 return isPostalCodeShape(T) ? wrong(LBL_POSTAL, "A Brazilian CEP is written #####-###.") : wrong(PTC_NONE, "This is not a postal code.");
             case "Vehicle Number Plate": return isVehiclePlateFormat(T) ? null : wrong(PTC_NONE, "This is not a valid Indian number plate.");
-            case "Person Username": return /^@[A-Za-z_][\w.]{1,29}$/.test(T) ? null : wrong(PTC_NONE, "This is not an @username.");
+            case "Person Username":
+                if (isHandleLabelText(T, rLine)) return null;
+                if (/^@/.test(T) && GROUP_MENTION.test(T.slice(1))) return wrong(PTC_NONE, "This mentions a group (@here, @channel, ...), not a person.");
+                if (/^@/.test(T)) return wrong(PTC_NONE, "This is code (a decorator / annotation), not a person's username.");
+                return wrong(PTC_NONE, "This is not a person's username.");
             case "Account Number": return (/^\d[\d -]{7,22}\d$/.test(T) && digits.length >= 9 && digits.length <= 18) ? null : wrong(PTC_NONE, "This is not a bank account number (9-18 digits).");
             case "Date": {
                 if (!isDateFormat(T)) return wrong(ordinaryWord ? PTC_NONE : PTC_NONE, "This is not a date.");
@@ -2606,6 +2610,44 @@
     const NON_EMAIL_FILE_EXTENSIONS = /\.(?:png|jpe?g|gif|svg|webp|ico|bmp|tiff|heic|mp4|mp3|wav|mov|avi|js|ts|jsx|tsx|css|scss|html|xml|json|ya?ml|md|txt|csv|tar|gz|zip|rar|7z|exe|dmg|apk|ipa|bin|pdf|docx?|xlsx?|pptx?)$/i;
 
     const EMAIL_LOCAL = "[A-Za-z0-9._%+-]+(?:'[A-Za-z0-9._%+-]+)*";
+
+    // ---- (v11.4.6) Person Username helpers ----
+    const GROUP_MENTION = /^(?:here|channel|everyone|all|team|group|room|someone|admins?|moderators?|mods)$/i;
+    const CODE_AT_WORDS = /^(?:media|import|keyframes|font-face|supports|page|charset|namespace|layer|container|property|override|param|returns?|type|typedef|deprecated|author|since|see|throws|example|interface|component|injectable|input|output|test|before|after|apply|tailwind|use|extend|mixin|include|each|if|else|function|types|angular|babel|vue|nestjs|testing-library|staticmethod|classmethod|abstractmethod|dataclass|cached_property|functools|wraps|lru_cache|contextmanager|login_required|csrf_exempt|click|submit|change|keyup|keydown|blur|focus|model)$/i;
+    // Is "@word" at `idx` code (a decorator, annotation, Vue directive) rather than a person's handle?
+    function isCodeAt(word, idx, text) {
+        if (CODE_AT_WORDS.test(word)) return true;
+        const ls = text.lastIndexOf("\n", idx - 1) + 1;
+        let le = text.indexOf("\n", idx); if (le < 0) le = text.length;
+        const before = text.slice(ls, idx), after = text.slice(idx + 1 + word.length, le);
+        let ne = text.indexOf("\n", le + 1); if (ne < 0) ne = text.length;
+        const nextLine = le < text.length ? text.slice(le + 1, ne) : "";
+        if (/<[A-Za-z][\w-]*\b[^>]*$/.test(before) && /^\s*=/.test(after)) return true;                 // <button @click="go">
+        if (/^\s*\(/.test(after) && (/^\s*$/.test(before) || word.includes("."))) return true;          // @Component({..}), @app.route("/")
+        if (/^\s*$/.test(before)) {
+            // a joined-up annotation alone on its line, with nothing or code after it ("@SpringBootApplication")
+            if (/^\s*$/.test(after) && /^[A-Z][a-z]+(?:[A-Z][a-z0-9]*)+$/.test(word) && !/[A-Za-z]/.test(nextLine.replace(/^\s*(?:@\w+|public|private|class|def|fun|void|static)\b.*$/, ""))) return true;
+            if (/^\s+(?:fun|def|class|public|private|protected|static|void|override|val|var|internal|open|abstract|final|async|export)\b/.test(after)) return true;   // @JvmStatic fun main()
+            if (/^\s*$/.test(after) && /^\s*(?:@[A-Za-z]|def\b|async\b|class\b|public\b|private\b|protected\b|static\b|fun\b|function\b|export\b|override\b|internal\b|void\b|const\b|let\b|var\b|interface\b|enum\b|module\b)/.test(nextLine)) return true;   // a decorator above code
+        }
+        return false;
+    }
+    // (v11.4.6) Is a labeled text a person's @handle (on this line)? Not a group mention, not code.
+    function isHandleLabelText(T, line) {
+        const m = /^@([A-Za-z_](?:[A-Za-z0-9_.-]{0,28}[A-Za-z0-9_])?)(?:@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})?$/.exec(T || "");
+        if (!m || (m[1].length < 2 && !T.slice(1).includes("@")) || GROUP_MENTION.test(m[1])) return false;
+        const i = (line || "").indexOf(T);
+        return !isCodeAt(m[1], i < 0 ? 0 : i, i < 0 ? T : line);
+    }
+    // A value behind a username key that is a person's username: not a generic account ("Master", root, admin), not a word.
+    const GENERIC_ACCOUNT = /^(?:master|admin|administrator|root|guest|user|users|postgres|mysql|oracle|sa|ubuntu|ec2-user|centos|debian|pi|system|sys|default|service|test|tester|demo|anonymous|nobody|daemon|www-data|jenkins|git|deploy|deployer|bot|support|operator|superuser|owner|manager|developer|dev|prod|staging|local|null|none|undefined|true|false)$/i;
+    function isPersonalUsername(v) {
+        const s = (v || "").trim();
+        if (!/^[A-Za-z][A-Za-z0-9._-]{1,29}$/.test(s) || /[._-]$/.test(s)) return false;
+        if (GENERIC_ACCOUNT.test(s)) return false;
+        if (/^[A-Za-z]+$/.test(s) && isCommonWord(s.toLowerCase()) && !couldBeName(s)) return false;
+        return true;
+    }
     function isEmailAddressFormat(str) {
         if (!str) return false;
         const s = str.trim();
@@ -3709,7 +3751,8 @@
             if (/^(?:MD[A-Za-z0-9_-]{8,}|SFX[A-Za-z0-9_-]{8,})$/.test(cleanText) && (/[a-z]/.test(cleanText) || cleanText.length > 12)) return;
             if (label === "Person Username") {
                 if (/^\d{5,12}$/.test(cleanText)) return;
-                if (isIdOrLoginInDoc(cleanText, rightText) || isIdOrLoginInDoc(cleanText, leftText)) return;
+                // (v11.4.6) a username read from a username / login key (keyContext) is wanted, even behind "login"
+                if (!keyContext && (isIdOrLoginInDoc(cleanText, rightText) || isIdOrLoginInDoc(cleanText, leftText))) return;
             }
             if (label === "Credentials") {
                 // (v11.3.2) a plain dictionary word is a setting, not a secret ("id-token: write", "pages: write")
@@ -4197,7 +4240,7 @@
                 // "Hemant" -> "Alex", one e-mail for another) is correct redaction and is judged below as before.
                 {
                     const o = cleanWord(diff.original || ""), ch = cleanWord(diff.changed || "");
-                    const kindOf = (x) => isEmailAddressFormat(x) || /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/.test(x) ? "email" : /^https?:\/\//i.test(x) ? "url" :
+                    const kindOf = (x) => /^@[A-Za-z_][\w.-]*$/.test(x) ? "handle" : isEmailAddressFormat(x) || /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/.test(x) ? "email" : /^https?:\/\//i.test(x) ? "url" :
                         (phoneLabelFor(x) || isContactNumberFormat(x)) ? "phone" : /^\d(?:[\d\s.,\/:-]*\d)?$/.test(x) ? "number" :
                         /^[A-Za-z][A-Za-z'\-]*$/.test(x) ? "word" : "other";
                     // (v11.4.5) the other way round too: an ordinary word replaced by an IP address ("Server alpha" -> "Server 10.1.2.3")
@@ -4206,7 +4249,7 @@
                         addTarget(ch, "Overscrubbed", "pt-overscrub", 66);
                         continue;
                     }
-                    if (o && ch && /^(?:email|url|phone|number)$/.test(kindOf(o)) && kindOf(ch) === "word" && ch.length >= 2 &&
+                    if (o && ch && /^(?:email|url|phone|number|handle)$/.test(kindOf(o)) && kindOf(ch) === "word" && ch.length >= 2 &&
                         !isDateFormat(o) && !new RegExp("(?:^|[^A-Za-z])" + ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?![A-Za-z])", "i").test(leftText)) {
                         addTarget(ch, "Overscrubbed", "pt-overscrub", 66);
                         continue;
@@ -4805,17 +4848,56 @@
             if (leftText.includes(im)) addTarget(im, "Credentials", "pt-credentials", 95);
         }
 
+        const fediverse = new Set();   // (v11.4.6) "priya@mastodon.social" inside "@priya@mastodon.social" is not an e-mail
         // Step 5C: Social @handles identical in BOTH documents -> Person Username.
         // Not part of an e-mail, not a code decorator / CSS at-rule / npm scope.
-        const handleRegex = /(?<![A-Za-z0-9_.@\/])@([A-Za-z_][A-Za-z0-9_.]{1,29})(?![A-Za-z0-9_@\/])/g;   // "@2x" is an image suffix
-        const CODE_AT_WORDS = /^(?:media|import|keyframes|font-face|supports|page|charset|namespace|layer|container|property|override|param|returns?|type|typedef|deprecated|author|since|see|throws|example|interface|component|injectable|input|output|test|before|after|apply|tailwind|use|extend|mixin|include|each|if|else|function|types|angular|babel|vue|nestjs|testing-library)$/i;
+        // (v11.4.6) A handle may hold "-" ("@rahul-verma", GitHub) and a server ("@priya@mastodon.social", the whole handle is
+        // the label, not an e-mail). Group mentions (@here, @channel, @everyone, @all) are not people. Code is told apart by
+        // where the @word stands (isCodeAt), not by its spelling: "Follow @RahulVerma" is a handle, "@Override" above
+        // "public void run()" is code.
+        const handleRegex = /(?<![A-Za-z0-9_.@\/])@([A-Za-z_](?:[A-Za-z0-9_.-]{0,28}[A-Za-z0-9_])?)(?:@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}))?(?![A-Za-z0-9_@\/-])/g;   // "@2x" is an image suffix
         let hM;
         while ((hM = handleRegex.exec(rightText)) !== null) {
-            const handle = '@' + hM[1].replace(/\.+$/, '');
-            if (CODE_AT_WORDS.test(hM[1])) continue;
-            // Code annotations are PascalCase words ("@SpringBootApplication", "@RestController", "@Test").
-            if (/^[A-Z][a-z]+(?:[A-Z][a-z0-9]*)+$/.test(hM[1]) || /^[A-Z][a-zA-Z]*$/.test(hM[1]) && /^\s*$/.test(rightText.slice(rightText.lastIndexOf("\n", hM.index) + 1, hM.index))) continue;
-            if (occurrencesOf(handle, leftText).length > 0) addTarget(handle, "Person Username", "pt-username", 90);
+            if (hM[1].length < 2 && !hM[2]) continue;
+            if (GROUP_MENTION.test(hM[1])) continue;
+            if (isCodeAt(hM[1], hM.index, rightText)) continue;
+            {   // the second half of an e-mail broken over two lines ("priya.raghavan" / "@northwind-demo.com")
+                const ls = rightText.lastIndexOf("\n", hM.index - 1) + 1;
+                if (ls > 0 && /^\s*$/.test(rightText.slice(ls, hM.index))) {
+                    const prev = /(\S+)\s*$/.exec(rightText.slice(rightText.lastIndexOf("\n", ls - 2) + 1, ls - 1));
+                    if (prev && isEmailAddressFormat(prev[1].replace(/^.*[<(\["'`:,;]/, "") + hM[0])) continue;
+                }
+            }
+            const handle = '@' + hM[1] + (hM[2] ? '@' + hM[2] : '');
+            if (occurrencesOf(handle, leftText).length > 0) {
+                addTarget(handle, "Person Username", "pt-username", 90);
+                if (hM[2]) fediverse.add(hM[1] + '@' + hM[2]);
+            }
+        }
+
+        // (v11.4.6) A username behind a username / login key ("Username: rahul_92", "login": "kavya.nair", a Username column),
+        // identical on both sides. A generic account ("user: Master", root, admin, postgres, ec2-user) or a dictionary word is
+        // not a person, a number is an id, and a value with a space is a full name (Person Name).
+        {
+            const KEY = "(?:user[\\s_-]?name|user|login(?:[\\s_-]?(?:name|id))?|handle|screen[\\s_-]?name|nick(?:name)?|github|gitlab|twitter|instagram|telegram)";
+            const kv = new RegExp("(?:^|[\\s{,\"'(])[\"']?" + KEY + "[\"']?\\s*[:=]\\s*[\"']?([A-Za-z][A-Za-z0-9._-]{1,29})(?![A-Za-z0-9._@-])", "gi");
+            const cellKey = new RegExp("^" + KEY + "$", "i");
+            const leftVals = new Set();
+            const collect = (text, into) => {
+                let m; kv.lastIndex = 0;
+                while ((m = kv.exec(text)) !== null) into.push(m[1]);
+                for (const ln of text.split("\n")) {
+                    if (!ln.includes("|")) continue;
+                    const cells = ln.split("|").map(c => c.trim());
+                    for (let i = 0; i + 1 < cells.length; i++) if (cellKey.test(cells[i]) && cells[i + 1]) into.push(cells[i + 1]);
+                }
+            };
+            const lv = []; collect(leftText, lv); for (const v of lv) leftVals.add(v);
+            const rv = []; collect(rightText, rv);
+            for (const v of rv) {
+                if (!leftVals.has(v) || !isPersonalUsername(v)) continue;
+                addTarget(v, "Person Username", "pt-username", 89, true);
+            }
         }
 
         // Step 6: Scan for Email Addresses that exist identically in BOTH left and right documents
@@ -4825,6 +4907,7 @@
         for (const em of rightEmails) {
             // "git@github.com:acme/tool.git" is an SSH remote, not an e-mail.
             if (/^git@/i.test(em) || new RegExp(em.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ":[\\w~]").test(rightText)) continue;
+            if (fediverse.has(em) && !new RegExp("(?<!@)" + em.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).test(rightText)) continue;
             if (isEmailAddressFormat(em) && leftText.includes(em)) {
                 addTarget(em, "Email Address", "pt-email", 90);
             }

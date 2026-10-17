@@ -93,6 +93,14 @@ same('unchanged JSON key', '"dependencies": {', 'dependencies', '', 'Overscrubbe
 diff('scrubbed person name', 'I met Furkan at the airport.', 'I met Dalvorin at the airport.', 'Dalvorin', '', 'Overscrubbed');
 diff('scrubbed company', 'She joined Accenture in 2019.', 'She joined Velmoratech in 2019.', 'Velmoratech', '', 'Business Name');
 diff('scrubbed phone', 'Call 9876543210 today', 'Call 9123456780 today', '9123456780', '', 'Indian Mobile Number');
+// (v11.4.6) Person Username
+same('capitalised handle', 'Follow @RahulVerma on X', '@RahulVerma', 'Person Username', 'Person Name');
+same('hyphen handle', 'Assigned to @rahul-verma today', '@rahul-verma', 'Person Username', 'Credentials');
+same('group mention', 'Heads up @channel deploy is done', '@channel', '', 'Person Username');
+same('python decorator', '@dataclass', '@dataclass', '', 'Person Username');
+same('username behind a key', 'Username: rahul_92', 'rahul_92', 'Person Username', 'Credentials');
+same('generic account', 'user: Master', 'Master', '', 'Person Username');
+diff('handle replaced by a word', 'Ping @rahul_92 on chat', 'Ping hello on chat', 'hello', 'Overscrubbed', 'Person Username');
 // (v11.4.5) IP Address
 same('IPv6 with a :: in the middle', 'Link fe80::1ff:fe23:4567:890a up', 'fe80::1ff:fe23:4567:890a', 'IP Address', 'Credentials');
 same('IP before a full stop', 'Ping 8.8.8.8.', '8.8.8.8', 'IP Address', 'Date');

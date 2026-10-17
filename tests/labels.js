@@ -392,6 +392,40 @@ yes('Mail https://acmecorp-demo.io/r?file=a.pdf', 'https://acmecorp-demo.io/r?fi
 
 // ======================= PERSON USERNAME =======================
 label('Person Username');
+// (v11.4.6) capitalised handles in prose are handles; code annotations are told apart by where they stand
+yes('Follow @RahulVerma on X', '@RahulVerma');
+yes('Follow @RahulVerma92 now', '@RahulVerma92');
+yes('@Priya please review this', '@Priya');
+yes('Twitter:\n@rahul_92\nInstagram: @meera_writes', '@rahul_92');
+yes('Assigned to @rahul-verma today', '@rahul-verma');
+notAs('Assigned to @rahul-verma today', '@rahul');
+yes('Find me @priya@mastodon.social', '@priya@mastodon.social');
+notAs('Find me @priya@mastodon.social', 'priya@mastodon.social', 'Email Address');
+// group mentions are not people
+for (const g of ['here', 'channel', 'everyone', 'all']) notAs(`Heads up @${g} deploy is done`, '@' + g);
+// code is not a handle
+notAs('    @staticmethod\n    def run():', '@staticmethod');
+notAs('    @classmethod\n    def make(cls):', '@classmethod');
+notAs('@dataclass\nclass User:', '@dataclass');
+notAs('@app.route("/login")\ndef login():', '@app.route');
+notAs('@pytest.fixture\ndef db():', '@pytest.fixture');
+notAs('@login_required\ndef view(req):', '@login_required');
+notAs('<button @click="go">Go</button>', '@click');
+notAs('@Override\npublic void run() {}', '@Override');
+notAs('@SpringBootApplication\npublic class App {}', '@SpringBootApplication');
+notAs('@JvmStatic fun main() {}', '@JvmStatic');
+notAs('@Autowired private UserRepo repo;', '@Autowired');
+notAs('@Component({ selector: "x" })', '@Component');
+// (v11.4.6) a username behind a username / login key; generic account names are not people
+yes('Username: rahul_92', 'rahul_92');
+yes('{"username": "priya.r"}', 'priya.r');
+yes('login: kavya.nair', 'kavya.nair');
+yes('user: hemant', 'hemant');
+yes('| Username | meera_writes |', 'meera_writes');
+no('Username: rahul_92', 'velmor_17', 'Username: velmor_17');
+for (const g of ['Master', 'admin', 'root', 'guest', 'Administrator', 'postgres', 'ubuntu', 'ec2-user', 'system', 'default', 'service', 'test']) notAs(`user: ${g}`, g);
+notAs('user_id: 1029384756', '1029384756');
+notAs('User: Priya Raghavan', 'Priya Raghavan');
 yes('Ping @rahul_92 on Slack', '@rahul_92');
 yes('Ask @priya.s in #ops', '@priya.s');
 yes('Follow @meera_writes', '@meera_writes');
@@ -458,6 +492,7 @@ yes('Allowed: 10.0.0.1, 10.0.0.2', '10.0.0.2');
 notAs('Price 1.25.30.40 kg', '1.25.30.40');
 notAs('Section 3.2.1.4 of the policy', '3.2.1.4');
 label2('Overscrubbed');
+yes('Ping @rahul_92 on chat', 'hello', undefined, 'Ping hello on chat');   // (v11.4.6) a handle replaced by a plain word
 yes('Server alpha is down', '10.1.2.3', undefined, 'Server 10.1.2.3 is down');   // (v11.4.5) a word replaced by an IP address
 yes('Monthly report attached.', 'velmarish', undefined, 'Monthly velmarish attached.');
 yes('## Project Timeline', 'Zelvorine', undefined, '## Project Zelvorine');

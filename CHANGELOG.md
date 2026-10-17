@@ -1,5 +1,17 @@
 # Changelog
 
+## 11.4.6 - October 2026
+
+Person Username:
+- **Capitalised handles are handles**: `Follow @RahulVerma`, `@RahulVerma92` and `@Priya` at the start of a line were taken for code annotations and skipped.
+- **Hyphens**: `@rahul-verma` was cut to `@rahul`.
+- **Group mentions are not people**: `@here`, `@channel`, `@everyone`, `@all` were labeled.
+- **Code is told apart by position, not spelling**: Python decorators (`@staticmethod`, `@dataclass`, `@app.route(...)`, `@pytest.fixture`, `@login_required`) and Vue directives (`@click`) were labeled; Java / Kotlin / TypeScript annotations stay unlabeled.
+- **Fediverse handles** (`@priya@mastodon.social`) are one Person Username, not an e-mail.
+- **Usernames behind a key** (`Username: rahul_92`, `"login": "kavya.nair"`, a Username column) are labeled; generic accounts (`user: Master`, root, admin, postgres, ...) and dictionary words are not.
+- **A handle replaced by a plain word is Overscrubbed.**
+- The mistake check uses the same rules.
+
 ## 11.4.5 - October 2026
 
 IP Address:
