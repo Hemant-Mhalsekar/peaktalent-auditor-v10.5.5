@@ -93,6 +93,12 @@ same('unchanged JSON key', '"dependencies": {', 'dependencies', '', 'Overscrubbe
 diff('scrubbed person name', 'I met Furkan at the airport.', 'I met Dalvorin at the airport.', 'Dalvorin', '', 'Overscrubbed');
 diff('scrubbed company', 'She joined Accenture in 2019.', 'She joined Velmoratech in 2019.', 'Velmoratech', '', 'Business Name');
 diff('scrubbed phone', 'Call 9876543210 today', 'Call 9123456780 today', '9123456780', '', 'Indian Mobile Number');
+// (v11.4.8) Credentials
+same('SSN', 'SSN: 123-45-6789', '123-45-6789', 'Credentials', 'Date');
+same('passport', 'Passport Number: J8369854', 'J8369854', 'Credentials', 'Vehicle Number Plate');
+same('bearer token', 'Authorization: Bearer abc123def456ghi789jkl012', 'abc123def456ghi789jkl012', 'Credentials', 'Person Username');
+same('password inside a connection URL', 'DATABASE_URL=postgres://admin:S3cretPass@db.acme-demo.io:5432/prod', 'S3cretPass', 'Credentials', 'Overscrubbed');
+same('placeholder secret', 'api_key: YOUR_API_KEY_HERE', 'YOUR_API_KEY_HERE', '', 'Credentials');
 // (v11.4.7) Address
 same('UK address, whole line', 'Visit 10 Downing Street, London SW1A 2AA', '10 Downing Street, London SW1A 2AA', 'Address', 'Person Name');
 same('PO box', 'Mail to P.O. Box 1234, Dubai, UAE', 'P.O. Box 1234, Dubai, UAE', 'Address', 'Credentials');
@@ -382,6 +388,16 @@ same('language', 'Languages: English, Bengali, Hindi', 'Bengali', '', 'Person Na
       check(st.mark === 'wrong' && st.expected === 'Email Address' && (s.ambiguous | 0) === 0 && /1 Mistake/.test(p.status()), 'T6: no tie -> e-mail labeled Person Name is a normal mistake, ambiguous == 0', { st, s });
       p.close();
     }
+  }
+
+  // (v11.4.8) a whole connection URL labeled Credentials: only the password should be
+  {
+    const line = ['DATABASE_URL=postgres://admin:S3cretPass@db.acme-demo.io:5432/prod'];
+    const p = await page(line, line);
+    const m = await p.annotate('postgres://admin:S3cretPass@db.acme-demo.io:5432/prod', 'Credentials');
+    const st = p.state(m);
+    check(st.mark === 'wrong' && st.expected === 'Credentials: S3cretPass', 'whole connection URL labeled -> mistake, only the password', st);
+    p.close();
   }
 
   // (v11.4.1) Suggestions follow the label chips on the page. The old dashboard (13 chips) gets the old labels.

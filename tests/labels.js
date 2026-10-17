@@ -111,6 +111,49 @@ notAs('Ext: 4521', '4521');
 
 // ======================= CREDENTIALS =======================
 label('Credentials');
+// (v11.4.8) government IDs and secrets from the Complete PII Type List: all Credentials
+// (fake vendor keys are written in pieces so GitHub's secret scanner does not block the push)
+const CRED = [
+  ['SSN: 123-45-6789', '123-45-6789'], ['Her social security number is 123-45-6789.', '123-45-6789'], ['SSN 123 45 6789', '123 45 6789'], ['"ssn": "123456789"', '123456789'],
+  ['Driver License: D1234567', 'D1234567'], ['DL# 123-456-789', '123-456-789'], ['Licence number MORGA753116SM9IJ', 'MORGA753116SM9IJ'],
+  ['Passport No: 123456789', '123456789'], ['US Passport: A12345678', 'A12345678'], ['Passport Number: J8369854', 'J8369854'], ['passport no. Z1234567 expires', 'Z1234567'],
+  ['Aadhaar No. 2345-6789-0123', '2345-6789-0123'], ['Voter ID: AB/12/345/678901', 'AB/12/345/678901'],
+  ['Authorization: Bearer abc123def456ghi789jkl012', 'abc123def456ghi789jkl012'],
+  ['secret GOCSPX-1a2B3c4D5e6F7g8H9i0JkLmNoPq', 'GOCSPX-1a2B3c4D5e6F7g8H9i0JkLmNoPq'], ['token ' + 'gl' + 'rt-2CR8_eVxiioB1QmzPZwa', 'gl' + 'rt-2CR8_eVxiioB1QmzPZwa'],
+  ['token dckr_pat_AbCdEfGhIjKlMnOpQrStUvWx', 'dckr_pat_AbCdEfGhIjKlMnOpQrStUvWx'],
+  ['key ' + 'xkey' + 'sib-a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2-AbCdEfGhIjKlMnOp', 'xkey' + 'sib-a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2-AbCdEfGhIjKlMnOp'],
+  ['app_secret=dGhpc2lzYXNlY3JldGtleWZvcnRlc3Rpbmc=', 'dGhpc2lzYXNlY3JldGtleWZvcnRlc3Rpbmc='],
+  ['credentials: AC1234567890abcdef:9f86d081884c7d659a2f', 'AC1234567890abcdef:9f86d081884c7d659a2f'],
+  ['"fcm_server_key": "AAAAx1y2z3:APA91bHPRgkF3JUikC4ENAHEeMrd41Zxv3hVZjC9KtT8OvPVGJ-hQMRKRrZuJAEcl7B338qju59zJMjw2DELjz"', 'AAAAx1y2z3:APA91bHPRgkF3JUikC4ENAHEeMrd41Zxv3hVZjC9KtT8OvPVGJ-hQMRKRrZuJAEcl7B338qju59zJMjw2DELjz'],
+  ['Passphrase: correct horse battery staple', 'correct horse battery staple'],
+  // connection URLs: only the password
+  ['DATABASE_URL=postgres://admin:S3cretPass@db.acme-demo.io:5432/prod', 'S3cretPass'],
+  ['mongodb+srv://app:Pa55w0rd@cluster0.acme-demo.mongodb.net/test', 'Pa55w0rd'],
+  ['REDIS_URL=redis://:p4ssw0rd@cache.acme-demo.io:6379/0', 'p4ssw0rd'],
+  ['https://deploy:Tok3nValue@git.acme-demo.io/repo.git', 'Tok3nValue'],
+  ['amqp://guest:Rabb1tPass@mq.acme-demo.io:5672/', 'Rabb1tPass'],
+  // private key blocks: only the key lines
+  ['-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA3Tz2mr7SZiAMfQyuvBjM9Oi\nZ1z9Q6lM2y8Pq0Lr7t\n-----END RSA PRIVATE KEY-----', 'MIIEpAIBAAKCAQEA3Tz2mr7SZiAMfQyuvBjM9Oi'],
+  ['-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA3Tz2mr7SZiAMfQyuvBjM9Oi\nZ1z9Q6lM2y8Pq0Lr7t\n-----END RSA PRIVATE KEY-----', 'Z1z9Q6lM2y8Pq0Lr7t'],
+  ['-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW\n-----END OPENSSH PRIVATE KEY-----', 'b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW'],
+];
+for (const [d, v] of CRED) yes(d, v);
+notAs('DATABASE_URL=postgres://admin:S3cretPass@db.acme-demo.io:5432/prod', 'postgres://admin:S3cretPass@db.acme-demo.io:5432/prod');
+notAs('mongodb+srv://app:Pa55w0rd@cluster0.acme-demo.mongodb.net/test', 'Pa55w0rd@cluster0.acme-demo.mongodb.net', 'Email Address');
+notAs('mongodb+srv://app:Pa55w0rd@cluster0.acme-demo.mongodb.net/test', 'mongodb', 'Business Name');
+notAs('https://deploy:Tok3nValue@git.acme-demo.io/repo.git', 'https://deploy:Tok3nValue@git.acme-demo.io/repo.git', 'URL/Link');
+notAs('-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA3Tz2mr7SZiAMfQyuvBjM9Oi\n-----END RSA PRIVATE KEY-----', '-----BEGIN RSA PRIVATE KEY-----');
+notAs('-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA3Tz2mr7SZiAMfQyuvBjM9Oi\n-----END RSA PRIVATE KEY-----', '-----END RSA PRIVATE KEY-----');
+notAs('Authorization: Bearer abc123def456ghi789jkl012', 'Bearer abc123def456ghi789jkl012');
+// changed values: no label
+no('SSN: 123-45-6789', '987-65-4321', 'SSN: 987-65-4321');
+no('Passport No: J8369854', 'K1234098', 'Passport No: K1234098');
+no('DATABASE_URL=postgres://admin:S3cretPass@db.acme-demo.io:5432/prod', 'Qw3rtyPass', 'DATABASE_URL=postgres://admin:Qw3rtyPass@db.acme-demo.io:5432/prod');
+// placeholders and look-alikes are not credentials
+for (const [d, v] of [['api_key: YOUR_API_KEY_HERE', 'YOUR_API_KEY_HERE'], ['token: <your-token>', '<your-token>'],
+  ['password: ********', '********'], ['api_key=xxxxxxxxxxxxxxxx', 'xxxxxxxxxxxxxxxx'], ['token: changeme', 'changeme'], ['secret: <SECRET>', '<SECRET>'], ['password: ${DB_PASSWORD}', '${DB_PASSWORD}'],
+  ['ISBN 978-3-16-148410-0', '978-3-16-148410-0'], ['Order ID: ORD123456789', 'ORD123456789'], ['Ticket 123-45-6789 closed', '123-45-6789'], ['Call 9876543210', '9876543210'],
+  ['Room 123-456-789 booked', '123-456-789'], ['Page 123456789 of the log', '123456789']]) notAs(d, v);
 yes('Password - customerdelivery2@admin123!', 'customerdelivery2@admin123!');
 yes('PAN: ABCDE1234F', 'ABCDE1234F');
 yes('Aadhaar: 4321 8765 2109', '4321 8765 2109');

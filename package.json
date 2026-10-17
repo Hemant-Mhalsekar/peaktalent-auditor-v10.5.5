@@ -1,6 +1,6 @@
 {
   "name": "peaktalent-annotation-auditor",
-  "version": "11.4.7",
+  "version": "11.4.8",
   "private": true,
   "description": "Browser auditor for PII/BII annotation on dashboard.peaktalent.ai",
   "scripts": {

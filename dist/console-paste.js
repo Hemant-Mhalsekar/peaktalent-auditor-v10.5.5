@@ -1,4 +1,4 @@
-// PeakTalent Auditor v11.4.7 - console build.
+// PeakTalent Auditor v11.4.8 - console build.
 // Open the PeakTalent review tab, open the browser console (Safari: Develop > Show JavaScript Console,
 // Chrome: Cmd/Ctrl+Option/Alt+J), paste this whole file and press Enter. Pasting again replaces the old copy.
 // GENERATED FILE - edit src/content.js and run `node scripts/build.js`.
@@ -20,7 +20,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.4.7";
+    const PT_VERSION = "11.4.8";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -586,6 +586,12 @@
         }
 
         // b. entity label on unchanged text
+        // (v11.4.8) a connection URL with a password: only the password is labeled; the BEGIN / END lines of a key block are not labeled
+        {
+            const dsn = /^[a-z][a-z0-9+.-]*:\/\/[^:\/\s@]*:([^@\s\/]+)@\S+$/i.exec(T);
+            if (dsn) return wrong("Credentials: " + dsn[1], "In a connection URL only the password is labeled (Credentials), not the whole URL.");
+            if (/^-----(?:BEGIN|END) [A-Z0-9 ]*PRIVATE KEY-----$/.test(T)) return wrong(PTC_NONE, "Only the key lines between BEGIN and END are labeled.");
+        }
         const isEmail = isEmailAddressFormat(T);   // (v11.4.3) the same rule as the suggestions: no placeholders, no icon@2x.png
         // (v11.4.5) a four-part version number ("10.2.0.15 build", "Version 1.2.3.4") is not an IP address
         const ipVersion = T.includes(".") && new RegExp("\\b(?:v(?:ersion)?|ver|release|build|section|sec|clause|chapter|step|rule|item)\\.?[\\s:=#]*" + escRe(T) + "|" + escRe(T) + "\\s*(?:build|release|rc\\d*|beta|alpha|version|patch|update|firmware|sdk|hotfix|ga|lts)\\b", "i").test(rLine);
@@ -657,6 +663,7 @@
                 return wrong(PTC_NONE, "Not an address (a city, state or country alone is not labeled).");
             case "Credentials":
                 if (ordinaryWord) return wrong(PTC_NONE, "This is an ordinary word, not a credential.");
+                if (isPlaceholderSecret(T)) return wrong(PTC_NONE, "This is a placeholder (YOUR_API_KEY_HERE, <token>, xxxx), not a real secret.");   // (v11.4.8)
                 return null;
             case "Person Name":
                 if (ordinaryWord || isLanguageWord(plain)) return wrong(PTC_NONE, "This is an ordinary word, place or language, not a person's name.");
@@ -3497,7 +3504,10 @@
         'upi(?:\\s*id)?', 'vpa', 'transaction\\s*(?:id|no\\.?|ref(?:erence)?(?:\\s*no\\.?)?)', 'txn\\s*(?:id|no\\.?|ref)', 'tx\\s*(?:id|hash)', 'utr(?:\\s*(?:no\\.?|number))?',
         '(?:invocation|execution|request|lambda|run)[\\s_-]*id', 'sha(?:-?1|-?256)?(?:\\s*hash)?', 'hash', 'commit(?:\\s*(?:id|sha|hash))?',
         'vpc[\\s_-]*id', 'card[\\s_-]*id', '(?:aws\\s*)?account[\\s_-]*id', 'ifsc(?:\\s*code)?', 'bank\\s*branch\\s*code',
-        'pan(?:\\s*(?:card|no\\.?|number))*', 'income\\s*tax\\s*id'
+        'pan(?:\\s*(?:card|no\\.?|number))*', 'income\\s*tax\\s*id',
+        // (v11.4.8)
+        'secret', 'credentials?', 'signature', 'server[\\s_-]*key', 'ssn', 'social\\s*security(?:\\s*(?:no\\.?|number))?',
+        'passport(?:\\s*(?:no\\.?|number))?', 'driver\\s*licen[cs]e(?:\\s*(?:no\\.?|number))?', 'uan(?:\\s*(?:no\\.?|number))?'
     ].join('|');
     // key (optionally followed by a short "(...)" note) + separator + value, on one line
     const CRED_LINE_RE = new RegExp('(?:^|[\\s|,{;"\'*])(?:[A-Za-z0-9]+[_-])*(' + CRED_KEY_SOURCE + '|(?<=[A-Za-z0-9][_-])key)(?:\\s*\\([^)\\n]{0,30}\\))?["\'*]*\\s*(?::|=|=>|->|\\s-\\s|\\s\\u2013\\s|\\s\\u2014\\s|\\sis\\s)\\s*["\'`]?([^\\n"\'`|]+)', 'gi');
@@ -3505,6 +3515,22 @@
     // index access ("os.environ["), dotted references without digits ("config.apiKey"), template / env
     // placeholders ("${DB_PASSWORD}", "{{ token }}", "$API_KEY") and language keywords. Real passwords with
     // punctuation ("P@ss(123)!", "Tr0ub4dor&3") are still accepted.
+    // (v11.4.8) A placeholder instead of a real secret: "YOUR_API_KEY_HERE", "<your-token>", "xxxxxxxx", "********", "changeme",
+    // (AWS's documented example keys, "AKIAIOSFODNN7EXAMPLE", stay credentials: test documents use them as real keys.)
+    function isPlaceholderSecret(v) {
+        const s = (v || "").trim();
+        if (!s) return true;
+        if (/^<[^<>]+>$|^\[[^\[\]]+\]$|^\{\{?[^{}]+\}?\}$/.test(s)) return true;
+        if (/^(?:x+|\*+|#+|\.+|-+|0+)$/i.test(s)) return true;
+        if (/^(?:your|my|enter|insert|replace|example|sample|dummy|fake|placeholder|changeme|change_me|todo|redacted|secret_here|token_here)(?:[\s_-]|$)/i.test(s)) return true;
+        if (/PLACEHOLDER|REDACTED|_HERE$|^YOUR_/.test(s)) return true;
+        return false;
+    }
+    // (v11.4.8) a multi-word value that sits behind a passphrase / security-answer key
+    function isPassphraseValue(v, text) {
+        const esc = v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        return new RegExp("(?:pass\\s*phrase|security\\s*(?:question\\s*)?answer|secret\\s*answer|memorable\\s*word)[\"'*]*\\s*(?::|=|-|is)\\s*[\"']?" + esc, "i").test(text || "");
+    }
     function isCodeLikeValue(v) {
         const s = (v || "").trim();
         if (/^[A-Za-z_$][\w$.]*\s*\(/.test(s) && !/\d/.test(s.split("(")[0])) return true;      // call
@@ -3522,7 +3548,13 @@
         // Bank account numbers behind an account-number key are Account Number, not Credentials (own scan).
         if (/^(?:account|acct)\s*(?:no|number|num)|^a\/c/.test(k)) return false;
         // Bare "key" behind an env-style prefix (STRIPE_KEY=...): only an obvious secret counts.
-        if (k === "key") return /^(?=.*\d)(?=.*[A-Za-z])[A-Za-z0-9_\-\/+=.]{12,}$/.test(v) && !isCodeLikeValue(v);
+        if (k === "key") return /^(?=.*\d)(?=.*[A-Za-z])[A-Za-z0-9_\-\/+=.:]{12,}$/.test(v) && !isCodeLikeValue(v) && !isPlaceholderSecret(v);
+        // (v11.4.8) typed government IDs
+        if (/^ssn$|social/.test(k)) return /^\d{3}[- ]?\d{2}[- ]?\d{4}$/.test(v);
+        if (/passport/.test(k)) return /^(?:[A-Z]{1,2}\d{6,8}|\d{9})$/.test(v);
+        if (/driver/.test(k)) return /^(?:[A-Z]\d{7,12}|\d{3}-\d{3}-\d{3}|[A-Z9]{5}\d{6}[A-Z9]{2}\d[A-Z]{2}|[A-Z]{1,2}\d{6,14})$/.test(v);
+        if (/^uan/.test(k)) return /^\d{12}$/.test(v);
+        if (isPlaceholderSecret(v)) return false;
         // 1. Typed keys: the value must have that type's format.
         if (/aadh?aa?r/.test(k)) return /^(?:\d{4}\s\d{4}\s\d{4}|\d{12})$/.test(v);
         if (/^pan\b|income tax/.test(k)) return /^[A-Z]{5}\d{4}[A-Z]$/.test(v);
@@ -3556,8 +3588,10 @@
         let m;
         while ((m = CRED_LINE_RE.exec(line)) !== null) {
             let v = m[2].trim().replace(/[,;]+$/, "").trim();
-            // Grouped numbers (Aadhaar, cards, DL) keep their spaces; anything else stops at the first space.
-            if (!/^(?:[A-Z]{2}\d{2}\s\d{11}|\d{4}(?:[ -]\d{4}){2,3}|\d{4}\s\d{4}\s\d{4})$/.test(v)) v = v.split(/\s+/)[0];
+            // Grouped numbers (Aadhaar, cards, DL, SSN) keep their spaces; a passphrase / security answer keeps its words
+            // (v11.4.8); anything else stops at the first space.
+            if (/phrase|answer|memorable/i.test(m[1]) && /^[^\s].{2,60}$/.test(v) && v.split(/\s+/).length <= 6) v = v.replace(/[.!]+$/, "");
+            else if (!/^(?:[A-Z]{2}\d{2}\s\d{11}|\d{4}(?:[ -]\d{4}){2,3}|\d{4}\s\d{4}\s\d{4}|\d{3}\s\d{2}\s\d{4})$/.test(v)) v = v.split(/\s+/)[0];
             v = v.replace(/^["'`]+|["'`]+$/g, "");
             const valueIndex = m.index + m[0].length - m[2].length;
             const quoted = valueIndex > 0 && /["'`]/.test(line[valueIndex - 1]);
@@ -3772,7 +3806,8 @@
                 if (/^[A-Za-z]{2,}$/.test(cleanText) && isCommonWord(cleanText.toLowerCase())) return;
                 // A secret is one token (or a grouped number / two-word security answer), never a phrase
                 // ("Xk9#mPq2!vL7 was rotated after the incident").
-                if (cleanText.split(/\s+/).length >= 3 && !/^\d{2,6}(?:[ -]\d{2,6}){2,4}$/.test(cleanText)) return;
+                if (cleanText.split(/\s+/).length >= 3 && !/^\d{2,6}(?:[ -]\d{2,6}){2,4}$/.test(cleanText) && !(keyContext && isPassphraseValue(cleanText, rightText))) return;
+                if (isPlaceholderSecret(cleanText) || isPlaceholderSecret(text)) return;   // (v11.4.8)
                 // Never a credential: code and references that merely follow a key-like word.
                 // hashPassword(input), config.apiKey, os.environ, settings.SECRET_KEY, ${DB_PASSWORD}, {{ token }}
                 if (isCodeLikeValue(cleanText)) return;
@@ -5073,6 +5108,76 @@
             }
         }
 
+        // (v11.4.8) Government IDs from the Complete PII Type List, all Credentials, found right after their key word (with or
+        // without ":", "is", "no.", "#"): SSN, passport, driver licence (US, UK, India), Aadhaar written with dashes, the old voter-ID
+        // format, UAN. The number alone ("Ticket 123-45-6789") is never enough.
+        {
+            const ID_RULES = [
+                ["\\b(?:ssn|social\\s*security(?:\\s*(?:no\\.?|number|#))?)", "\\d{3}[- ]?\\d{2}[- ]?\\d{4}"],
+                ["\\bpassport(?:\\s*(?:no\\.?|number|num|#))?", "[A-Z]{1,2}\\d{6,8}|\\d{9}"],
+                ["\\b(?:driver'?s?\\s*licen[cs]e|driving\\s*licen[cs]e|licen[cs]e)(?:\\s*(?:no\\.?|number|num|#))?|\\bDL\\s*(?:no\\.?|number|#)?",
+                    "[A-Z]{2}\\d{2}[ -]?\\d{11}|[A-Z9]{5}\\d{6}[A-Z9]{2}\\d[A-Z]{2}|[A-Z]\\d{7,12}|\\d{3}-\\d{3}-\\d{3}"],
+                ["\\b(?:aadh?aa?r|uidai)(?:\\s*(?:card|no\\.?|number|num))*", "[2-9]\\d{3}-\\d{4}-\\d{4}"],
+                ["\\b(?:voter\\s*id|epic)(?:\\s*(?:no\\.?|number))?", "[A-Z]{2}\\/\\d{2}\\/\\d{3}\\/\\d{6}"],
+                ["\\buan(?:\\s*(?:no\\.?|number))?", "\\d{12}"],
+            ];
+            for (const [kw, val] of ID_RULES) {
+                const re = new RegExp("(?:" + kw + ")[\\s:=#.\"'\\-]{0,6}(?:is\\s+)?[\"']?(" + val + ")(?![\\w/-])", "gi");
+                let m;
+                while ((m = re.exec(rightText)) !== null) {
+                    const v = m[1];
+                    if (isDateFormat(v) || !leftText.includes(v)) continue;
+                    const ex = targetMap.get(v);
+                    if (!ex || ex.priority < 97) targetMap.set(v, { text: v, label: "Credentials", cls: "pt-credentials", priority: 97 });
+                }
+            }
+        }
+
+        // (v11.4.8) Secrets without a key of their own: the token after "Bearer" (only the token), and vendor keys with a known
+        // start (Google OAuth GOCSPX-, GitLab runner / trigger glrt- glptt-, Docker dckr_pat_, Brevo xkeysib-, Sentry sntrys_, PyPI pypi-,
+        // Shopify, Razorpay, Hugging Face, Anthropic).
+        {
+            const vendorRe = /\b(?:GOCSPX-[A-Za-z0-9_-]{20,}|gl(?:rt|ptt)-[A-Za-z0-9_-]{16,}|dckr_pat_[A-Za-z0-9_-]{20,}|xkeysib-[a-f0-9]{64}-[A-Za-z0-9]{16}|sntrys_[A-Za-z0-9_=-]{20,}|pypi-[A-Za-z0-9_-]{30,}|shp(?:at|ss|ca|pa)_[a-f0-9]{32}|rzp_(?:live|test)_[A-Za-z0-9]{14,}|hf_[A-Za-z0-9]{30,}|sk-ant-[A-Za-z0-9_-]{20,})/g;
+            for (const v of (rightText.match(vendorRe) || [])) if (leftText.includes(v) && !isPlaceholderSecret(v)) addTarget(v, "Credentials", "pt-credentials", 98, true);
+            const bearerRe = /\bBearer\s+([A-Za-z0-9._~+\/-]{16,}=*)/g;
+            let bm;
+            while ((bm = bearerRe.exec(rightText)) !== null) {
+                const v = bm[1];
+                if (leftText.includes(v) && !isPlaceholderSecret(v)) addTarget(v, "Credentials", "pt-credentials", 98, true);
+            }
+        }
+
+        // (v11.4.8) A connection URL with a password ("postgres://admin:S3cretPass@db...", "redis://:p4ssw0rd@...",
+        // "https://deploy:Tok3nValue@git..."): only the password is labeled (Credentials). Nothing else inside the URL is
+        // labeled: not the URL, not "pass@host" as an e-mail, not "mongodb" as a company.
+        const dsnSpans = [];
+        {
+            const dsnRe = /\b[a-z][a-z0-9+.-]*:\/\/([^:\/\s@]*):([^@\s\/]+)@[^\s"'<>]+/gi;
+            let dm;
+            while ((dm = dsnRe.exec(rightText)) !== null) {
+                dsnSpans.push([dm.index, dm.index + dm[0].length]);
+                const pw = dm[2];
+                if (pw.length < 3 || isPlaceholderSecret(pw) || !leftText.includes(dm[0].slice(0, dm[0].indexOf("@") + 1))) continue;
+                const ex = targetMap.get(pw);
+                if (!ex || ex.priority < 99) targetMap.set(pw, { text: pw, label: "Credentials", cls: "pt-credentials", priority: 99 });
+            }
+        }
+
+        // (v11.4.8) A private key block: only the key lines between "-----BEGIN ... PRIVATE KEY-----" and "-----END ...-----"
+        // (a label cannot span lines, so each line is labeled on its own). Header lines ("Proc-Type: ...") are not key lines.
+        {
+            const blockRe = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----([\s\S]*?)-----END [A-Z0-9 ]*PRIVATE KEY-----/g;
+            let km;
+            while ((km = blockRe.exec(rightText)) !== null) {
+                for (const raw of km[1].split("\n")) {
+                    const l = raw.trim();
+                    if (l.length < 8 || !/^[A-Za-z0-9+\/=]+$/.test(l) || !leftText.includes(l)) continue;
+                    const ex = targetMap.get(l);
+                    if (!ex || ex.priority < 98) targetMap.set(l, { text: l, label: "Credentials", cls: "pt-credentials", priority: 98 });
+                }
+            }
+        }
+
         // Step 8: Direct scan for Person Names that exist identically in BOTH left and right documents
         // Rule: "name should be same on left and right then only we can label it has person name"
         // User example: "like left side rithan right side rithan then verify in browser urself and annotate as person name"
@@ -5474,6 +5579,30 @@
                     const occ = occurrencesOf(t.text, rightText);
                     if (occ.length > 0 && occ.every(i => spans.some(([a, b]) => i >= a && i < b))) targetMap.delete(key);
                 }
+            }
+        }
+
+        // (v11.4.8) Inside a connection URL only the password is labeled; a credential that only occurs inside a longer
+        // credential ("a1b2...64 hex" inside "xkeysib-a1b2...-AbCd") is not a second label.
+        {
+            if (dsnSpans.length) {
+                for (const [k, t] of Array.from(targetMap)) {
+                    if (t.label === "Credentials" && t.priority === 99) continue;
+                    const occ = occurrencesOf(t.text, rightText);
+                    if (occ.length && occ.every(i => dsnSpans.some(([a, b]) => i >= a && i + t.text.length <= b))) targetMap.delete(k);
+                }
+                for (const [k, t] of Array.from(targetMap)) {   // whole-URL targets ("https://deploy:Tok3n@git...")
+                    if (t.label !== "Credentials" && dsnSpans.some(([a, b]) => rightText.slice(a, b).includes(t.text) && t.text.includes(":") && t.text.includes("@"))) targetMap.delete(k);
+                }
+            }
+            const creds = Array.from(targetMap.values()).filter(t => t.label === "Credentials");
+            for (const t of creds) {
+                const longer = creds.filter(o => o !== t && o.text.length > t.text.length && o.text.includes(t.text));
+                if (!longer.length) continue;
+                const occ = occurrencesOf(t.text, rightText);
+                const spans = [];
+                for (const o of longer) { let i = rightText.indexOf(o.text); while (i !== -1) { spans.push([i, i + o.text.length]); i = rightText.indexOf(o.text, i + 1); } }
+                if (occ.length && occ.every(i => spans.some(([a, b]) => i >= a && i + t.text.length <= b))) targetMap.delete(t.text);
             }
         }
 

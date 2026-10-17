@@ -1,5 +1,15 @@
 # Changelog
 
+## 11.4.8 - October 2026
+
+Credentials (every government ID and secret of the Complete PII Type List):
+- **Found for the first time**: SSN, passports (US, India, any country), US and UK driver licences, Aadhaar with dashes, the old voter-ID format (`AB/12/345/678901`), the token after `Bearer` (non-JWT), Google OAuth `GOCSPX-`, GitLab `glrt-` / `glptt-`, Docker `dckr_pat_`, secrets with `=` or `:` inside (base64, `id:secret`, Firebase server keys), secrets behind `secret` / `credentials` / `signature`, passphrases with spaces.
+- **Brevo `xkeysib-` keys** are labeled whole (only the middle was).
+- **Connection URLs**: only the password is labeled; `mongodb+srv://app:Pa55w0rd@...` no longer gives an e-mail and a company, `https://user:pass@...` no longer a URL/Link.
+- **Private key blocks**: the key lines are labeled, one per line, not the BEGIN / END lines.
+- **Placeholders** (`YOUR_API_KEY_HERE`, `<your-token>`, `xxxx`) are not credentials.
+- The mistake check flags a whole connection URL (only the password), a BEGIN / END line and a placeholder.
+
 ## 11.4.7 - October 2026
 
 Address:
