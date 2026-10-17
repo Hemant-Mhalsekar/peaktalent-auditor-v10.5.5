@@ -15,7 +15,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.4.9";
+    const PT_VERSION = "11.4.10";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -646,7 +646,10 @@
                 if (/^@/.test(T) && GROUP_MENTION.test(T.slice(1))) return wrong(PTC_NONE, "This mentions a group (@here, @channel, ...), not a person.");
                 if (/^@/.test(T)) return wrong(PTC_NONE, "This is code (a decorator / annotation), not a person's username.");
                 return wrong(PTC_NONE, "This is not a person's username.");
-            case "Account Number": return (/^\d[\d -]{7,22}\d$/.test(T) && digits.length >= 9 && digits.length <= 18) ? null : wrong(PTC_NONE, "This is not a bank account number (9-18 digits).");
+            case "Account Number":
+                if (isIbanFormat(T)) return null;   // (v11.4.10)
+                if (/\b(?:routing|aba|rtn)\b[^\d\n]{0,15}$/i.test(rLine.slice(0, Math.max(0, rLine.indexOf(T))))) return wrong("Credentials", "This is a US routing (ABA) number: it identifies the bank branch, like an IFSC code, so it is Credentials.");
+                return (/^\d[\d -]{7,22}\d$/.test(T) && digits.length >= 8 && digits.length <= 18) ? null : wrong(PTC_NONE, "This is not a bank account number (8-18 digits).");
             case "Date": {
                 if (!isDateFormat(T)) return wrong(ordinaryWord ? PTC_NONE : PTC_NONE, "This is not a date.");
                 // (v11.4.9) only a full date (day, month, year), behind a DOB key (any spelling or language, "b.")
@@ -2477,6 +2480,15 @@
     ]);
 
     // NOTE: v10.4 removed the background Wikipedia / DuckDuckGo / Gemini / OpenAI lookups. Document text never leaves the browser.
+
+    // (v11.4.10) An IBAN: country, check digits, account; valid only when its mod-97 checksum is 1.
+    function isIbanFormat(v) {
+        const c = (v || "").replace(/\s+/g, "").toUpperCase();
+        if (!/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(c)) return false;
+        const r = (c.slice(4) + c.slice(0, 4)).replace(/[A-Z]/g, ch => String(ch.charCodeAt(0) - 55));
+        let mod = 0; for (const d of r) mod = (mod * 10 + Number(d)) % 97;
+        return mod === 1;
+    }
 
     // ---- (v11.4.9) Date of birth ----
     // Keys that announce a date of birth, also in Hindi, Indonesian, Portuguese and Spanish, and the short "b." (born).
@@ -4681,6 +4693,8 @@
                     if (PHONE_WORD.test(before) && dg.length >= 7 && dg.length <= 15 && !isNotAPhoneShape(cand) && !isDefaultOrPlaceholderPhone(cand)) lab = LBL_INTL_PHONE;
                 }
                 if (!lab || !leftText.includes(cand)) continue;
+                // (v11.4.10) a number behind an account / routing / IBAN / card / policy key is not a phone
+                if (/\b(?:account|acct|a\/c|routing|aba|iban|card|policy|customer\s*id|member\s*id)\b[^\d\n]{0,12}$/i.test(before)) continue;
                 // Money is not a phone number ("Amount 7000000000 INR", "Rs. 9876543210").
                 const pmLine = lineContaining(cand, rightText);
                 const esc = cand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -5152,6 +5166,32 @@
             while ((bm = bearerRe.exec(rightText)) !== null) {
                 const v = bm[1];
                 if (leftText.includes(v) && !isPlaceholderSecret(v)) addTarget(v, "Credentials", "pt-credentials", 98, true);
+            }
+        }
+
+        // (v11.4.10) Financial identifiers of the Complete PII Type List, identical on both sides:
+        //   IBAN (checked with its mod-97 checksum) and a bank account behind "Account", "Account #", "Acct" -> Account Number;
+        //   US routing / ABA number (checked with its 3-7-1 checksum), Amex card (4-6-5), Bitcoin wallet -> Credentials.
+        {
+            const put = (v, label, cls, prio) => { const ex = targetMap.get(v); if (!ex || ex.priority < prio) targetMap.set(v, { text: v, label, cls, priority: prio }); };
+            const ibanOk = isIbanFormat;
+            const ibanRe = /\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]{4}){2,7}(?:[ ]?[A-Z0-9]{1,4})?\b/g;
+            for (const v of (rightText.match(ibanRe) || [])) if (ibanOk(v) && leftText.includes(v)) put(v, "Account Number", "pt-account", 97);
+            const abaOk = (v) => { if (!/^\d{9}$/.test(v)) return false; const d = v.split("").map(Number); return (3 * (d[0] + d[3] + d[6]) + 7 * (d[1] + d[4] + d[7]) + (d[2] + d[5] + d[8])) % 10 === 0; };
+            const abaRe = /\b(?:routing|aba|rtn|transit)(?:\s*(?:no\.?|number|num|#))?[\s:#=-]*(\d{9})(?!\d)/gi;
+            let am;
+            while ((am = abaRe.exec(rightText)) !== null) if (abaOk(am[1]) && leftText.includes(am[1])) put(am[1], "Credentials", "pt-credentials", 97);
+            const acctRe = /\b(?:account|acct|a\/c)(?:\s*(?:no\.?|number|num|#))?[\s:#=-]+(\d[\d -]{6,22}\d)(?![\d])/gi;
+            while ((am = acctRe.exec(rightText)) !== null) {
+                const v = am[1].trim(), dg = v.replace(/\D/g, "");
+                if (dg.length >= 8 && dg.length <= 18 && leftText.includes(v) && !isDefaultOrPlaceholderPhone(v)) put(v, "Account Number", "pt-account", 96);
+            }
+            const amexRe = /\b3[47]\d{2}[ -]\d{6}[ -]\d{5}\b/g;
+            for (const v of (rightText.match(amexRe) || [])) if (luhnValid(v.replace(/\D/g, "")) && leftText.includes(v)) put(v, "Credentials", "pt-credentials", 97);
+            const btcRe = /\b(?:bc1[ac-hj-np-z02-9]{11,71}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})\b/g;
+            for (const v of (rightText.match(btcRe) || [])) {
+                if (!/^bc1/.test(v) && !(/[a-z]/.test(v) && /[A-Z]/.test(v) && /\d.*\d/.test(v.slice(1)))) continue;
+                if (leftText.includes(v)) put(v, "Credentials", "pt-credentials", 97);
             }
         }
 
@@ -5627,8 +5667,9 @@
                 }
             }
             const creds = Array.from(targetMap.values()).filter(t => t.label === "Credentials");
+            const holders = Array.from(targetMap.values()).filter(t => t.label === "Credentials" || t.label === "Account Number");   // (v11.4.10)
             for (const t of creds) {
-                const longer = creds.filter(o => o !== t && o.text.length > t.text.length && o.text.includes(t.text));
+                const longer = holders.filter(o => o !== t && o.text.length > t.text.length && o.text.includes(t.text));
                 if (!longer.length) continue;
                 const occ = occurrencesOf(t.text, rightText);
                 const spans = [];

@@ -93,6 +93,12 @@ same('unchanged JSON key', '"dependencies": {', 'dependencies', '', 'Overscrubbe
 diff('scrubbed person name', 'I met Furkan at the airport.', 'I met Dalvorin at the airport.', 'Dalvorin', '', 'Overscrubbed');
 diff('scrubbed company', 'She joined Accenture in 2019.', 'She joined Velmoratech in 2019.', 'Velmoratech', '', 'Business Name');
 diff('scrubbed phone', 'Call 9876543210 today', 'Call 9123456780 today', '9123456780', '', 'Indian Mobile Number');
+// (v11.4.10) Financial
+same('IBAN', 'IBAN GB29NWBK60161331926819', 'GB29NWBK60161331926819', 'Account Number', 'Credentials');
+same('routing number', 'Routing Number: 021000021', '021000021', 'Credentials', 'Account Number');
+same('Amex card', 'Amex 3782 822463 10005', '3782 822463 10005', 'Credentials', 'Account Number');
+same('Bitcoin wallet', 'Send to bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq', 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq', 'Credentials', 'URL/Link');
+same('account behind Account #', 'Account #: 000123456789', '000123456789', 'Account Number', 'Indian Mobile Number');
 // (v11.4.9) Date of birth
 same('DOB month first', 'Birth Date: November 5, 1988', 'November 5, 1988', 'Date', 'Credentials');
 same('DOB Indonesian key', 'Tanggal Lahir: 21-09-1996', '21-09-1996', 'Date', 'Credentials');
