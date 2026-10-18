@@ -1,5 +1,14 @@
 # Changelog
 
+## 11.4.13 - October 2026
+
+- **Overscrubbed: version numbers are not dates.** In a package-lock.json, `"@babel/helper-plugin-utils": "^7.12.13"` (identical on both sides) got `12.13` as Overscrubbed: the changed-date rule took `7.12.13` for a date and compared it with another line of the left that only differs in its version (`"^7.18.10"`). Now a line that is on the left unchanged is skipped, and a version (after `^ ~ v = < >`, after a `version` key, or with an impossible day / month such as `4.17.20`) is never a date.
+
+## 11.4.12 - October 2026
+
+- **Integrity hashes are Credentials.** The base64 SHA in `"integrity": "sha512-..."` (package-lock.json), `sha384-` / `sha256-` / `sha1-` (`<script integrity>`) is labeled (the hash only, not `sha512-`), checked against the algorithm's length. A hash wrapped over several lines gets one label per line. Hex SHAs were already labeled.
+- **Highlighting**: a suggestion that starts or ends with a non-word character (`...3g==`, `@rahul_92`, `+91 98450 12345`) is now highlighted on the page; the old word-boundary match missed it.
+
 ## 11.4.11 - October 2026
 
 - **Person Username: types in code are not usernames.** In a schema such as `username: Attribute.String;` the type `Attribute.String` was taken for the user's name, and every `Attribute.String` in the file was highlighted. An unquoted type or reference after a username / user / handle key (`Attribute.String`, `UserEntity`, `string`, `models.CharField(...)`) is now skipped; a quoted value (`username: "rahul_92"`) still counts, also behind `config.username`.
