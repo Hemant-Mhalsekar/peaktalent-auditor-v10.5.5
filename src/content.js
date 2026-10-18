@@ -15,7 +15,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.4.10";
+    const PT_VERSION = "11.4.11";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -4965,12 +4965,24 @@
         // not a person, a number is an id, and a value with a space is a full name (Person Name).
         {
             const KEY = "(?:user[\\s_-]?name|user|login(?:[\\s_-]?(?:name|id))?|handle|screen[\\s_-]?name|nick(?:name)?|github|gitlab|twitter|instagram|telegram)";
-            const kv = new RegExp("(?:^|[\\s{,\"'(])[\"']?" + KEY + "[\"']?\\s*[:=]\\s*[\"']?([A-Za-z][A-Za-z0-9._-]{1,29})(?![A-Za-z0-9._@-])", "gi");
+            const kv = new RegExp("(?:^|[\\s{,\"'(.])[\"']?" + KEY + "[\"']?\\s*[:=]\\s*([\"']?)([A-Za-z][A-Za-z0-9._-]{1,29})(?![A-Za-z0-9._@(-])", "gi");
+            // (v11.4.11) In code an unquoted value is a type or a reference, not a username: "username: Attribute.String;",
+            // "user: UserEntity;", "username: string;", "handle: Schema.Types.String,". A quoted value is a real string ("rahul_92").
+            const TYPE_WORD = /^(?:string|number|boolean|bool|int|integer|float|double|decimal|text|varchar|char|uuid|any|object|date|datetime|timestamp|json|null|undefined|void|unknown|never)$/i;
+            const codeValue = (v, line, quoted) => {
+                if (/^[A-Z][A-Za-z0-9]*\.[A-Za-z]/.test(v) || /^[a-z]+\.[A-Z]/.test(v) || TYPE_WORD.test(v)) return true;
+                if (quoted) return false;
+                if (/^[A-Z][a-z]+[A-Z][A-Za-z]*$/.test(v)) return true;                                      // UserEntity
+                return /;\s*$|[&|]\s*[A-Z]|\binterface\b|\btype\s+\w+\s*=|^\s*(?:public|private|readonly)\b/.test(line);
+            };
             const cellKey = new RegExp("^" + KEY + "$", "i");
             const leftVals = new Set();
             const collect = (text, into) => {
                 let m; kv.lastIndex = 0;
-                while ((m = kv.exec(text)) !== null) into.push(m[1]);
+                while ((m = kv.exec(text)) !== null) {
+                    const ls = text.lastIndexOf("\n", m.index) + 1; let le = text.indexOf("\n", m.index); if (le < 0) le = text.length;
+                    if (!codeValue(m[2], text.slice(ls, le), !!m[1])) into.push(m[2]);
+                }
                 for (const ln of text.split("\n")) {
                     if (!ln.includes("|")) continue;
                     const cells = ln.split("|").map(c => c.trim());
@@ -4981,7 +4993,7 @@
             const rv = []; collect(rightText, rv);
             for (const v of rv) {
                 if (!leftVals.has(v) || !isPersonalUsername(v)) continue;
-                addTarget(v, "Person Username", "pt-username", 89, true);
+                addTarget(v, "Person Username", "pt-username", 92, true);   // (v11.4.11) a username key outranks a name guess
             }
         }
 

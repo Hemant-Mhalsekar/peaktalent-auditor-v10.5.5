@@ -1,5 +1,9 @@
 # Changelog
 
+## 11.4.11 - October 2026
+
+- **Person Username: types in code are not usernames.** In a schema such as `username: Attribute.String;` the type `Attribute.String` was taken for the user's name, and every `Attribute.String` in the file was highlighted. An unquoted type or reference after a username / user / handle key (`Attribute.String`, `UserEntity`, `string`, `models.CharField(...)`) is now skipped; a quoted value (`username: "rahul_92"`) still counts, also behind `config.username`.
+
 ## 11.4.10 - October 2026
 
 Account Number and financial Credentials:

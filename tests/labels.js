@@ -557,6 +557,17 @@ no('Username: rahul_92', 'velmor_17', 'Username: velmor_17');
 for (const g of ['Master', 'admin', 'root', 'guest', 'Administrator', 'postgres', 'ubuntu', 'ec2-user', 'system', 'default', 'service', 'test']) notAs(`user: ${g}`, g);
 notAs('user_id: 1029384756', '1029384756');
 notAs('User: Priya Raghavan', 'Priya Raghavan');
+// (v11.4.11) a type in code is not a username ("username: Attribute.String;", Strapi / TypeScript schemas)
+notAs('export interface User {\n  username: Attribute.String & Attribute.Unique;\n  caption: Attribute.String;\n}', 'Attribute.String');
+notAs('  username: Attribute.String;\n  caption: Attribute.String;', 'Attribute.String');
+notAs('interface Props { username: string; login: boolean; }', 'string');
+notAs('  user: UserEntity;', 'UserEntity');
+notAs('    username: models.CharField(max_length=150)', 'models.CharField');
+notAs('  handle: Schema.Types.String,', 'Schema.Types.String');
+// a real username in code is a string literal and still counts
+yes('const user = { username: "rahul_92" };', 'rahul_92');
+yes("config.username = 'kavya.nair';", 'kavya.nair');
+yes('username: rahul_92', 'rahul_92');
 yes('Ping @rahul_92 on Slack', '@rahul_92');
 yes('Ask @priya.s in #ops', '@priya.s');
 yes('Follow @meera_writes', '@meera_writes');
