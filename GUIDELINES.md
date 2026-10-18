@@ -149,6 +149,7 @@ The platform mandates that the following **15 categories are strictly classified
 - **Short values behind a key** (CVV `789`, PIN `4821`, expiry `11/28`) are Credentials only when they sit directly after their key (`"cvv": "789"`). A bare 3–4 digit number is never a credential.
 - **Card numbers**: grouped `4-4-4-4` numbers are accepted on format; ungrouped 13–19 digit numbers must pass the Luhn checksum.
 - **Bank UTR / transaction references** are recognised behind keys such as `UTR No:`, `Txn ID:`, `Transaction Ref:`.
+- **Financial types (v11.4.10)**: bank accounts and **IBANs** (checksum-validated, with or without spaces) are **Account Number**, also behind `Account #` / `Account` without a colon. **US routing (ABA) numbers** (checksum-validated), **IFSC**, **card numbers** (Amex `3782 822463 10005` too), CVV, expiry and **crypto wallets** (Ethereum `0x…`, Bitcoin `1…` / `3…` / `bc1…`) are **Credentials**. A number behind an account / routing / card key is never a phone number. Insurance policy numbers of 12 digits stay Credentials.
 - **Account ID vs Account Number**: any 12-digit number identical on both sides is treated as Aadhaar / cloud Account ID (Credentials). A 12-digit **bank** account number therefore also lands in Credentials — re-label it as `Account Number` by hand.
 - **Exclusion**: Keys such as `account_id`, `_account_id`, `PolicyId`, `password`, `pin`, `otp`, `secret`, `api_key` must **never** receive an annotation badge.
 
@@ -237,6 +238,7 @@ The platform mandates that the following **15 categories are strictly classified
 - **(v11.4.6)** A handle may hold `-` (`@rahul-verma`) and a server (`@priya@mastodon.social`: the whole handle, not an e-mail). Capitalised handles in a sentence are handles (`Follow @RahulVerma`). Group mentions (`@here`, `@channel`, `@everyone`, `@all`) are not people. Code is told apart by where the @word stands: a decorator / annotation alone on its line above `def` / `class` / `public` / `fun`, followed by `(`, or inside an HTML tag (`<button @click=...>`) is code. Organisation handles (`@NASA`) count; GitHub team handles (`@acme/design-team`) do not.
 - **Usernames behind a key** (v11.4.6): the value of a `username`, `user`, `login`, `handle`, `screen_name`, `nickname`, `github`, `twitter`, ... key or column is a Person Username when identical on both sides (`Username: rahul_92`, `"login": "kavya.nair"`). A generic account (`user: Master`, `root`, `admin`, `postgres`, `ec2-user`, ...) or a dictionary word is not a person; a number is an id; a value with a space is a full name (Person Name).
 - A handle replaced by a plain word is **Overscrubbed** (`@rahul_92` → `hello`).
+- **Types in code are not usernames** (v11.4.11): `username: Attribute.String;`, `user: UserEntity;`, `username: string;`, `handle: Schema.Types.String,`. In code only a quoted value counts (`username: "rahul_92"`).
 - Git commit hashes, API node IDs (`node_id`), base64 strings (`MDY6Q29tbWl0...`), login session keys, and numeric database IDs are **NOT** usernames and must **NOT** be annotated.
 
 ### 5.9 Other Categories (Contact, Email, IP, URL)

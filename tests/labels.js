@@ -13,6 +13,29 @@ const notAs = (doc, text, lab = cur, right = doc) => S[cur].push({ kind: 'notAs'
 
 // ======================= ACCOUNT NUMBER =======================
 label('Account Number');
+// (v11.4.10) Financial types of the Complete PII Type List
+yes('Beneficiary account number - 3456 7890 1234 56', '3456 7890 1234 56');
+notAs('Beneficiary account number - 3456 7890 1234 56', '3456 7890 1234', 'Credentials');
+yes('IBAN: DE89 3704 0044 0532 0130 00', 'DE89 3704 0044 0532 0130 00');
+yes('IBAN GB29NWBK60161331926819', 'GB29NWBK60161331926819');
+yes('Pay to GB29 NWBK 6016 1331 9268 19 by Friday', 'GB29 NWBK 6016 1331 9268 19');
+notAs('IBAN: DE89 3704 0044 0532 0130 00', '3704 0044 0532 0130', 'Credentials');
+notAs('Ref GB00NWBK60161331926819 (bad checksum)', 'GB00NWBK60161331926819');
+no('IBAN GB29NWBK60161331926819', 'GB82WEST12345698765432', 'IBAN GB82WEST12345698765432');
+yes('Account #: 000123456789', '000123456789');
+notAs('Account #: 000123456789', '000123456789', 'International Phone Number');
+yes('Routing 021000021, Account 4400123456', '4400123456');
+yes('Routing Number: 021000021', '021000021', 'Credentials');
+yes('ABA: 011000015', '011000015', 'Credentials');
+yes('Routing 021000021, Account 4400123456', '021000021', 'Credentials');
+notAs('Routing Number: 021000022', '021000022', 'Credentials');   // fails the ABA checksum
+yes('Amex 3782 822463 10005', '3782 822463 10005', 'Credentials');
+yes('Card: 378282246310005', '378282246310005', 'Credentials');
+yes('BTC: 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa', '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa', 'Credentials');
+yes('Send to bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq', 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq', 'Credentials');
+yes('Wallet 3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy', '3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy', 'Credentials');
+no('BTC: 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa', '1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2', 'BTC: 1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2');
+notAs('Policy No: 123456789012', '123456789012', 'Account Number');
 yes('Account Number: 50100234567891', '50100234567891');
 yes('A/c No: 001234567890123', '001234567890123');
 yes('Acct No. 912010012345678', '912010012345678');
@@ -534,6 +557,17 @@ no('Username: rahul_92', 'velmor_17', 'Username: velmor_17');
 for (const g of ['Master', 'admin', 'root', 'guest', 'Administrator', 'postgres', 'ubuntu', 'ec2-user', 'system', 'default', 'service', 'test']) notAs(`user: ${g}`, g);
 notAs('user_id: 1029384756', '1029384756');
 notAs('User: Priya Raghavan', 'Priya Raghavan');
+// (v11.4.11) a type in code is not a username ("username: Attribute.String;", Strapi / TypeScript schemas)
+notAs('export interface User {\n  username: Attribute.String & Attribute.Unique;\n  caption: Attribute.String;\n}', 'Attribute.String');
+notAs('  username: Attribute.String;\n  caption: Attribute.String;', 'Attribute.String');
+notAs('interface Props { username: string; login: boolean; }', 'string');
+notAs('  user: UserEntity;', 'UserEntity');
+notAs('    username: models.CharField(max_length=150)', 'models.CharField');
+notAs('  handle: Schema.Types.String,', 'Schema.Types.String');
+// a real username in code is a string literal and still counts
+yes('const user = { username: "rahul_92" };', 'rahul_92');
+yes("config.username = 'kavya.nair';", 'kavya.nair');
+yes('username: rahul_92', 'rahul_92');
 yes('Ping @rahul_92 on Slack', '@rahul_92');
 yes('Ask @priya.s in #ops', '@priya.s');
 yes('Follow @meera_writes', '@meera_writes');

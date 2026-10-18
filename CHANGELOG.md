@@ -1,5 +1,19 @@
 # Changelog
 
+## 11.4.11 - October 2026
+
+- **Person Username: types in code are not usernames.** In a schema such as `username: Attribute.String;` the type `Attribute.String` was taken for the user's name, and every `Attribute.String` in the file was highlighted. An unquoted type or reference after a username / user / handle key (`Attribute.String`, `UserEntity`, `string`, `models.CharField(...)`) is now skipped; a quoted value (`username: "rahul_92"`) still counts, also behind `config.username`.
+
+## 11.4.10 - October 2026
+
+Account Number and financial Credentials:
+- **IBANs are Account Number** (checked with their checksum), with or without spaces; before, part of a spaced IBAN was Credentials and a compact one got nothing.
+- **US routing (ABA) numbers are Credentials** (checked with their checksum), behind Routing / ABA / RTN.
+- **An account behind `Account #` or `Account` (no colon)** is found; `Account #: 000123456789` was labeled International Phone Number.
+- **Amex cards** (`3782 822463 10005`) and **Bitcoin wallets** (`1…`, `3…`, `bc1…`) are Credentials.
+- **No second label inside an account number**: the first 12 digits of `3456 7890 1234 56` were also Credentials.
+- The mistake check accepts an IBAN as Account Number and flags a routing number labeled Account Number.
+
 ## 11.4.9 - October 2026
 
 Date (date of birth):
