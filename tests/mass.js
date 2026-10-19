@@ -183,7 +183,8 @@ while (made < N && guard < N * 5) {
   const probs = [];
   if (!ts) probs.push('CRASH');
   else {
-    for (const [t, lab] of c.must || []) { const h = ts.find(x => x.text === t); if (!h) probs.push(`missing ${lab} "${t}"`); else if (h.label !== lab) probs.push(`"${t}" got ${h.label}, want ${lab}`); }
+    // (v11.5.0) "Pvt Ltd." / "Inc." keep their dot, also at the end of a sentence
+    for (const [t, lab] of c.must || []) { const h = ts.find(x => x.text === t || (lab === 'Business Name' && x.text === t + '.' && /\b(?:Ltd|Inc|Corp|Co|Pvt)$/.test(t))); if (!h) probs.push(`missing ${lab} "${t}"`); else if (h.label !== lab) probs.push(`"${t}" got ${h.label}, want ${lab}`); }
     for (const t of c.mustNot || []) { const h = ts.find(x => x.text === t); if (h) probs.push(`"${t}" should have no label, got ${h.label}`); }
     for (const [t, lab] of c.notLabel || []) { const h = ts.find(x => x.text === t); if (h && h.label === lab) probs.push(`"${t}" must not be ${lab}`); }
   }

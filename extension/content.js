@@ -15,7 +15,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.4.14";
+    const PT_VERSION = "11.5.1";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -674,6 +674,9 @@
                 if (TECH_TOOLS.has(T.toLowerCase())) return wrong(PTC_NONE, "This is a software / technology name.");
                 return null;
             case "Business Name":
+                // (v11.5.0) a platform used as a tool ("on Slack", "via WhatsApp") is not a company; as an employer it is
+                if (PLATFORM_NAMES.test(T) && /\b(?:on|via|using|through|with|in|into|over)\s+(?:the\s+|my\s+|our\s+|your\s+)?$/i.test(rLine.slice(0, Math.max(0, rLine.indexOf(T))))) return wrong(PTC_NONE, "A platform used as a tool (on Slack, via WhatsApp) is not a company. As an employer (works at LinkedIn) it is.");
+                if (KNOWN_BUSINESS_NAMES.has(T.toLowerCase()) || T.split(/\s+/).some(w => CORP_SUFFIX_RE.test(w))) { if (!/\bbank\b/i.test(T)) return null; }
                 if (ordinaryWord) return wrong(PTC_NONE, "This is an ordinary word, not a company name.");
                 if (/\bbank\b/i.test(T)) return wrong(PTC_NONE, "Bank names are not labeled as Business Name.");
                 if (TECH_TOOLS.has(T.toLowerCase())) return wrong(PTC_NONE, "This is a software / technology name.");
@@ -1519,6 +1522,8 @@
     function cleanWord(str) {
         if (!str) return "";
         let s = str.trim();
+        // (v11.5.0) the dot of a company abbreviation is part of the name ("Initech Inc.", "Velora Foods Ltd.", "Globex Corp.")
+        if (/\s(?:Inc|Ltd|Corp|Co|Pvt|Bros|Plc|Mfg|Intl|Ltda|Bhd|Tbk)\.$/.test(s.replace(/["'*_\s]+$/, "")) && /^[\p{Lu}0-9]/u.test(s.replace(/^["'*_(\s]+/, ""))) return s.replace(/^["'*_(\s]+/, "").replace(/["'*_\s]+$/, "");
         // (v11.4.5) an IPv6 address keeps its leading / trailing colons ("::ffff:192.168.1.10", "2001:db8::")
         if (/^[0-9A-Fa-f:.]+$/.test(s) && s.includes("::") && isIpAddressFormat(s)) return s;
         // (v11.4.0) a phone number written with its area code in brackets keeps them: "(022) 2345 6789", "+1 (415) 732-0198"
@@ -2314,9 +2319,17 @@
     // words that put a brand surname in a COMPANY context ("works at Bajaj", "from Tata") rather than after a first name
     const CO_WORDS_FOR_SURNAME = new Set(["at", "from", "with", "by", "for", "joined", "vendor", "client", "partner", "the"]);
     // Could this single word be somebody's name (a known given name / surname, or an ambiguous name like "Mark")?
+    // (v11.5.1) common given names and surnames from Indonesia, Brazil and Spanish-speaking countries (the PII list covers them)
+    const EXTRA_NAMES = new Set(("budi siti agus dewi rizky putri andi ahmad joko sri wahyu eko adi dian rina fitri yusuf indah bayu nur ayu hendra ratna " +
+        "santoso rahayu wijaya kusuma setiawan pratama saputra hidayat siregar nasution gunawan hartono susanto " +
+        "joao maria ana pedro lucas gabriel mateus rafael juliana fernanda camila bruno thiago felipe carla paulo marcos luiz luis carlos antonio " +
+        "francisco eduardo beatriz larissa leticia silva santos souza oliveira pereira lima costa ferreira rodrigues almeida garcia martinez " +
+        "gonzalez lopez hernandez perez sanchez ramirez fernandes gomes ribeiro carvalho").split(" "));
+    const foldName = (w) => (w || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    function isGivenOrSurname(w) { const f = foldName(w); return KNOWN_GIVEN_NAMES.has(f) || EXTRA_NAMES.has(f); }
     function couldBeName(w) { const l = (w || "").toLowerCase(); return KNOWN_GIVEN_NAMES.has(l) || AMBIGUOUS_NAME_WORDS.has(l); }
     // Corporate suffixes: a capitalised phrase ending in one of these is a company, never a person.
-    const CORP_SUFFIX_RE = /\b(?:Pvt\.?|Private|Ltd\.?|Limited|Inc\.?|Corp\.?|Corporation|LLC|LLP|PLC|Technologies|Solutions|Services|Systems|Labs|Software|Networks|Traders|Industries|Enterprises|Consulting|Consultancy|Logistics|Pharma|Pharmaceuticals|Ventures|Partners|Associates|Holdings|Analytics|Motors|Insurance|Hospital|Studios|Group|Foods)\.?$/;
+    const CORP_SUFFIX_RE = /\b(?:Pvt\.?|Private|Ltd\.?|Limited|Inc\.?|Corp\.?|Corporation|LLC|LLP|PLC|Technologies|Solutions|Services|Systems|Labs|Software|Networks|Traders|Industries|Enterprises|Consulting|Consultancy|Logistics|Pharma|Pharmaceuticals|Ventures|Partners|Associates|Holdings|Analytics|Motors|Insurance|Hospitals?|Studios|Group|Foods|GmbH|AG|Ltda|Pty|Bhd|Tbk|Clinic|University|College|School|Institute|Academy|Foundation)\.?$/i;   // (v11.5.0) any case: "PVT LTD"
     // Is `token` part of a company name ("Pinnacle Software", "Evergreen Agro Traders") on its line?
     function isInCorporateName(token, line) {
         if (!token || !line) return false;
@@ -2452,9 +2465,11 @@
     }
 
     // Verified corporate entities, OEMs, vehicle makes, and platforms
+    // (v11.5.0) Platforms and apps people use as tools ("on Slack", "via WhatsApp"): a company only in an employer context.
+    const PLATFORM_NAMES = /^(?:slack|youtube|linkedin|whatsapp|twitter|x|facebook|instagram|telegram|signal|zoom|skype|discord|reddit|medium|quora|pinterest|snapchat|tiktok|threads|github|gitlab|bitbucket|jira|confluence|notion|trello|asana|figma|canva|dropbox|gmail|outlook|teams|microsoft\s+teams|google\s+meet|google\s+drive|google\s+docs|google\s+sheets|whatsapp\s+business|spotify|netflix|uber|ola|swiggy\s+genie|paytm|phonepe|gpay|google\s+pay)$/i;
     const KNOWN_BUSINESS_NAMES = new Set([
         // (v11.1.0) major Indian and global companies that were missing (Infosys, Wipro, Zoho, Deloitte ...)
-        "1mg", "5paisa", "abb", "acc", "accenture", "acko", "adani", "adidas", "adobe", "air india", "airbnb", "airbus", "airtel", "akasa", "alibaba", "alphabet", "amazon web services", "ambuja", "amd", "american express", "amul", "angel one", "anthropic", "asana", "ashok leyland", "asian paints", "astrazeneca", "ather energy", "atlassian", "aurobindo", "avenue supermarts", "aws", "baidu", "bain", "bajaj allianz", "bajaj finserv", "bankbazaar", "bayer", "bcg", "berger", "bewakoof", "bharatpe", "bharti airtel", "billdesk", "biocon", "birlasoft", "blackbuck", "blue dart", "bluedart", "boeing", "booking.com", "bosch", "britannia", "browserstack", "bsnl", "burger king", "byju's", "byjus", "bytedance", "canon", "canva", "capgemini", "cashfree", "chargebee", "chevron", "cipla", "cisco", "cleartrip", "clickup", "coca-cola", "coforge", "cognizant", "colgate", "confluent", "costco", "coverfox", "cred", "curefit", "cyient", "dabur", "dailyhunt", "databricks", "decathlon", "deepmind", "delhivery", "dell", "deloitte", "digit insurance", "dmart", "domino's", "dominos", "dr reddy's", "dream11", "dropbox", "druva", "dunzo", "easemytrip", "ecom express", "economic times", "elastic", "emami", "ernst", "eruditus", "expedia", "exxonmobil", "facebook", "fi money", "firstcry", "force motors", "freshdesk", "freshworks", "fujitsu", "general electric", "glenmark", "godrej", "google", "groww", "gsk", "hashicorp", "hasura", "hcl", "hcltech", "hdfc", "healthifyme", "hero motocorp", "hexaware", "hindu", "hindustan times", "hindustan unilever", "honeywell", "huawei", "hubspot", "hul", "ibm", "icertis", "icici", "ikea", "inc42", "india today", "indigo", "infosys", "inmobi", "inshorts", "instagram", "instamojo", "intel", "intercom", "irctc", "itc", "ixigo", "jd.com", "johnson & johnson", "jsw", "jupiter", "juspay", "khatabook", "kpmg", "l&t", "larsen & toubro", "lenovo", "lenskart", "linkedin", "livspace", "ltimindtree", "lupin", "mahindra", "mailchimp", "mamaearth", "marico", "mastercard", "mcdonald's", "mcdonalds", "mckinsey", "merck", "microsoft", "mindtree", "miro", "mobikwik", "monday.com", "moneycontrol", "mongodb", "motorola", "mphasis", "mpl", "ndtv", "nestle", "netflix", "netmeds", "nike", "nikon", "niva bupa", "nokia", "notion", "novartis", "nvidia", "nykaa", "nykaa fashion", "okcredit", "okta", "ola electric", "onecard", "oneplus", "openai", "oppo", "oracle", "oyo", "paisabazaar", "palantir", "panasonic", "parle", "patanjali", "paypal", "pepperfry", "pepsico", "persistent", "pfizer", "pharmeasy", "philips", "physicswallah", "pidilite", "pine labs", "pizza hut", "policybazaar", "postman", "practo", "procter & gamble", "puma", "pwc", "qualcomm", "rakuten", "razorpay", "realme", "redbus", "reebok", "reliance", "republic", "ringcentral", "rivigo", "roche", "royal enfield", "salesforce", "samsung", "sanofi", "schneider electric", "scripbox", "shadowfax", "sharechat", "shopify", "siemens", "simplilearn", "smallcase", "snowflake", "sonata", "sony", "spicejet", "spotify", "starbucks", "stripe", "sugar cosmetics", "sun pharma", "tanishq", "tata", "tata motors", "tata power", "tata steel", "tcs", "tech mahindra", "tencent", "tiktok", "times of india", "titan", "toppr", "toshiba", "trello", "tripadvisor", "twilio", "twitter", "ultratech", "unacademy", "uniqlo", "upgrad", "urban ladder", "vedanta", "vedantu", "vistara", "vivo", "vmware", "vodafone idea", "walmart", "webex", "whatsapp", "whitehat jr", "wipro", "xiaomi", "young", "yourstory", "youtube", "zara", "zee news", "zendesk", "zensar", "zerodha", "zoho", "zoom", "zydus",
+        "1mg", "5paisa", "abb", "acc", "accenture", "acko", "adani", "adidas", "adobe", "air india", "airbnb", "airbus", "airtel", "akasa", "alibaba", "alphabet", "amazon web services", "ambuja", "amd", "american express", "amul", "angel one", "anthropic", "asana", "ashok leyland", "asian paints", "astrazeneca", "ather energy", "atlassian", "aurobindo", "avenue supermarts", "aws", "baidu", "bain", "bajaj allianz", "bajaj finserv", "bankbazaar", "bayer", "bcg", "berger", "bewakoof", "bharatpe", "bharti airtel", "billdesk", "biocon", "birlasoft", "blackbuck", "blue dart", "bluedart", "boeing", "booking.com", "bosch", "britannia", "browserstack", "bsnl", "burger king", "byju's", "byjus", "bytedance", "canon", "canva", "capgemini", "cashfree", "chargebee", "chevron", "cipla", "cisco", "cleartrip", "clickup", "coca-cola", "coforge", "cognizant", "colgate", "confluent", "costco", "coverfox", "cred", "curefit", "cyient", "dabur", "dailyhunt", "databricks", "decathlon", "deepmind", "delhivery", "dell", "deloitte", "digit insurance", "dmart", "domino's", "dominos", "dr reddy's", "dream11", "dropbox", "druva", "dunzo", "easemytrip", "ecom express", "economic times", "elastic", "emami", "ernst & young", "eruditus", "expedia", "exxonmobil", "facebook", "fi money", "firstcry", "force motors", "freshdesk", "freshworks", "fujitsu", "general electric", "glenmark", "godrej", "google", "groww", "gsk", "hashicorp", "hasura", "hcl", "hcltech", "hdfc", "healthifyme", "hero motocorp", "hexaware", "hindu", "hindustan times", "hindustan unilever", "honeywell", "huawei", "hubspot", "hul", "ibm", "icertis", "icici", "ikea", "inc42", "india today", "indigo", "infosys", "inmobi", "inshorts", "instagram", "instamojo", "intel", "intercom", "irctc", "itc", "ixigo", "jd.com", "johnson & johnson", "marks & spencer", "mahindra & mahindra", "at&t", "h&m", "ey", "jsw", "jupiter", "juspay", "khatabook", "kpmg", "l&t", "larsen & toubro", "lenovo", "lenskart", "linkedin", "livspace", "ltimindtree", "lupin", "mahindra", "mailchimp", "mamaearth", "marico", "mastercard", "mcdonald's", "mcdonalds", "mckinsey", "merck", "microsoft", "mindtree", "miro", "mobikwik", "monday.com", "moneycontrol", "mongodb", "motorola", "mphasis", "mpl", "ndtv", "nestle", "netflix", "netmeds", "nike", "nikon", "niva bupa", "nokia", "notion", "novartis", "nvidia", "nykaa", "nykaa fashion", "okcredit", "okta", "ola electric", "onecard", "oneplus", "openai", "oppo", "oracle", "oyo", "paisabazaar", "palantir", "panasonic", "parle", "patanjali", "paypal", "pepperfry", "pepsico", "persistent", "pfizer", "pharmeasy", "philips", "physicswallah", "pidilite", "pine labs", "pizza hut", "policybazaar", "postman", "practo", "procter & gamble", "puma", "pwc", "qualcomm", "rakuten", "razorpay", "realme", "redbus", "reebok", "reliance", "republic", "ringcentral", "rivigo", "roche", "royal enfield", "salesforce", "samsung", "sanofi", "schneider electric", "scripbox", "shadowfax", "sharechat", "shopify", "siemens", "simplilearn", "smallcase", "snowflake", "sonata", "sony", "spicejet", "spotify", "starbucks", "stripe", "sugar cosmetics", "sun pharma", "tanishq", "tata", "tata motors", "tata power", "tata steel", "tcs", "tech mahindra", "tencent", "tiktok", "times of india", "titan", "toppr", "toshiba", "trello", "tripadvisor", "twilio", "twitter", "ultratech", "unacademy", "uniqlo", "upgrad", "urban ladder", "vedanta", "vedantu", "vistara", "vivo", "vmware", "vodafone idea", "walmart", "webex", "whatsapp", "whitehat jr", "wipro", "xiaomi", "yourstory", "youtube", "zara", "zee news", "zendesk", "zensar", "zerodha", "zoho", "zoom", "zydus",
 
         // Auto, Tractor, Heavy Equipment OEMs & Brands
         "maruti", "suzuki", "hyundai", "tata", "mahindra", "renault", "nissan", "volkswagen", 
@@ -4204,8 +4219,27 @@
             while ((bm = bRegex.exec(rightText)) !== null) {
                 const matchWord = bm[1];
                 const at = bm.index + bm[0].length - matchWord.length;
-                // A brand used as a field label ("GitHub: https://...") or inside a URL / e-mail / path is not a Business Name.
-                if (/^\s*:/.test(rightText.slice(at + matchWord.length, at + matchWord.length + 3))) continue;
+                // (v11.5.0) a company is written as a name: "young engineer", "persistent storage", "a notion", "the postman" are
+                // ordinary words. Names with digits or symbols ("1mg", "byju's") are exempt. A name that is also a dictionary word
+                // ("Persistent", "Notion", "Titan") needs company context or a company suffix, and does not count at a sentence start.
+                if (/^[a-z]/.test(matchWord) && /^[a-z]+(?:\s[a-z]+)*$/.test(matchWord)) continue;
+                {
+                    const firstW = bName.split(/\s+/)[0];
+                    if (!/[\d&.'-]/.test(bName) && isCommonWord(firstW) && !/\s/.test(bName)) {
+                        const lineS = rightText.lastIndexOf("\n", at - 1) + 1;
+                        const before = rightText.slice(lineS, at), after = rightText.slice(at + matchWord.length, at + matchWord.length + 40);
+                        const lineTxt = before + matchWord + after.split("\n")[0];
+                        const sentenceStart = /(?:^|[.!?:]\s+|^\s*[-*\u2022]\s*)$/.test(before);
+                        const suffixAfter = /^[ \t]+(?:Pvt|Private|Ltd|Limited|Inc|Corp|Corporation|LLC|LLP|PLC|Group|Technologies|Systems|Labs|Software|Industries|Motors|Foods)\b/.test(after);
+                        const bizCtx = /\b(?:vendor|client|customer|company|employer|organi[sz]ation|partner|supplier|works?\s+(?:at|for)|worked\s+(?:at|for)|joined|previously\s+at|offer\s+letter|invoice|payment|bill\s+to|contract|acquired|subsidiary|brand|shares?|stock|ceo|founder)\b/i.test(lineTxt);
+                        if (!suffixAfter && (sentenceStart || !bizCtx)) continue;
+                    }
+                }
+                // A brand used as a field label ("GitHub: https://...", JSON key "twitter":) or inside a URL / e-mail / path is not a Business Name.
+                if (/^["']?\s*:/.test(rightText.slice(at + matchWord.length, at + matchWord.length + 4))) continue;
+                // (v11.5.0) a platform used as a tool ("on Slack", "via WhatsApp", "Watch on YouTube") is not a company; as an
+                // employer ("works at LinkedIn", "joined Slack") it is
+                if (PLATFORM_NAMES.test(matchWord) && /\b(?:on|via|using|through|with|in|into|over)\s+(?:the\s+|my\s+|our\s+|your\s+)?$/i.test(rightText.slice(Math.max(0, at - 30), at))) continue;
                 if (/(?:\/\/|[./@])$/.test(rightText.slice(Math.max(0, at - 2), at)) || /^[./@]\w/.test(rightText.slice(at + matchWord.length, at + matchWord.length + 2))) continue;
                 // (v11.1.0) a brand used as the first word of a PRODUCT name ("Microsoft Office", "Google Ad Words",
                 // "Adobe Photoshop") is the product, not the company; a corporate suffix after it is still the company.
@@ -4221,19 +4255,21 @@
             }
         }
         // Direct scan for corporate entity phrases ending in corporate suffixes (e.g. "Mama Motors", "Olivier Technologies Pvt Ltd")
-        const corpNameRegex = /\b[A-Z][a-zA-Z0-9_\-&']*(?:[ \t]+(?:&|[A-Z][a-zA-Z0-9_\-&']*)){0,3}[ \t]+(?:Technologies|Solutions|Motors|Pvt\.?|Ltd\.?|Limited|Inc\.?|Corp\.?|Corporation|LLC|LLP|PLC|Enterprises|Industries|Holdings|Systems|Studios|Consulting|Consultancy[ \t]+Services|Services|Hospital|Logistics|Insurance|Labs|Software|Networks|Traders|Pharmaceuticals|Pharma|Ventures|Partners|Associates)\b(?:[ \t]+(?:Pvt\.?|Private)[ \t]+(?:Ltd\.?|Limited))?(?:[ \t]+(?:Ltd\.?|Limited))?/g;
+        // (v11.5.0) letters of any language ("M\u00FCller"), more legal forms (GmbH, AG, S.A., Ltda, Pty, Sdn Bhd, Tbk, BV, ...), other
+        // organisations (Hospital(s), University, College, School, Institute, Academy, Foundation, Clinic), and the dot of "Inc." / "Ltd.".
+        const corpNameRegex = /(?<![\p{L}\p{N}_])\p{Lu}[\p{L}\p{N}_\-&']*(?:[ \t]+(?:&|\p{Lu}[\p{L}\p{N}_\-&']*)){0,3}[ \t]+(?:Technologies|Solutions|Motors|Pvt\.?|Ltd\.?|Limited|Inc\.?|Corp\.?|Corporation|LLC|LLP|PLC|GmbH|AG|S\.?A\.?|Ltda\.?|Pty|BV|NV|SAS|SARL|SpA|Srl|Oy|AB|KK|Bhd|Tbk|Enterprises|Industries|Holdings|Systems|Studios|Consulting|Consultancy[ \t]+Services|Services|Hospitals?|Clinic|University|College|School|Institute|Academy|Foundation|Logistics|Logistik|Insurance|Labs|Software|Networks|Traders|Pharmaceuticals|Pharma|Ventures|Partners|Associates)(?![\p{L}\p{N}_])(?:[ \t]+(?:Pvt\.?|Private)[ \t]+(?:Ltd\.?|Limited))?(?:[ \t]+(?:Ltd\.?|Limited|GmbH|AG|Inc\.?))?/gu;
         let cnm;
         while ((cnm = corpNameRegex.exec(rightText)) !== null) {
             // (v11.2.0) greetings / determiners before a company are not part of its name ("Hi Silverline Labs")
             const rawCorp = cnm[0].trim().replace(/^(?:(?:Hi|Hello|Hey|Dear|Thanks|The|Our|Your|At|From|With|By|To|For|And)[ \t]+)+/, "");
             if (!/\s/.test(rawCorp)) continue;
-            const SUFFIX_WORDS = /^(?:technologies|solutions|motors|pvt\.?|private|ltd\.?|limited|inc\.?|corp\.?|corporation|llc|llp|plc|enterprises|industries|holdings|systems|studios|consulting|consultancy|services|hospital|logistics|insurance|labs|software|networks|traders|pharmaceuticals|pharma|ventures|partners|associates|analytics)$/i;
+            const SUFFIX_WORDS = /^(?:technologies|solutions|motors|pvt\.?|private|ltd\.?|limited|inc\.?|corp\.?|corporation|llc|llp|plc|gmbh|ag|s\.?a\.?|ltda\.?|pty|bv|nv|sas|sarl|spa|srl|oy|ab|kk|bhd|tbk|enterprises|industries|holdings|systems|studios|consulting|consultancy|services|hospitals?|clinic|university|college|school|institute|academy|foundation|logistics|logistik|insurance|labs|software|networks|traders|pharmaceuticals|pharma|ventures|partners|associates|analytics)$/i;
             const nameWords = rawCorp.split(/\s+/).filter(w => !SUFFIX_WORDS.test(w));
             // "Senior Data Services" / "Our Partners" are not companies: one name word must be distinctive.
             // (v11.2.0) ...unless the suffix is a legal form ("Pinnacle Inc", "Evergreen Agro Pvt Ltd") or the line says it is a
             // company ("Vendor: Pinnacle Networks", "Offer letter from Pinnacle Software", "works at ...").
             if (!nameWords.some(w => !isCommonWord(w) || KNOWN_BUSINESS_NAMES.has(w.toLowerCase()))) {
-                const legal = /\b(?:Pvt|Private|Ltd|Limited|Inc|Corp|Corporation|LLC|LLP|PLC)\b/.test(rawCorp);
+                const legal = /\b(?:Pvt|Private|Ltd|Limited|Inc|Corp|Corporation|LLC|LLP|PLC|GmbH|AG|Ltda|Pty|Bhd|Tbk|Hospitals?|University|College|School|Institute|Academy|Foundation|Clinic)\b/.test(rawCorp);
                 const at = rightText.indexOf(rawCorp);
                 const lineEnd = at < 0 ? -1 : rightText.indexOf("\n", at);
                 const ctxLine = at < 0 ? "" : rightText.slice(Math.max(0, rightText.lastIndexOf("\n", Math.max(0, rightText.lastIndexOf("\n", at) - 1))), lineEnd < 0 ? rightText.length : lineEnd);   // this line and the one above ("Bill To")
@@ -4246,6 +4282,40 @@
                 if (leftText.includes(rawCorp)) {
                     addTarget(rawCorp, "Business Name", "pt-business", 91, true);
                 }
+            }
+        }
+
+        // (v11.5.0) More company forms, identical on both sides:
+        //   - all capitals ("ZENTRIX ANALYTICS PVT LTD");
+        //   - "Ministry / Department / Government / University / Institute / College of ..." (banks stay excluded);
+        //   - behind a company key ("Company: Acme Robotics", "Organisation: Velora Foods", "Employer -", "Vendor:", "Supplier:");
+        //   - the employer after "joined" / "works at" ("He joined Zentrix last year").
+        {
+            const putBiz = (v) => { v = v.trim().replace(/[,;:]+$/, ""); if (v.length >= 2 && leftText.includes(v) && !isFieldLabelOrHeader(v) && !/\bbank\b/i.test(v)) addTarget(v, "Business Name", "pt-business", 91, true); };
+            const capsRe = /(?<![A-Z0-9])[A-Z][A-Z0-9&'.-]+(?:[ \t]+[A-Z][A-Z0-9&'.-]*){0,4}[ \t]+(?:PVT\.?[ \t]+LTD\.?|PRIVATE[ \t]+LIMITED|LTD\.?|LIMITED|INC\.?|CORP\.?|CORPORATION|LLC|LLP|PLC|GMBH)(?![A-Za-z0-9])/g;
+            for (const v of (rightText.match(capsRe) || [])) putBiz(v);
+            const ofRe = /\b(?:Ministry|Department|Government|University|Institute|College|Directorate|Commission|Board)\s+of\s+(?:the\s+)?[A-Z][\w&'-]*(?:\s+(?:&|and|of|for)?\s*[A-Z][\w&'-]*){0,5}/g;
+            for (const v of (rightText.match(ofRe) || [])) putBiz(v.replace(/\s+(?:and|of|for)$/, ""));
+            const keyRe = /(?:^|[\s{,"'(|])(?:company|organi[sz]ation|employer|vendor|supplier|firm|client|org|business)(?:[\s_-]*name)?["']?\s*(?::|=|-|\u2013)\s*["']?(\p{Lu}[\p{L}\p{N}&'.-]*(?:[ \t]+(?:&|\p{Lu}[\p{L}\p{N}&'.-]*)){0,5})/giu;
+            let km;
+            while ((km = keyRe.exec(rightText)) !== null) {
+                const v = km[1].replace(/[.,;:]+$/, (m) => /\s(?:Inc|Ltd|Corp|Co)\.$/.test(km[1]) ? "." : "");
+                if (isPersonName(v, "") && !/\s(?:Pvt|Ltd|Inc|Corp|LLC|GmbH|Foods|Robotics|Labs|Systems)\b/i.test(v)) continue;
+                // an ordinary word in a company slot ("Vendor: Internal", "Client: Rejected", "Organisation: Draft") is not a company
+                const vw = v.replace(/\.$/, "").split(/\s+/);
+                if (!KNOWN_BUSINESS_NAMES.has(v.toLowerCase()) && !vw.some(w => CORP_SUFFIX_RE.test(w)) && vw.every(w => isCommonWord(w.toLowerCase()) || isCalendarWord(w))) continue;
+                putBiz(v);
+            }
+            const joinRe = new RegExp("\\b(?:" + WORK_CONTEXT_SOURCE + ")\\s+([A-Z][\\w&'.-]*(?:\\s+[A-Z][\\w&'.-]*){0,3})", "g");
+            let jm;
+            while ((jm = joinRe.exec(rightText)) !== null) {
+                let v = jm[1].replace(/['\u2019]s$/, "");
+                const words = v.split(/\s+/);
+                while (words.length && (NOT_EMPLOYER_WORDS.test(words[words.length - 1]) || isCalendarWord(words[words.length - 1]))) words.pop();
+                v = words.join(" ");
+                if (!v || !isPlausibleEmployerToken(words[0]) || PLACES.has(v.toLowerCase()) || isCalendarWord(v)) continue;
+                if (isPersonName(v, jm[0]) && !KNOWN_BUSINESS_NAMES.has(v.toLowerCase())) continue;
+                putBiz(v);
             }
         }
 
@@ -4320,6 +4390,33 @@
                         }
                         const owWords = ow.split(/\s+/);
                         if (ow && cw && isAddr(cw) && !isAddr(ow) && owWords.length <= 3 && owWords.every(w => isCommonWord(w.toLowerCase()) && !couldBeName(w)) && !leftText.includes(cw)) {
+                            __ptOrdinaryOrigins.add(cw);
+                            const ex = targetMap.get(cw);
+                            if (!ex || ex.priority < 66) targetMap.set(cw, { text: cw, label: "Overscrubbed", cls: "pt-overscrub", priority: 66 });
+                            continue;
+                        }
+                    }
+                    // (v11.5.1) a person's name replaced by a plain word ("Signed: Pooja Hegde" -> "Signed: hello"). A name replaced by
+                    // another name ("Hemant" -> "Alex", "Furkan" -> "Dalvorin") stays correct redaction.
+                    {
+                        const ow = (diff.original || "").trim(), cw = (diff.changed || "").trim();
+                        const nameLike = (x) => x.split(/\s+/).length <= 4 && x.split(/\s+/).every(w => /^\p{Lu}/u.test(w)) && x.split(/\s+/).some(w => isGivenOrSurname(w));
+                        const plain = (x) => { const ws = x.split(/\s+/); return ws.length <= 3 && ws.every(w => /^[A-Za-z'-]+$/.test(w) && isCommonWord(w.toLowerCase()) && !isGivenOrSurname(w)); };
+                        if (ow && cw && nameLike(ow) && plain(cw) && !new RegExp("(?:^|[^A-Za-z])" + cw + "(?![A-Za-z])", "i").test(leftText)) {
+                            __ptOrdinaryOrigins.add(cw); addTarget(cw, "Overscrubbed", "pt-overscrub", 66); continue;
+                        }
+                    }
+                    // (v11.5.0) a company replaced by a plain word ("Vendor: Zentrix Analytics Pvt Ltd" -> "Vendor: hello"), or the reverse.
+                    // A company replaced by another company-like name ("Accenture" -> "Velmoratech") is correct redaction, as before.
+                    {
+                        const ow = (diff.original || "").replace(/\s+([,.&])/g, "$1").trim(), cw = (diff.changed || "").replace(/\s+([,.&])/g, "$1").trim();
+                        const isCo = (x) => /\s/.test(x) && x.split(/\s+/).some(w => CORP_SUFFIX_RE.test(w)) && /^\p{Lu}/u.test(x) || KNOWN_BUSINESS_NAMES.has(x.toLowerCase());
+                        const plainWords = (x) => { const ws = x.split(/\s+/); return ws.length <= 3 && ws.every(w => /^[A-Za-z'-]+$/.test(w) && isCommonWord(w.toLowerCase()) && !couldBeName(w)); };
+                        if (ow && cw && isCo(ow) && plainWords(cw) && !new RegExp("(?:^|[^A-Za-z])" + cw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?![A-Za-z])", "i").test(leftText)) {
+                            __ptOrdinaryOrigins.add(cw); addTarget(cw, "Overscrubbed", "pt-overscrub", 66); continue;
+                        }
+                        const coLike = (x) => isCo(x) || x.split(/\s+/).some(w => CORP_SUFFIX_RE.test(w)) || /^\p{Lu}/u.test(x) && containsKnownBusiness(x.toLowerCase());
+                        if (ow && cw && isCo(cw) && !coLike(ow) && (plainWords(ow) || /^(?:tbd|tba|n\/?a|none|na|-+)$/i.test(ow)) && !leftText.includes(cw)) {
                             __ptOrdinaryOrigins.add(cw);
                             const ex = targetMap.get(cw);
                             if (!ex || ex.priority < 66) targetMap.set(cw, { text: cw, label: "Overscrubbed", cls: "pt-overscrub", priority: 66 });
@@ -5740,6 +5837,87 @@
             }
         }
 
+        // (v11.5.1) Person names, second pass:
+        //   - a name with an apostrophe or a hyphen is one name ("Sean O'Brien", "Mary-Jane Watson", "D'Souza Anil");
+        //   - names with accents and from Indonesia / Brazil / Spain ("Jos\u00E9 Garc\u00EDa", "Budi Santoso", "Ana Souza");
+        //   - surname first is one label ("Sharma, Rahul");
+        //   - lower-case names after a person cue ("ping srinadh", "cc: kalaivani, bourniya", "thanks priya");
+        //   - a later mention of a part of a full name is a name too, also in lower case ("rahul"), unless it is a dictionary word.
+        // A part that only occurs inside the full name gets no label of its own.
+        {
+            const putP = (v, prio) => {
+                if (!v || v.length < 2 || !leftText.includes(v)) return;
+                const ex = targetMap.get(v);
+                if (!ex || ex.priority < prio || (ex.label !== "Person Name" && ex.priority <= prio)) targetMap.set(v, { text: v, label: "Person Name", cls: "pt-person", priority: prio });
+            };
+            const TOK = "(?:[OD]['\u2019])?\\p{Lu}\\p{Ll}+(?:[-'\u2019]\\p{Lu}?\\p{Ll}+)*";
+            const runRe = new RegExp("(?<![\\p{L}'\u2019-])" + TOK + "(?:[ \\t]+" + TOK + "){1,3}(?![\\p{L}])", "gu");
+            const badWord = (w) => PLACES.has(w.toLowerCase()) || isCalendarWord(w) || KNOWN_BUSINESS_NAMES.has(w.toLowerCase()) || isLanguageWord(w);
+            let m;
+            while ((m = runRe.exec(rightText)) !== null) {
+                let ws = m[0].split(/[ \t]+/);
+                while (ws.length && !isGivenOrSurname(ws[ws.length - 1].split(/[-'\u2019]/).pop()) && isCommonWord(foldName(ws[ws.length - 1]))) ws.pop();
+                while (ws.length && !isGivenOrSurname(ws[0].split(/[-'\u2019]/)[0]) && isCommonWord(foldName(ws[0]))) ws.shift();
+                if (ws.length < 2 || ws.some(badWord)) continue;
+                const v = ws.join(" ");
+                const special = /['\u2019-]/.test(v) || /[^\x00-\x7F]/.test(v) || ws.some(w => EXTRA_NAMES.has(foldName(w)));
+                const known = ws.filter(w => w.split(/[-'\u2019]/).some(p => isGivenOrSurname(p))).length;
+                if (!special || known === 0) continue;
+                if (ws.some(w => !isGivenOrSurname(w.split(/[-'\u2019]/).pop()) && isCommonWord(foldName(w)) && !/['\u2019-]/.test(w))) continue;
+                putP(v, 89);
+            }
+            // surname first: "Sharma, Rahul" (both names; not a list "Naazia, Vinita and Shrusti", not places)
+            const sfRe = /(?<![\p{L}])(\p{Lu}\p{Ll}+), (\p{Lu}\p{Ll}+)(?![\p{L}])(?!\s*(?:,|\band\b|&))/gu;
+            while ((m = sfRe.exec(rightText)) !== null) {
+                if (!isGivenOrSurname(m[1]) || !isGivenOrSurname(m[2]) || badWord(m[1]) || badWord(m[2])) continue;
+                const before = rightText.slice(rightText.lastIndexOf("\n", m.index - 1) + 1, m.index);
+                if (!/^(?:\s*|.*\b(?:name|signed|author|employee|patient|applicant|from|by|to|cc)\b\s*[:=-]?\s*)$/i.test(before) || /,\s*$/.test(before)) continue;
+                putP(m[1] + ", " + m[2], 90);
+            }
+            // lower-case names after a person cue
+            const cueRe = /\b(?:ping|cc|bcc|thanks|thank\s+you|hi|hello|hey|dear|ask|tell|assigned\s+to|reviewed\s+by|approved\s+by|owner|assignee|reviewer)\b\s*[:,-]?\s+([a-z]{3,}(?:\s*,\s*[a-z]{3,}){0,8})(?![\w@.])/g;
+            while ((m = cueRe.exec(rightText)) !== null) {
+                const line = rightText.slice(rightText.lastIndexOf("\n", m.index) + 1, (rightText.indexOf("\n", m.index) + 1 || rightText.length + 1) - 1);
+                if (/[{}<>]|;\s*$|^\s*(?:def|class|import|const|let|var|function|return)\b|\w\s*=\s*\S/.test(line)) continue;   // a code line
+                for (const w of m[1].split(/\s*,\s*/)) if (!isCommonWord(w) && !GROUP_MENTION.test(w) && !isCalendarWord(w) && !PLACES.has(w)) putP(w, 86);
+            }
+            // later mentions of a part of a full name, in lower case too ("rahul"), unless it is a dictionary word ("will")
+            for (const t of Array.from(targetMap.values())) {
+                if (t.label !== "Person Name" || !/\s/.test(t.text)) continue;
+                for (const part of t.text.split(/[\s,]+/)) {
+                    if (part.length < 3 || isCommonWord(foldName(part)) || !/^\p{Lu}\p{Ll}+$/u.test(part)) continue;
+                    const lower = part.toLowerCase();
+                    // a word on its own, not part of an e-mail, handle, file or link ("deepak.c@...", "rahul_92")
+                    if (new RegExp("(?<![\\w@./-])" + lower + "(?![\\w@]|[._-]\\w)").test(rightText)) putP(lower, 85);
+                    if (new RegExp("(?<![\\w@./-])" + part + "(?![\\w@]|[._-]\\w)").test(rightText.split(t.text).join(" "))) putP(part, 85);
+                }
+            }
+            // a part that only occurs inside a longer name gets no label of its own
+            const persons = Array.from(targetMap.values()).filter(t => t.label === "Person Name");
+            for (const t of persons) {
+                const longer = persons.filter(o => o !== t && o.text.length > t.text.length && o.text.includes(t.text));
+                if (!longer.length) continue;
+                const spans = [];
+                for (const o of longer) { let i = rightText.indexOf(o.text); while (i !== -1) { spans.push([i, i + o.text.length]); i = rightText.indexOf(o.text, i + 1); } }
+                const occ = []; { let i = rightText.indexOf(t.text); while (i !== -1) { occ.push(i); i = rightText.indexOf(t.text, i + 1); } }
+                if (occ.length && occ.every(i => spans.some(([a, b]) => i >= a && i + t.text.length <= b))) targetMap.delete(t.text);
+            }
+        }
+
+        // (v11.5.0) One company, one label: a Business Name that only occurs inside a longer Business Name ("Tata" inside
+        // "Tata Consultancy Services", "Mahindra" inside "Mahindra & Mahindra Ltd") is not a second label.
+        {
+            const biz = Array.from(targetMap.values()).filter(t => t.label === "Business Name");
+            for (const t of biz) {
+                const longer = biz.filter(o => o !== t && o.text.length > t.text.length && o.text.includes(t.text));
+                if (!longer.length) continue;
+                const spans = [];
+                for (const o of longer) { let i = rightText.indexOf(o.text); while (i !== -1) { spans.push([i, i + o.text.length]); i = rightText.indexOf(o.text, i + 1); } }
+                const occ = occurrencesOf(t.text, rightText);
+                if (occ.length && occ.every(i => spans.some(([a, b]) => i >= a && i + t.text.length <= b))) targetMap.delete(t.text);
+            }
+        }
+
         // (v11.4.7) Inside an address: a company named first ("Infosys Ltd, Electronics City, Hosur Road, Bengaluru 560100") is the
         // Business Name and the rest is the Address; place names inside the address ("Anna Salai", "Baker Street", "Sao Paulo")
         // are not people.
@@ -5950,7 +6128,8 @@
                 const matchText = m[0];
                 const targetObj = lookup.get(matchText) || lookup.get(matchText.toLowerCase()) || lookup.get(matchText.toUpperCase());
                 if (targetObj) {
-                    if (targetObj.label === "Person Name" && matchText[0] !== matchText[0].toUpperCase()) continue;
+                    // (v11.5.1) a lower-case match only for a lower-case name suggestion ("srinadh", a later "rahul")
+                    if (targetObj.label === "Person Name" && matchText[0] !== matchText[0].toUpperCase() && !(matchText === targetObj.text || lookup.get(matchText) && lookup.get(matchText).text === matchText)) continue;
                     if (targetObj.label !== "URL/Link") {
                         let tokStart = m.index;
                         while (tokStart > 0 && !/\s/.test(val[tokStart - 1])) tokStart--;

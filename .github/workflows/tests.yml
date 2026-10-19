@@ -1,0 +1,36 @@
+# Runs every test suite on each push and pull request, so a change that breaks a labeling rule cannot reach main unnoticed.
+name: Tests
+
+on:
+  push:
+    branches: [main, v2]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install (jsdom for the page tests)
+        run: npm ci
+
+      - name: Engine and label suites
+        run: npm test
+
+      - name: Page tests (DOM, large documents, label check, extension, end-to-end)
+        run: npm run test:dom
+
+      - name: Built copies match the source
+        run: |
+          cmp src/content.js extension/content.js || { echo "extension/content.js is out of date: run node scripts/build.js"; exit 1; }
+          v=$(grep -o 'PT_VERSION = "[0-9.]*"' src/content.js | grep -o '[0-9.]*[0-9]')
+          for f in dist/peaktalent-auditor.user.js dist/console-paste.js extension/manifest.json manifest.json package.json; do
+            grep -q "$v" "$f" || { echo "$f does not carry version $v: run node scripts/build.js"; exit 1; }
+          done
