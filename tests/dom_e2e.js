@@ -53,6 +53,7 @@ const L = [
   'Budget: https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/edit#gid=0',
   "Sean O'Brien called; ping srinadh about it",
   'Temp reg TS 09 TR 2024 1234',
+  'Rahul (9845012346) called about Order #9845012399',
 ];
 const R = L.map(l => l.replace('Council Member', 'Council Beagenhydra').replace('12 March 2025', '19 April 2025'));
 const EXPECT = [
@@ -71,9 +72,9 @@ const EXPECT = [
   ['kavya.nair', 'Person Username'], ['@priya@mastodon.social', 'Person Username'],
   ['https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/edit#gid=0', 'URL/Link'],
   ["Sean O'Brien", 'Person Name'], ['srinadh', 'Person Name'],
-  ['TS 09 TR 2024 1234', 'Vehicle Number Plate'],
+  ['TS 09 TR 2024 1234', 'Vehicle Number Plate'], ['9845012346', 'Contact Number'], ['Rahul', 'Person Name'],   // a later mention of "Rahul Sharma"
 ];
-const MUST_NOT = ['https://cdn.acmecorp-demo.io/static/logo.png', '12.13', '18.10', 'postgres://admin:S3cretPass@db.acme-demo.io:5432/prod'];
+const MUST_NOT = ['9845012399', 'https://cdn.acmecorp-demo.io/static/logo.png', '12.13', '18.10', 'postgres://admin:S3cretPass@db.acme-demo.io:5432/prod'];
 (async () => {
   const dom = new JSDOM(`<!doctype html><body><div>${chips}<span>Reference · read-only</span><span>Annotate here</span><span>left.docx-1</span><span>right.docx-1</span></div>
     <div id="left">${L.map(l => `<div>${esc(l)}</div>`).join('')}</div><div id="right">${R.map(l => `<div>${esc(l)}</div>`).join('')}</div></body>`,
@@ -122,7 +123,7 @@ const MUST_NOT = ['https://cdn.acmecorp-demo.io/static/logo.png', '12.13', '18.1
   console.log('status after correct labels:', (w.document.getElementById('pt-status-text') || {}).textContent);
   console.log(`${marks.length - mb}/${marks.length} correct labels accepted`);
   // wrong labels
-  const WRONG = [['https://cdn.acmecorp-demo.io/static/logo.png', 'URL/Link'], ['Pune', 'Address'], ['Employee', 'Person Name']];
+  const WRONG = [['https://cdn.acmecorp-demo.io/static/logo.png', 'URL/Link'], ['Pune', 'Address'], ['Employee', 'Person Name'], ['9845012399', 'Contact Number']];
   let wb = 0;
   for (const [txt, lab] of WRONG) { const m = await annotate(txt, lab); await settle(900); const st = m.getAttribute('data-ptc'); if (st !== 'wrong') { wb++; console.log('✗ WRONG LABEL NOT FLAGGED', txt, lab, '->', st); } }
   console.log(`${WRONG.length - wb}/${WRONG.length} wrong labels flagged`);

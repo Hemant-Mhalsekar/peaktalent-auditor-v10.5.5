@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PeakTalent PII/BII Annotation Auditor
 // @namespace    https://dashboard.peaktalent.ai/
-// @version      11.5.2
+// @version      11.5.3
 // @description  Highlights PII/BII, credentials and overscrubbed text on PeakTalent review screens. Works fully offline.
 // @match        https://dashboard.peaktalent.ai/*
 // @run-at       document-idle
@@ -27,7 +27,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.5.2";
+    const PT_VERSION = "11.5.3";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -605,7 +605,10 @@
         const strong = isEmail ? "Email Address" : (/^https:\/\/\S+$/i.test(T) && !isFileAssetLink(T)) ? "URL/Link" : (isIpAddressFormat(T) && !ipVersion) ? "IP Address" :
             isHandleLabelText(T, rLine) ? "Person Username" : isVehiclePlateFormat(T) ? "Vehicle Number Plate" :
             phoneLabelFor(T);
-        const strongL = strong ? labelForPage(strong) : null;   // (v11.4.1) as the chips on this page name it
+        // (v11.5.3) a number behind an order / invoice / ticket / ID key is not a phone
+        const idBefore = /\b(?:order|invoice|inv|ticket|booking|ref(?:erence)?|employee\s*(?:id|no)|emp\s*(?:id|no)|staff\s*id|user\s*id|id|txn|transaction|pnr|awb|tracking|receipt|bill\s*no|claim|case|serial|sku|item)\b[^\d\n]{0,12}$/i.test(rLine.slice(0, Math.max(0, rLine.indexOf(T))));
+        if (idBefore && PHONE_LABELS.has(L) && /^[+\d][\d\s().-]*$/.test(T)) return wrong(PTC_NONE, "This is an order / invoice / ticket / ID number, not a phone number.");
+        const strongL = strong && !(idBefore && PHONE_LABELS.has(strong)) ? labelForPage(strong) : null;   // (v11.4.1) as the chips on this page name it
         // (v11.4.0) a postal code can have a phone-like shape ("08139-555"): with a postal label it is judged as a postal code below
         const postalL = L === LBL_POSTAL || L === LBL_KODEPOS || L === LBL_CEP;
         if (strongL && strongL !== L && !(L === "Credentials" && PHONE_LABELS.has(strongL)) && !(postalL && isPostalCodeShape(T))) return wrong(strongL, `This is a ${strongL}.`);
@@ -2625,6 +2628,7 @@
         if (isIndianMobileFormat(s) || isNotAPhoneShape(s) || isDefaultOrPlaceholderPhone(s)) return false;
         const digits = s.replace(/\D/g, "");
         if (/^\+\s?\(?\d{1,4}\)?(?:[\s.-]?\(?\d{1,5}\)?){1,6}$/.test(s)) return digits.length >= 8 && digits.length <= 15;   // +44 20 7946 0321
+        if (/^00[\s.-]?[1-9]\d{0,2}(?:[\s.-]?\(?\d{1,5}\)?){1,6}$/.test(s)) return digits.length >= 10 && digits.length <= 17;   // (v11.5.3) 0044 20 7946 0321
         if (digits.length < 8 || digits.length > 13) return false;
         if (/^0\d{1,4}(?:[\s-]\d{2,8}){1,3}$/.test(s)) return true;                              // 080-2345 6789, 0812-3456-7890, 0120-4567890
         if (/^0\d{9,11}$/.test(s) && !/^0[6-9]\d{9}$/.test(s)) return true;                      // 02223456789
@@ -4415,6 +4419,17 @@
                             continue;
                         }
                     }
+                    // (v11.5.3) a plain word replaced by a phone number ("Call reception" -> "Call 9845012345")
+                    {
+                        const ow = (diff.original || "").trim(), cw = (diff.changed || "").replace(/\s+([-.)])/g, "$1").replace(/([(+])\s+/g, "$1").trim();
+                        if (ow && cw && /^[A-Za-z'-]+(?:\s[A-Za-z'-]+){0,2}$/.test(ow) && ow.split(/\s+/).every(w => isCommonWord(w.toLowerCase()) && !isGivenOrSurname(w)) &&
+                            (phoneLabelFor(cw) || isContactNumberFormat(cw)) && !leftText.includes(cw)) {
+                            __ptOrdinaryOrigins.add(cw);
+                            const ex = targetMap.get(cw);
+                            if (!ex || ex.priority < 66) targetMap.set(cw, { text: cw, label: "Overscrubbed", cls: "pt-overscrub", priority: 66 });
+                            continue;
+                        }
+                    }
                     // (v11.5.2) a number plate replaced by a plain word, or a plain word by a plate
                     {
                         const ow = (diff.original || "").trim(), cw = (diff.changed || "").trim();
@@ -4808,8 +4823,14 @@
             const PHONE_CAND = /(?<![\w+@\/.-])(?:\+[ \t]?\(?\d{1,4}\)?|\(\+?\d{1,4}\)|\d)(?:[ \t.-]?\(?\d{1,5}\)?){1,7}(?![\w@\/]|[.-]\d)/g;
             const PHONE_WORD = /\b(?:phone|ph|tel|telephone|mob|mobile|cell|fax|whatsapp|wa|hp|contact(?:\s*(?:no|number))?|call|landline)\b\.?\s*(?:no\.?|number|#)?\s*["']?\s*[:=\-]?\s*["']?\s*$/i;
             let pm;
+            const unbracket = (x) => {   // (v11.5.3) "9845012345)" in "Rahul (9845012345) called": an unbalanced bracket is not part of the number
+                x = x.trim();
+                if (/\)$/.test(x) && (x.match(/\(/g) || []).length < (x.match(/\)/g) || []).length) x = x.slice(0, -1).trim();
+                if (/^\(/.test(x) && (x.match(/\(/g) || []).length > (x.match(/\)/g) || []).length) x = x.slice(1).trim();
+                return x;
+            };
             while ((pm = PHONE_CAND.exec(rightText)) !== null) {
-                let cand = pm[0].trim();
+                let cand = unbracket(pm[0]);
                 let lab = phoneLabelFor(cand);
                 for (let k = 0; !lab && k < 4 && /[ \t.-]/.test(cand); k++) {   // "+44 20 7946 0321 2024": drop trailing groups
                     cand = cand.replace(/[ \t.-]+[^ \t.-]+$/, "");
@@ -4818,13 +4839,15 @@
                 const lineStart = rightText.lastIndexOf("\n", pm.index) + 1;
                 const before = rightText.slice(Math.max(lineStart, pm.index - 30), pm.index);
                 if (!lab) {
-                    cand = pm[0].trim();
+                    cand = unbracket(pm[0]);
                     const dg = cand.replace(/\D/g, "");
                     if (PHONE_WORD.test(before) && dg.length >= 7 && dg.length <= 15 && !isNotAPhoneShape(cand) && !isDefaultOrPlaceholderPhone(cand)) lab = LBL_INTL_PHONE;
                 }
                 if (!lab || !leftText.includes(cand)) continue;
                 // (v11.4.10) a number behind an account / routing / IBAN / card / policy key is not a phone
                 if (/\b(?:account|acct|a\/c|routing|aba|iban|card|policy|customer\s*id|member\s*id)\b[^\d\n]{0,12}$/i.test(before)) continue;
+                // (v11.5.3) ...nor behind an order / invoice / ticket / booking / employee-ID key ("Order #9845012345")
+                if (/\b(?:order|invoice|inv|ticket|booking|ref(?:erence)?|employee\s*(?:id|no)|emp\s*(?:id|no)|staff\s*id|user\s*id|id|txn|transaction|pnr|awb|tracking|receipt|bill\s*no|claim|case|serial|sku|item)\b[^\d\n]{0,12}$/i.test(before)) continue;
                 // Money is not a phone number ("Amount 7000000000 INR", "Rs. 9876543210").
                 const pmLine = lineContaining(cand, rightText);
                 const esc = cand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -5857,7 +5880,8 @@
                     while (i !== -1) { spans.push([i, i + u.length]); i = rightText.indexOf(u, i + 1); }
                 }
                 for (const [key, t] of targetMap) {
-                    if (t.label !== "Email Address" && t.label !== "IP Address") continue;
+                    // (v11.5.3) also a number inside a link ("https://wa.me/919876543210"): one label per link
+                    if (t.label !== "Email Address" && t.label !== "IP Address" && !/^[+\d][\d\s().-]*$/.test(t.text)) continue;
                     const occ = occurrencesOf(t.text, rightText);
                     if (occ.length > 0 && occ.every(i => spans.some(([a, b]) => i >= a && i < b))) targetMap.delete(key);
                 }

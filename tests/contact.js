@@ -81,6 +81,24 @@ yes('US desk: +1 415-555-7788', '+1 415-555-7788', INTL);
 yes('Call 415.555.2671 after 5', '415.555.2671', INTL);
 notAs('Total 4157320198 views', '4157320198', INTL);
 
+// (v11.5.3) a number in brackets; the 00 international prefix; ID numbers are not phones; nothing labeled inside a link
+yes('Rahul (9845012345) called', '9845012345', IN);
+yes('Ask Priya [9845012346] today', '9845012346', IN);
+yes('Dial 0044 20 7946 0321', '0044 20 7946 0321', INTL);
+yes('Dial 00 44 20 7946 0321', '00 44 20 7946 0321', INTL);
+notAs('Order #9845012345 shipped', '9845012345', IN);
+notAs('Invoice No 9845012345', '9845012345', IN);
+notAs('Employee ID: 9845012345', '9845012345', IN);
+notAs('Ticket 9845012345 closed', '9845012345', IN);
+notAs('Booking ref 9845012345', '9845012345', IN);
+yes('Contact No: 9845012345', '9845012345', IN);
+yes('Mobile no. 9845012345', '9845012345', IN);
+notAs('Chat: https://wa.me/919876543210', '919876543210', 'Credentials');
+notAs('Chat: https://wa.me/919876543210', '919876543210', IN);
+yes('Chat: https://wa.me/919876543210', 'https://wa.me/919876543210', 'URL/Link');
+notAs('Office +1 (415) 732-0198 ext. 204', '+1 (415) 732-0198 ext. 204', INTL);
+notAs('Call 1-800-FLOWERS', '1-800-FLOWERS', INTL);
+
 // ---------------- Email Address ----------------
 yes('Mail priya.raghavan@northwind-demo.com today', 'priya.raghavan@northwind-demo.com', EMAIL);
 notAs('Pay to kavya@okhdfcbank', 'kavya@okhdfcbank', EMAIL);
