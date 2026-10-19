@@ -168,6 +168,21 @@ notAs('https://deploy:Tok3nValue@git.acme-demo.io/repo.git', 'https://deploy:Tok
 notAs('-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA3Tz2mr7SZiAMfQyuvBjM9Oi\n-----END RSA PRIVATE KEY-----', '-----BEGIN RSA PRIVATE KEY-----');
 notAs('-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA3Tz2mr7SZiAMfQyuvBjM9Oi\n-----END RSA PRIVATE KEY-----', '-----END RSA PRIVATE KEY-----');
 notAs('Authorization: Bearer abc123def456ghi789jkl012', 'Bearer abc123def456ghi789jkl012');
+// (v11.4.12) integrity hashes (package-lock.json, <script integrity>): the hash after "sha512-" / "sha384-" / "sha256-" / "sha1-"
+const SRI = 'u7stbOuYjaPezCuLj29hNW1v64M2Md2qupEKP1fHc7WdOA3DgLh37suiSrZYY7haUB7iBeQZ9P1uiRF359do3g==';
+yes(`    "integrity": "sha512-${SRI}",`, SRI);
+notAs(`    "integrity": "sha512-${SRI}",`, 'sha512-' + SRI);
+const SRIW = '    "integrity": "sha512-\nu7stbOuYjaPezCuLj29hNW1v64M2Md2qupEKP1fHc7WdOA3DgLh37suiSrZYY7haUB7i\nBeQZ9P1uiRF359do3g==",';
+yes(SRIW, 'u7stbOuYjaPezCuLj29hNW1v64M2Md2qupEKP1fHc7WdOA3DgLh37suiSrZYY7haUB7i');
+yes(SRIW, 'BeQZ9P1uiRF359do3g==');
+const SRIW2 = '    "integrity": "sha512-u7stbOuYjaPezCuLj29hNW1v64M2Md2qupEKP1fHc7WdOA3DgLh37\nsuiSrZYY7haUB7iBeQZ9P1uiRF359do3g==",';
+yes(SRIW2, 'u7stbOuYjaPezCuLj29hNW1v64M2Md2qupEKP1fHc7WdOA3DgLh37');
+yes(SRIW2, 'suiSrZYY7haUB7iBeQZ9P1uiRF359do3g==');
+yes('"integrity": "sha1-2kSbQCRhD8z4IL+t0Yw/lSFhzbg="', '2kSbQCRhD8z4IL+t0Yw/lSFhzbg=');
+yes('<script src="x.js" integrity="sha384-oqVuAfXRKap7fdgcCY5uykM6+R9GqQ8K/uxy9rx7HNQlGYl1kPzQho1wx4JwY8wC"></script>', 'oqVuAfXRKap7fdgcCY5uykM6+R9GqQ8K/uxy9rx7HNQlGYl1kPzQho1wx4JwY8wC');
+yes('"integrity": "sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU="', '47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=');
+no(`    "integrity": "sha512-${SRI}",`, 'Zx9stbOuYjaPezCuLj29hNW1v64M2Md2qupEKP1fHc7WdOA3DgLh37suiSrZYY7haUB7iBeQZ9P1uiRF359do3g==', `    "integrity": "sha512-Zx9stbOuYjaPezCuLj29hNW1v64M2Md2qupEKP1fHc7WdOA3DgLh37suiSrZYY7haUB7iBeQZ9P1uiRF359do3g==",`);
+notAs('Use sha512-hashing for files', 'hashing');
 // changed values: no label
 no('SSN: 123-45-6789', '987-65-4321', 'SSN: 987-65-4321');
 no('Passport No: J8369854', 'K1234098', 'Passport No: K1234098');
@@ -358,6 +373,13 @@ yes('Released 2024-10-15 to all', '2023-07-02', undefined, 'Released 2023-07-02 
 yes('Due on March 12, 2025.', 'April 19', undefined, 'Due on April 19, 2025.');
 no('DOB: 05-11-1988', '17-02-1991', 'DOB: 17-02-1991');
 no('Date of Birth: 12 March 1990', '19 April', 'Date of Birth: 19 April 1990');
+// (v11.4.13) version numbers are not dates, and a line that is unchanged on the left is never "changed"
+const LOCK = '"node_modules/@babel/a": {\n  "dependencies": {\n    "@babel/helper-plugin-utils": "^7.12.13"\n  }\n},\n"node_modules/@babel/b": {\n  "dependencies": {\n    "@babel/helper-plugin-utils": "^7.18.10"\n  }\n}';
+notAs(LOCK, '12.13', 'Overscrubbed');
+notAs(LOCK, '18.10', 'Overscrubbed');
+notAs('"version": "7.12.13"\n"version": "7.18.10"', '12.13', 'Overscrubbed');
+no('"lodash": "~4.17.21"', '4.17.20', '"lodash": "~4.17.20"');                                   // a changed version is not a date
+yes('Meeting on 12.03.2025 at noon', '19.04', undefined, 'Meeting on 19.04.2025 at noon');      // a real dotted date still is
 // (v11.4.4) an added word is Overscrubbed
 yes('the report is ready', 'final', undefined, 'the final report is ready');
 yes('The Council Member approved it.', 'Beagenhydra', undefined, 'The Council Beagenhydra approved it.');
@@ -454,6 +476,9 @@ const W1 = 'See https://docs.acmecorp-demo.io/guides/inst\nallation-steps for de
 yes(W1, 'https://docs.acmecorp-demo.io/guides/inst');
 yes(W1, 'allation-steps');
 const W2 = 'See https://docs.acmecorp-demo.io/guides/\ninstallation-steps for details';
+// (v11.4.14) a long line elsewhere in the document does not stop a wrapped link from being joined
+const WL = 'See https://docs.acmecorp-demo.io/guides/inst\nallation-steps for details\n' + '{"blob": "' + 'x'.repeat(300) + '"}';
+yes(WL, 'allation-steps');
 yes(W2, 'installation-steps');
 const W3 = 'See https://docs.acmecorp-demo\n.io/guides/setup now';
 yes(W3, 'https://docs.acmecorp-demo');

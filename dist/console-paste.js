@@ -1,4 +1,4 @@
-// PeakTalent Auditor v11.4.11 - console build.
+// PeakTalent Auditor v11.4.14 - console build.
 // Open the PeakTalent review tab, open the browser console (Safari: Develop > Show JavaScript Console,
 // Chrome: Cmd/Ctrl+Option/Alt+J), paste this whole file and press Enter. Pasting again replaces the old copy.
 // GENERATED FILE - edit src/content.js and run `node scripts/build.js`.
@@ -20,7 +20,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.4.11";
+    const PT_VERSION = "11.4.14";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -4725,8 +4725,16 @@
             //   - it is a file name ("index.html") after a line ending in / - _ = & ? % ~ +; or
             //   - the left document has the joined link on one line (then even a plain word: "a/b/c/" + "page").
             // Never: another link, a list marker ("-", "2."), a bracket or quote, "e.g.", or a capitalised word ("Install").
+            // (v11.4.14) "nearly the longest line" is judged against the lines around the link, not the whole document: one
+            // long line elsewhere (a JSON blob, another URL) made every wrapped link look unwrapped
+            const rLinesW = rightText.split("\n");
+            const lineStartsW = []; { let p = 0; for (const l of rLinesW) { lineStartsW.push(p); p += l.length + 1; } }
+            const localMax = (pos) => {
+                let i = 0; while (i + 1 < lineStartsW.length && lineStartsW[i + 1] <= pos) i++;
+                let mx = 0; for (let k = Math.max(0, i - 3); k <= Math.min(rLinesW.length - 1, i + 3); k++) if (rLinesW[k].length > mx) mx = rLinesW[k].length;
+                return mx;
+            };
             let maxLine = 0;
-            for (const l of rightText.split("\n")) if (l.length > maxLine) maxLine = l.length;
             const notPiece = (tok) => /^[a-z][a-z0-9+.-]*:\/\//i.test(tok) || /^(?:[-*\u2022\u2013]|\d{1,3}[.)])$/.test(tok) ||
                 /^[(\["'`<{]/.test(tok) || /^(?:e\.g\.?|i\.e\.?|etc\.?|vs\.?)[,;:]?$/i.test(tok) ||
                 /^[A-Za-z]{1,5}\/[A-Za-z]{1,5}$/.test(tok) || /^\d{1,4}(?:\/\d{1,4}){1,2}$/.test(tok) ||
@@ -4735,6 +4743,9 @@
                 if (notPiece(tok)) return false;
                 if (/[\/?=&#%]/.test(tok) || /^\.[A-Za-z]{2,}/.test(tok)) return true;
                 if (/^[\w.~]+[-_][\w.~-]*$/.test(tok) && lineLen >= 40 && lineLen >= maxLine * 0.8) return true;
+                // (v11.4.14) a break in the middle of a word: the line ends in letters and the next starts with a lowercase piece
+                // joined by - or _ ("inst" + "allation-steps")
+                if (/[a-z]{2}$/i.test(prev) && /^[a-z][a-z0-9]*[-_][\w.~-]*$/.test(tok) && lineLen >= 30) return true;
                 // (v11.4.2) the middle of a long document id ("1AbCdEfGhIjKlMn" + "OpQrStUvWxYz0123456789"): letters and digits mixed
                 if (/^[A-Za-z0-9]{10,}$/.test(tok) && /\d/.test(tok) && /[A-Za-z]/.test(tok) && /[A-Za-z0-9]{6,}$/.test(prev) && lineLen >= 40 && lineLen >= maxLine * 0.8) return true;
                 return WRAP_END.test(prev) && /^[\w-]+\.[A-Za-z0-9]{2,5}$/.test(tok);
@@ -4755,6 +4766,7 @@
                     const startsQuery = /^[?&][^\s]/.test(nx[1]);
                     const prev = pieces[pieces.length - 1];
                     const lineLen = end - (rightText.lastIndexOf("\n", end - 1) + 1);
+                    maxLine = localMax(end - 1);
                     const tok = trimUrlEnd(nx[1]);
                     const literalLeft = !notPiece(tok) && /^[\w.~-]+$/.test(tok) && leftText.includes(pieces.join("") + tok);
                     if (!startsQuery && !isWrapPiece(nx[1], prev, lineLen) && !literalLeft) break;
@@ -5209,6 +5221,44 @@
             for (const v of (rightText.match(btcRe) || [])) {
                 if (!/^bc1/.test(v) && !(/[a-z]/.test(v) && /[A-Z]/.test(v) && /\d.*\d/.test(v.slice(1)))) continue;
                 if (leftText.includes(v)) put(v, "Credentials", "pt-credentials", 97);
+            }
+        }
+
+        // (v11.4.12) Integrity hashes ("sha512-<base64>" in package-lock.json, <script integrity="sha384-...">): the hash after the
+        // algorithm name is Credentials (SHA hash), like a hex SHA. Its length must fit the algorithm (sha1 28, sha256 44, sha384 64,
+        // sha512 88 characters). A hash wrapped over several lines is joined, and each line's piece is labeled on its own.
+        {
+            const SRI_LEN = { "1": 28, "256": 44, "384": 64, "512": 88 };
+            const sriRe = /\bsha(1|256|384|512)-((?:[A-Za-z0-9+\/]+[ \t]*\r?\n[ \t]*)*[A-Za-z0-9+\/]+={0,2})/g;
+            let leftFlatS = null;
+            let sm;
+            while ((sm = sriRe.exec(rightText)) !== null) {
+                // "sha512-" may end its line, with the hash on the next one
+                let body = sm[2];
+                const pieces = body.split(/[ \t]*\r?\n[ \t]*/).filter(Boolean);
+                const joined = pieces.join("");
+                if (joined.length !== SRI_LEN[sm[1]]) continue;
+                if (leftFlatS === null) leftFlatS = leftText.replace(/\s+/g, "");
+                if (!leftFlatS.includes("sha" + sm[1] + "-" + joined)) continue;
+                for (const p of pieces) {
+                    if (p.length < 2) continue;
+                    const ex = targetMap.get(p);
+                    if (!ex || ex.priority < 97) targetMap.set(p, { text: p, label: "Credentials", cls: "pt-credentials", priority: 97 });
+                }
+            }
+            // "sha512-" alone at the end of a line, the hash starting on the next line
+            const sriSplit = /\bsha(1|256|384|512)-[ \t]*\r?\n[ \t]*((?:[A-Za-z0-9+\/]+[ \t]*\r?\n[ \t]*)*[A-Za-z0-9+\/]+={0,2})/g;
+            while ((sm = sriSplit.exec(rightText)) !== null) {
+                const pieces = sm[2].split(/[ \t]*\r?\n[ \t]*/).filter(Boolean);
+                const joined = pieces.join("");
+                if (joined.length !== SRI_LEN[sm[1]]) continue;
+                if (leftFlatS === null) leftFlatS = leftText.replace(/\s+/g, "");
+                if (!leftFlatS.includes("sha" + sm[1] + "-" + joined)) continue;
+                for (const p of pieces) {
+                    if (p.length < 2) continue;
+                    const ex = targetMap.get(p);
+                    if (!ex || ex.priority < 97) targetMap.set(p, { text: p, label: "Credentials", cls: "pt-credentials", priority: 97 });
+                }
             }
         }
 
@@ -5737,12 +5787,19 @@
             const DATE_ALL = new RegExp("^" + DATE_SRC + "$", "i");
             const DOB_RE = /\b(?:dob|d\.o\.b|date\s*of\s*birth|birth\s*date|birthday|born|date_of_birth|birth_date|birthdate)\b/i;
             const lLines = leftText.split("\n");
+            const lLineSet = new Set(lLines.map(l => l.trim()));
+            // (v11.4.13) a version is not a date: after ^ ~ v = > <, after a "version" key, or day / month out of range ("4.17.20")
+            const isVersionAt = (line, idx, d) => /(?:[\^~v=<>]\s*|version["']?\s*[:=]\s*["']?|@)$/i.test(line.slice(Math.max(0, idx - 12), idx)) ||
+                (/^\d+\.\d+\.\d+$/.test(d) && (() => { const p = d.split(".").map(Number); const okDMY = p[0] >= 1 && p[0] <= 31 && p[1] >= 1 && p[1] <= 12; const okYMD = p[0] >= 1000 && p[1] >= 1 && p[1] <= 12 && p[2] >= 1 && p[2] <= 31; return !(okDMY || okYMD) || p[2] < 100 && p[0] > 12 && p[1] > 12; })());
             for (const rLine of rightText.split("\n")) {
                 if (rLine.length > 1000) continue;
+                // (v11.4.13) a line that is on the left unchanged has no changed date (it used to be compared with other, similar lines)
+                if (lLineSet.has(rLine.trim())) continue;
                 DATE_IN.lastIndex = 0;
                 let dm;
                 while ((dm = DATE_IN.exec(rLine)) !== null) {
                     const dr = dm[0];
+                    if (isVersionAt(rLine, dm.index, dr)) continue;
                     const P = rLine.slice(0, dm.index), Sx = rLine.slice(dm.index + dr.length);
                     let dl = null, lLine = null;
                     for (const l of lLines) {
@@ -5815,7 +5872,9 @@
         }
         if (wordTargets.length > 0) {
             wordTargets.sort((a, b) => b.length - a.length);
-            patternParts.push('\\b(?:' + wordTargets.join('|') + ')\\b');
+            // (v11.4.12) not "\\b": a target may start or end with a non-word character ("BeQZ9P1uiRF359do3g==", "@rahul_92",
+            // "+91 98450 12345"), where "\\b" never matches. It must not touch a letter or digit on either side.
+            patternParts.push('(?<![A-Za-z0-9_])(?:' + wordTargets.join('|') + ')(?![A-Za-z0-9_])');
         }
         if (patternParts.length === 0) return 0;
 
@@ -5903,7 +5962,14 @@
                         let tokEnd = m.index + matchText.length;
                         while (tokEnd < val.length && !/\s/.test(val[tokEnd])) tokEnd++;
                         const fullToken = val.slice(tokStart, tokEnd);
-                        if (isPartOfUrl(fullToken) || fullToken.includes("://") || /\.[a-z]{2,}(?:\/|$)/i.test(fullToken)) {
+                        // (v11.4.14) A word inside a link or domain is not highlighted ("rahul" in "github.com/rahul"). But that test
+                        // must not block suggestions made for exactly such tokens: an e-mail ends in ".com", a password sits inside
+                        // "postgres://...", a username can be "kavya.nair". Those labels, and a suggestion that is the whole token, are
+                        // always highlighted. (Before, no e-mail address was ever highlighted on the page.)
+                        const core = fullToken.replace(/^[<("'\[`{]+|[>)"'\]`},.;:!?]+$/g, "");
+                        const wholeToken = core.toLowerCase() === matchText.toLowerCase();
+                        const urlSafeLabel = /^(?:Email Address|Credentials|IP Address|Person Username|Account Number|Contact Number|Indian Mobile Number|International Phone Number)$/.test(targetObj.label);
+                        if (!urlSafeLabel && !wholeToken && (isPartOfUrl(fullToken) || fullToken.includes("://") || /\.[a-z]{2,}(?:\/|$)/i.test(fullToken))) {
                             continue;
                         }
                         // User rule: "in mail it is crtly srubbed then it should not be marked"

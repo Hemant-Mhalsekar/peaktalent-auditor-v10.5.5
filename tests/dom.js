@@ -45,6 +45,19 @@ const checks = [
     return out;
   };
   const L = 'https://acmecorp-demo.io/policy';
+  const tagCred = (html, texts) => {
+    const box = w.document.createElement('div');
+    box.innerHTML = html;
+    w.document.body.appendChild(box);
+    w.__PT__.applyAllTargetsInSinglePass(box, texts.map(t => ({ text: t, label: 'Credentials', cls: 'pt-credentials', priority: 97 })));
+    const out = Array.from(box.querySelectorAll('span.pt-tag')).map(s => s.textContent);
+    box.remove();
+    return out;
+  };
+  checks.push(['each line of a wrapped integrity hash is tagged (v11.4.12)', () => assert.deepStrictEqual(
+    tagCred('<div>"integrity": "sha512-</div><div>u7stbOuYjaPezCuLj29hNW1v64M2Md2qupEKP1fHc7WdOA3DgLh37suiSrZYY7haUB7i</div><div>BeQZ9P1uiRF359do3g==",</div>',
+      ['u7stbOuYjaPezCuLj29hNW1v64M2Md2qupEKP1fHc7WdOA3DgLh37suiSrZYY7haUB7i', 'BeQZ9P1uiRF359do3g==']),
+    ['u7stbOuYjaPezCuLj29hNW1v64M2Md2qupEKP1fHc7WdOA3DgLh37suiSrZYY7haUB7i', 'BeQZ9P1uiRF359do3g=='])]);
   checks.push(
     ['link followed by a full stop is tagged', () => assert.deepStrictEqual(tagText('<p>Read ' + L + '.</p>', [L]), [L])],
     ['link followed by a comma is tagged', () => assert.deepStrictEqual(tagText('<p>See ' + L + ', then go</p>', [L]), [L])],
