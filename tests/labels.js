@@ -443,6 +443,38 @@ notAs('Same text on both sides.', 'Same');
 
 // ======================= PERSON NAME =======================
 label('Person Name');
+// (v11.5.1) names with an apostrophe or a hyphen are one name
+yes("Sean O'Brien called", "Sean O'Brien");
+notAs("Sean O'Brien called", 'Sean');
+yes('Mary-Jane Watson called', 'Mary-Jane Watson');
+notAs('Mary-Jane Watson called', 'Jane Watson');
+yes("Signed: D'Souza Anil", "D'Souza Anil");
+// (v11.5.1) names in other languages and with accents
+yes('José García signed the form', 'José García');
+yes('Name: João Silva', 'João Silva');
+yes('Budi Santoso hadir', 'Budi Santoso');
+yes('Siti Rahayu menandatangani', 'Siti Rahayu');
+yes('Ana Souza assinou o contrato', 'Ana Souza');
+// (v11.5.1) the full name is one label; a later mention of a part of it is a name too, also in lower case
+yes('Rahul Sharma joined today. Later, Rahul replied.', 'Rahul Sharma');
+yes('Rahul Sharma joined today. Later, Rahul replied.', 'Rahul');
+yes('Rahul Sharma joined today. later rahul replied.', 'rahul');
+notAs('Will Smith joined. We will meet him.', 'will');
+// (v11.5.1) lower-case names
+yes('ping srinadh about it', 'srinadh');
+yes("Sean O'Brien called; ping srinadh about it", 'srinadh');
+notAs('const ping = srinadh;', 'srinadh');
+yes('cc: kalaivani, bourniya', 'kalaivani');
+yes('thanks priya for the update', 'priya');
+yes('assignee: srinadh', 'srinadh');
+notAs('ping the server about it', 'server');
+notAs('thanks again for the update', 'again');
+notAs('cc: everyone', 'everyone');
+// (v11.5.1) surname first is one label
+yes('Sharma, Rahul (Employee ID 42)', 'Sharma, Rahul');
+yes('Name: Nair, Kavya', 'Nair, Kavya');
+notAs('distributed between Naazia, Vinita and Shrusti', 'Naazia, Vinita');
+notAs('Visited Pune, Mumbai and Delhi', 'Pune, Mumbai');
 yes('Hi Rahul Sharma, welcome aboard.', 'Rahul Sharma');
 yes('From: Priya Raghavan <p@x-demo.com>', 'Priya Raghavan');
 yes('To: Arjun Mehta', 'Arjun Mehta');
@@ -696,6 +728,7 @@ yes('Allowed: 10.0.0.1, 10.0.0.2', '10.0.0.2');
 notAs('Price 1.25.30.40 kg', '1.25.30.40');
 notAs('Section 3.2.1.4 of the policy', '3.2.1.4');
 label2('Overscrubbed');
+yes('Signed: Pooja Hegde', 'hello', undefined, 'Signed: hello');   // (v11.5.1) a name replaced by a plain word
 yes('Vendor: Zentrix Analytics Pvt Ltd', 'hello', undefined, 'Vendor: hello');   // (v11.5.0) a company replaced by a word
 yes('Vendor: TBD', 'Zentrix Analytics Pvt Ltd', undefined, 'Vendor: Zentrix Analytics Pvt Ltd');   // a word replaced by a company
 yes('DOB: 05-11-1988', 'velmora', undefined, 'DOB: velmora');   // (v11.4.9) a date of birth replaced by a word

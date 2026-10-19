@@ -162,6 +162,10 @@ The platform mandates that the following **15 categories are strictly classified
 - **Never Person Names**: months and weekdays ("June"), places ("India", "West Indies"), and match titles ("India vs Pakistan").
 - **Name columns in tables**: in a spreadsheet column where several rows had a name replaced, an unchanged value (`kalaivani`, `bourniya.j`) is a Person Name, a replaced value is a scrubbed name (no label), and the unchanged part of a partly replaced name (`purav` in `purav mallick` -> `purav devivrenric`) is a Person Name.
 - **Same-shaped lines**: if one slide heading `# Furkan` was scrubbed, an unchanged heading of the same shape (`# Joaquim`) is a Person Name.
+- **(v11.5.1) One name, one label**: the full name is one label (`Rahul Sharma`, `Sean O'Brien`, `Mary-Jane Watson`, surname first `Sharma, Rahul`). A later mention of a part of it (`Rahul`, also lower-case `rahul`) is labeled too, unless that part is a dictionary word (`Will`). A part that only occurs inside the full name gets no label of its own.
+- **(v11.5.1) Names in other languages** count, with accents (`José García`, `João Silva`) and from Indonesia / Brazil (`Budi Santoso`, `Siti Rahayu`, `Ana Souza`).
+- **(v11.5.1) Lower-case names** are names: after a person cue (`ping srinadh`, `cc: kalaivani, bourniya`, `thanks priya`, `assignee: srinadh`), never on a code line and never a dictionary word (`ping the server`, `cc: everyone`).
+- **(v11.5.1)** A name replaced by a plain word is **Overscrubbed** (`Pooja Hegde` → `hello`); a name replaced by another name stays correct redaction.
 - **Greetings are not part of a name**: in `Hi Rahul Sharma`, label only `Rahul Sharma`.
 - **Name lists**: in `distributed between Naazia, Vinita and Shrusti`, only the capitalised names in the comma-separated list count — not other words later in the sentence.
 

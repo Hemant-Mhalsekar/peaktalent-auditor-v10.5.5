@@ -93,6 +93,12 @@ same('unchanged JSON key', '"dependencies": {', 'dependencies', '', 'Overscrubbe
 diff('scrubbed person name', 'I met Furkan at the airport.', 'I met Dalvorin at the airport.', 'Dalvorin', '', 'Overscrubbed');
 diff('scrubbed company', 'She joined Accenture in 2019.', 'She joined Velmoratech in 2019.', 'Velmoratech', '', 'Business Name');
 diff('scrubbed phone', 'Call 9876543210 today', 'Call 9123456780 today', '9123456780', '', 'Indian Mobile Number');
+// (v11.5.1) Person Name
+same("name with an apostrophe", "Sean O'Brien called", "Sean O'Brien", 'Person Name', 'Business Name');
+same('name with accents', 'José García signed the form', 'José García', 'Person Name', 'Business Name');
+same('lower-case name after ping', 'ping srinadh about it', 'srinadh', 'Person Name', 'Business Name');
+same('surname first', 'Sharma, Rahul (Employee ID 42)', 'Sharma, Rahul', 'Person Name', 'Business Name');
+diff('name replaced by a word', 'Signed: Pooja Hegde', 'Signed: hello', 'hello', 'Overscrubbed', 'Person Name');
 // (v11.5.0) Business Name
 same('platform used as a tool', 'Ping @rahul_92 on Slack', 'Slack', '', 'Business Name');
 same('platform as an employer', 'She works at LinkedIn in Bengaluru.', 'LinkedIn', 'Business Name', 'Person Name');

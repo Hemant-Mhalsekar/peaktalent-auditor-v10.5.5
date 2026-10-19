@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PeakTalent PII/BII Annotation Auditor
 // @namespace    https://dashboard.peaktalent.ai/
-// @version      11.5.0
+// @version      11.5.1
 // @description  Highlights PII/BII, credentials and overscrubbed text on PeakTalent review screens. Works fully offline.
 // @match        https://dashboard.peaktalent.ai/*
 // @run-at       document-idle
@@ -27,7 +27,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.5.0";
+    const PT_VERSION = "11.5.1";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -2331,6 +2331,14 @@
     // words that put a brand surname in a COMPANY context ("works at Bajaj", "from Tata") rather than after a first name
     const CO_WORDS_FOR_SURNAME = new Set(["at", "from", "with", "by", "for", "joined", "vendor", "client", "partner", "the"]);
     // Could this single word be somebody's name (a known given name / surname, or an ambiguous name like "Mark")?
+    // (v11.5.1) common given names and surnames from Indonesia, Brazil and Spanish-speaking countries (the PII list covers them)
+    const EXTRA_NAMES = new Set(("budi siti agus dewi rizky putri andi ahmad joko sri wahyu eko adi dian rina fitri yusuf indah bayu nur ayu hendra ratna " +
+        "santoso rahayu wijaya kusuma setiawan pratama saputra hidayat siregar nasution gunawan hartono susanto " +
+        "joao maria ana pedro lucas gabriel mateus rafael juliana fernanda camila bruno thiago felipe carla paulo marcos luiz luis carlos antonio " +
+        "francisco eduardo beatriz larissa leticia silva santos souza oliveira pereira lima costa ferreira rodrigues almeida garcia martinez " +
+        "gonzalez lopez hernandez perez sanchez ramirez fernandes gomes ribeiro carvalho").split(" "));
+    const foldName = (w) => (w || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    function isGivenOrSurname(w) { const f = foldName(w); return KNOWN_GIVEN_NAMES.has(f) || EXTRA_NAMES.has(f); }
     function couldBeName(w) { const l = (w || "").toLowerCase(); return KNOWN_GIVEN_NAMES.has(l) || AMBIGUOUS_NAME_WORDS.has(l); }
     // Corporate suffixes: a capitalised phrase ending in one of these is a company, never a person.
     const CORP_SUFFIX_RE = /\b(?:Pvt\.?|Private|Ltd\.?|Limited|Inc\.?|Corp\.?|Corporation|LLC|LLP|PLC|Technologies|Solutions|Services|Systems|Labs|Software|Networks|Traders|Industries|Enterprises|Consulting|Consultancy|Logistics|Pharma|Pharmaceuticals|Ventures|Partners|Associates|Holdings|Analytics|Motors|Insurance|Hospitals?|Studios|Group|Foods|GmbH|AG|Ltda|Pty|Bhd|Tbk|Clinic|University|College|School|Institute|Academy|Foundation)\.?$/i;   // (v11.5.0) any case: "PVT LTD"
@@ -4400,6 +4408,16 @@
                             continue;
                         }
                     }
+                    // (v11.5.1) a person's name replaced by a plain word ("Signed: Pooja Hegde" -> "Signed: hello"). A name replaced by
+                    // another name ("Hemant" -> "Alex", "Furkan" -> "Dalvorin") stays correct redaction.
+                    {
+                        const ow = (diff.original || "").trim(), cw = (diff.changed || "").trim();
+                        const nameLike = (x) => x.split(/\s+/).length <= 4 && x.split(/\s+/).every(w => /^\p{Lu}/u.test(w)) && x.split(/\s+/).some(w => isGivenOrSurname(w));
+                        const plain = (x) => { const ws = x.split(/\s+/); return ws.length <= 3 && ws.every(w => /^[A-Za-z'-]+$/.test(w) && isCommonWord(w.toLowerCase()) && !isGivenOrSurname(w)); };
+                        if (ow && cw && nameLike(ow) && plain(cw) && !new RegExp("(?:^|[^A-Za-z])" + cw + "(?![A-Za-z])", "i").test(leftText)) {
+                            __ptOrdinaryOrigins.add(cw); addTarget(cw, "Overscrubbed", "pt-overscrub", 66); continue;
+                        }
+                    }
                     // (v11.5.0) a company replaced by a plain word ("Vendor: Zentrix Analytics Pvt Ltd" -> "Vendor: hello"), or the reverse.
                     // A company replaced by another company-like name ("Accenture" -> "Velmoratech") is correct redaction, as before.
                     {
@@ -5831,6 +5849,73 @@
             }
         }
 
+        // (v11.5.1) Person names, second pass:
+        //   - a name with an apostrophe or a hyphen is one name ("Sean O'Brien", "Mary-Jane Watson", "D'Souza Anil");
+        //   - names with accents and from Indonesia / Brazil / Spain ("Jos\u00E9 Garc\u00EDa", "Budi Santoso", "Ana Souza");
+        //   - surname first is one label ("Sharma, Rahul");
+        //   - lower-case names after a person cue ("ping srinadh", "cc: kalaivani, bourniya", "thanks priya");
+        //   - a later mention of a part of a full name is a name too, also in lower case ("rahul"), unless it is a dictionary word.
+        // A part that only occurs inside the full name gets no label of its own.
+        {
+            const putP = (v, prio) => {
+                if (!v || v.length < 2 || !leftText.includes(v)) return;
+                const ex = targetMap.get(v);
+                if (!ex || ex.priority < prio || (ex.label !== "Person Name" && ex.priority <= prio)) targetMap.set(v, { text: v, label: "Person Name", cls: "pt-person", priority: prio });
+            };
+            const TOK = "(?:[OD]['\u2019])?\\p{Lu}\\p{Ll}+(?:[-'\u2019]\\p{Lu}?\\p{Ll}+)*";
+            const runRe = new RegExp("(?<![\\p{L}'\u2019-])" + TOK + "(?:[ \\t]+" + TOK + "){1,3}(?![\\p{L}])", "gu");
+            const badWord = (w) => PLACES.has(w.toLowerCase()) || isCalendarWord(w) || KNOWN_BUSINESS_NAMES.has(w.toLowerCase()) || isLanguageWord(w);
+            let m;
+            while ((m = runRe.exec(rightText)) !== null) {
+                let ws = m[0].split(/[ \t]+/);
+                while (ws.length && !isGivenOrSurname(ws[ws.length - 1].split(/[-'\u2019]/).pop()) && isCommonWord(foldName(ws[ws.length - 1]))) ws.pop();
+                while (ws.length && !isGivenOrSurname(ws[0].split(/[-'\u2019]/)[0]) && isCommonWord(foldName(ws[0]))) ws.shift();
+                if (ws.length < 2 || ws.some(badWord)) continue;
+                const v = ws.join(" ");
+                const special = /['\u2019-]/.test(v) || /[^\x00-\x7F]/.test(v) || ws.some(w => EXTRA_NAMES.has(foldName(w)));
+                const known = ws.filter(w => w.split(/[-'\u2019]/).some(p => isGivenOrSurname(p))).length;
+                if (!special || known === 0) continue;
+                if (ws.some(w => !isGivenOrSurname(w.split(/[-'\u2019]/).pop()) && isCommonWord(foldName(w)) && !/['\u2019-]/.test(w))) continue;
+                putP(v, 89);
+            }
+            // surname first: "Sharma, Rahul" (both names; not a list "Naazia, Vinita and Shrusti", not places)
+            const sfRe = /(?<![\p{L}])(\p{Lu}\p{Ll}+), (\p{Lu}\p{Ll}+)(?![\p{L}])(?!\s*(?:,|\band\b|&))/gu;
+            while ((m = sfRe.exec(rightText)) !== null) {
+                if (!isGivenOrSurname(m[1]) || !isGivenOrSurname(m[2]) || badWord(m[1]) || badWord(m[2])) continue;
+                const before = rightText.slice(rightText.lastIndexOf("\n", m.index - 1) + 1, m.index);
+                if (!/^(?:\s*|.*\b(?:name|signed|author|employee|patient|applicant|from|by|to|cc)\b\s*[:=-]?\s*)$/i.test(before) || /,\s*$/.test(before)) continue;
+                putP(m[1] + ", " + m[2], 90);
+            }
+            // lower-case names after a person cue
+            const cueRe = /\b(?:ping|cc|bcc|thanks|thank\s+you|hi|hello|hey|dear|ask|tell|assigned\s+to|reviewed\s+by|approved\s+by|owner|assignee|reviewer)\b\s*[:,-]?\s+([a-z]{3,}(?:\s*,\s*[a-z]{3,}){0,8})(?![\w@.])/g;
+            while ((m = cueRe.exec(rightText)) !== null) {
+                const line = rightText.slice(rightText.lastIndexOf("\n", m.index) + 1, (rightText.indexOf("\n", m.index) + 1 || rightText.length + 1) - 1);
+                if (/[{}<>]|;\s*$|^\s*(?:def|class|import|const|let|var|function|return)\b|\w\s*=\s*\S/.test(line)) continue;   // a code line
+                for (const w of m[1].split(/\s*,\s*/)) if (!isCommonWord(w) && !GROUP_MENTION.test(w) && !isCalendarWord(w) && !PLACES.has(w)) putP(w, 86);
+            }
+            // later mentions of a part of a full name, in lower case too ("rahul"), unless it is a dictionary word ("will")
+            for (const t of Array.from(targetMap.values())) {
+                if (t.label !== "Person Name" || !/\s/.test(t.text)) continue;
+                for (const part of t.text.split(/[\s,]+/)) {
+                    if (part.length < 3 || isCommonWord(foldName(part)) || !/^\p{Lu}\p{Ll}+$/u.test(part)) continue;
+                    const lower = part.toLowerCase();
+                    // a word on its own, not part of an e-mail, handle, file or link ("deepak.c@...", "rahul_92")
+                    if (new RegExp("(?<![\\w@./-])" + lower + "(?![\\w@]|[._-]\\w)").test(rightText)) putP(lower, 85);
+                    if (new RegExp("(?<![\\w@./-])" + part + "(?![\\w@]|[._-]\\w)").test(rightText.split(t.text).join(" "))) putP(part, 85);
+                }
+            }
+            // a part that only occurs inside a longer name gets no label of its own
+            const persons = Array.from(targetMap.values()).filter(t => t.label === "Person Name");
+            for (const t of persons) {
+                const longer = persons.filter(o => o !== t && o.text.length > t.text.length && o.text.includes(t.text));
+                if (!longer.length) continue;
+                const spans = [];
+                for (const o of longer) { let i = rightText.indexOf(o.text); while (i !== -1) { spans.push([i, i + o.text.length]); i = rightText.indexOf(o.text, i + 1); } }
+                const occ = []; { let i = rightText.indexOf(t.text); while (i !== -1) { occ.push(i); i = rightText.indexOf(t.text, i + 1); } }
+                if (occ.length && occ.every(i => spans.some(([a, b]) => i >= a && i + t.text.length <= b))) targetMap.delete(t.text);
+            }
+        }
+
         // (v11.5.0) One company, one label: a Business Name that only occurs inside a longer Business Name ("Tata" inside
         // "Tata Consultancy Services", "Mahindra" inside "Mahindra & Mahindra Ltd") is not a second label.
         {
@@ -6055,7 +6140,8 @@
                 const matchText = m[0];
                 const targetObj = lookup.get(matchText) || lookup.get(matchText.toLowerCase()) || lookup.get(matchText.toUpperCase());
                 if (targetObj) {
-                    if (targetObj.label === "Person Name" && matchText[0] !== matchText[0].toUpperCase()) continue;
+                    // (v11.5.1) a lower-case match only for a lower-case name suggestion ("srinadh", a later "rahul")
+                    if (targetObj.label === "Person Name" && matchText[0] !== matchText[0].toUpperCase() && !(matchText === targetObj.text || lookup.get(matchText) && lookup.get(matchText).text === matchText)) continue;
                     if (targetObj.label !== "URL/Link") {
                         let tokStart = m.index;
                         while (tokStart > 0 && !/\s/.test(val[tokStart - 1])) tokStart--;

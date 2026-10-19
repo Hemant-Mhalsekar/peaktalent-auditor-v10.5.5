@@ -1,5 +1,15 @@
 # Changelog
 
+## 11.5.1 - October 2026 (branch v2)
+
+Person Name:
+- **Names with `'` or `-` are one name**: `Sean O'Brien` was labeled `Sean`, `Mary-Jane Watson` was split into `Mary` and `Jane Watson`.
+- **Names with accents and from Indonesia / Brazil / Spanish-speaking countries** are found (`José García`, `Budi Santoso`, `Ana Souza`).
+- **Surname first** (`Sharma, Rahul`) is one label.
+- **Lower-case names** after a person cue (`ping srinadh`, `cc: kalaivani, bourniya`) are labeled; later lower-case mentions of a full name's part (`rahul`) too, and the page now highlights lower-case name suggestions.
+- **One name, one label**: a part that only occurs inside the full name gets no separate label.
+- **A name replaced by a plain word is Overscrubbed.**
+
 ## 11.5.0 - October 2026 (branch v2)
 
 - **CI**: GitHub Actions run every test suite (engine, labels, mass, DOM, end-to-end) on each push and PR, and check that the built copies match the source.
