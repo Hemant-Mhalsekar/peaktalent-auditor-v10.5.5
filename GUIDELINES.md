@@ -193,6 +193,8 @@ The platform mandates that the following **15 categories are strictly classified
   `AN`, `AP`, `AR`, `AS`, `BR`, `CG`, `CH`, `DD`, `DL`, `GA`, `GJ`, `HP`, `HR`, `JH`, `JK`, `KA`, `KL`, `LA`, `LD`, `MH`, `ML`, `MN`, `MP`, `MZ`, `NL`, `OD`, `PB`, `PY`, `RJ`, `SK`, `TN`, `TR`, `TS`, `UK`, `UP`, `WB`.
 - **Legacy codes still accepted** (older plates are still on the road): `OR` (Odisha, before 2012), `UA` (Uttarakhand, before 2007), `DN` (Dadra & Nagar Haveli, before 2020).
 - **RTO code may include a letter** (Delhi style): `DL 3C AB 1234` is valid.
+- **(v11.5.2) Also labeled**: dots as separators (`KA.05.MN.4321`); older plates without series letters (`MH 12 1234`, `KA-03-4521`); temporary registration plates, as one label (`TS 09 TR 2024 1234`, `KA01TR20240012`); foreign plates (`7ABC123`, `AB12 CDE`, `B 1234 XYZ`) only behind a plate / registration key (`Licence plate:`, `Plate number -`, `Reg No:`).
+- **(v11.5.2)** A plate replaced by a plain word, or a plain word by a plate, is **Overscrubbed**.
 - **Exclusions**:
   - Synthetic or fictitious state prefixes (e.g. `UT 28 EZ 6570` - `UT` is invalid; `RV 05 KP 6908` - `RV` is invalid).
   - Date redaction diffs (where date phrases are replaced with plate-like strings).

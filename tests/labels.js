@@ -675,6 +675,25 @@ notAs('commit 9fceb02d0ae598e95dc970b74767f19372d61af8', '9fceb02d0ae598e95dc970
 
 // ======================= VEHICLE NUMBER PLATE =======================
 label('Vehicle Number Plate');
+// (v11.5.2) old plates without series letters, dots as separators, temporary plates (whole), foreign plates behind a key
+yes('Old plate MH 12 1234', 'MH 12 1234');
+yes('Scooter: KA-03-4521', 'KA-03-4521');
+yes('Reg KA.05.MN.4321 noted', 'KA.05.MN.4321');
+yes('Temp reg TS 09 TR 2024 1234', 'TS 09 TR 2024 1234');
+yes('Temporary: KA01TR20240012', 'KA01TR20240012');
+yes('Car PB 87 TR 0778 parked', 'PB 87 TR 0778');   // a regular plate whose series is TR
+notAs('Temp reg TS 09 TR 2024 1234', 'TS 09 TR 2024');
+yes('Licence plate: 7ABC123', '7ABC123');
+yes('UK plate: AB12 CDE', 'AB12 CDE');
+yes('Reg No: WP-KA 1234', 'WP-KA 1234');
+yes('Plate number - B 1234 XYZ', 'B 1234 XYZ');
+notAs('California plate 7ABC123 is common', 'nothing-here');
+notAs('Model GT 20 X 1500 laptop', 'GT 20 X 1500');
+notAs('Registration No: U12345MH2010PTC123456', 'U12345MH2010PTC123456', 'Vehicle Number Plate');
+notAs('Registration: 2024-03-11', '2024-03-11', 'Vehicle Number Plate');
+notAs('Plate: 1234', '1234', 'Vehicle Number Plate');
+notAs('Page 12 of 2024', '12 of 2024', 'Vehicle Number Plate');
+no('Old plate MH 12 1234', 'MH 12 9876', 'Old plate MH 12 9876');
 yes('Car: KA 05 MN 4321', 'KA 05 MN 4321');
 yes('Car: KA05MN4321', 'KA05MN4321');
 yes('Bike: DL 3C AB 1234', 'DL 3C AB 1234');
@@ -728,6 +747,8 @@ yes('Allowed: 10.0.0.1, 10.0.0.2', '10.0.0.2');
 notAs('Price 1.25.30.40 kg', '1.25.30.40');
 notAs('Section 3.2.1.4 of the policy', '3.2.1.4');
 label2('Overscrubbed');
+yes('Car: KA 05 MN 4321', 'hello', undefined, 'Car: hello');   // (v11.5.2) a plate replaced by a word
+yes('Car: unknown', 'KA 05 MN 4321', undefined, 'Car: KA 05 MN 4321');   // a word replaced by a plate
 yes('Signed: Pooja Hegde', 'hello', undefined, 'Signed: hello');   // (v11.5.1) a name replaced by a plain word
 yes('Vendor: Zentrix Analytics Pvt Ltd', 'hello', undefined, 'Vendor: hello');   // (v11.5.0) a company replaced by a word
 yes('Vendor: TBD', 'Zentrix Analytics Pvt Ltd', undefined, 'Vendor: Zentrix Analytics Pvt Ltd');   // a word replaced by a company

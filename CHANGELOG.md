@@ -1,5 +1,12 @@
 # Changelog
 
+## 11.5.2 - October 2026 (branch v2)
+
+Vehicle Number Plate:
+- **Temporary registration plates** are one label (`TS 09 TR 2024 1234`); only `TS 09 TR 2024` was labeled. A regular plate with series `TR` (`PB 87 TR 0778`) is still a plate.
+- **Also found**: dots as separators (`KA.05.MN.4321`), older plates without series letters (`MH 12 1234`), and foreign plates behind a plate / registration key (`Licence plate: 7ABC123`, `UK plate: AB12 CDE`).
+- **A plate replaced by a word, or the reverse, is Overscrubbed.**
+
 ## 11.5.1 - October 2026 (branch v2)
 
 Person Name:

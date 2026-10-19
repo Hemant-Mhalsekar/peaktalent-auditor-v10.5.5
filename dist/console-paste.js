@@ -1,4 +1,4 @@
-// PeakTalent Auditor v11.5.1 - console build.
+// PeakTalent Auditor v11.5.2 - console build.
 // Open the PeakTalent review tab, open the browser console (Safari: Develop > Show JavaScript Console,
 // Chrome: Cmd/Ctrl+Option/Alt+J), paste this whole file and press Enter. Pasting again replaces the old copy.
 // GENERATED FILE - edit src/content.js and run `node scripts/build.js`.
@@ -20,7 +20,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.5.1";
+    const PT_VERSION = "11.5.2";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -2552,12 +2552,19 @@
         if (!str) return false;
         const s = str.trim().toUpperCase();
         // Indian vehicle registration: State (2 letters) + RTO (1-2 digits) + Series (1-3 letters) + Number (4 digits)
-        const m = s.match(/^([A-Z]{2})[ -]?(\d{1,2}[A-Z]?)[ -]?([A-Z]{1,3})[ -]?(\d{4})$/);
+        // (v11.5.2) "." also separates the parts ("KA.05.MN.4321")
+        const m = s.match(/^([A-Z]{2})[ .-]?(\d{1,2}[A-Z]?)[ .-]?([A-Z]{1,3})[ .-]?(\d{4})$/);
         if (m) {
             const state = m[1];
             if (!VALID_INDIAN_STATES.has(state)) return false; // Rejects fake state codes like UT, RV
             return true;
         }
+        // (v11.5.2) older plates without series letters ("MH 12 1234", "KA-03-4521"): the parts must be separated
+        const o = s.match(/^([A-Z]{2})[ .-](\d{1,2})[ .-](\d{1,4})$/);
+        if (o && VALID_INDIAN_STATES.has(o[1]) && !/^(?:19|20)\d{2}$/.test(o[3])) return true;
+        // (v11.5.2) temporary registration ("TS 09 TR 2024 1234", "KA01TR20240012"): the whole plate
+        const t = s.match(/^([A-Z]{2})[ .-]?\d{1,2}[ .-]?TR[ .-]?(?:\d{2,4}[ .-]?(?:\d{1,6}|[A-Z]{1,2}\d{1,4})|\d{5,10})$/);
+        if (t && VALID_INDIAN_STATES.has(t[1])) return true;
         // Bharat Series (BH): e.g. "22 BH 1234 AA"
         if (/^\d{2}[ -]?BH[ -]?\d{4}[ -]?[A-Z]{1,2}$/.test(s)) return true;
         return false;
@@ -4401,6 +4408,20 @@
                             continue;
                         }
                     }
+                    // (v11.5.2) a number plate replaced by a plain word, or a plain word by a plate
+                    {
+                        const ow = (diff.original || "").trim(), cw = (diff.changed || "").trim();
+                        const plain = (x) => /^[A-Za-z'-]+(?:\s[A-Za-z'-]+){0,2}$/.test(x) && x.split(/\s+/).every(w => isCommonWord(w.toLowerCase()));
+                        if (ow && cw && isVehiclePlateFormat(ow) && plain(cw) && !new RegExp("(?:^|[^A-Za-z])" + cw + "(?![A-Za-z])", "i").test(leftText)) {
+                            __ptOrdinaryOrigins.add(cw); addTarget(cw, "Overscrubbed", "pt-overscrub", 66); continue;
+                        }
+                        if (ow && cw && isVehiclePlateFormat(cw) && plain(ow) && !leftText.includes(cw)) {
+                            __ptOrdinaryOrigins.add(cw);
+                            const ex = targetMap.get(cw);
+                            if (!ex || ex.priority < 66) targetMap.set(cw, { text: cw, label: "Overscrubbed", cls: "pt-overscrub", priority: 66 });
+                            continue;
+                        }
+                    }
                     // (v11.5.1) a person's name replaced by a plain word ("Signed: Pooja Hegde" -> "Signed: hello"). A name replaced by
                     // another name ("Hemant" -> "Alex", "Furkan" -> "Dalvorin") stays correct redaction.
                     {
@@ -5579,7 +5600,9 @@
 
         // Step 9: Scan for Real-World Vehicle Number Plates identical in BOTH left & right
         // Rule: "vechile number plate only should follow format it have real world number plates only marked"
-        const plateRegex = /\b([A-Z]{2}[ -]?\d{1,2}[A-Z]?[ -]?[A-Z]{1,3}[ -]?\d{4}|\d{2}[ -]?BH[ -]?\d{4}[ -]?[A-Z]{1,2})\b/gi;
+        // (v11.5.2) also temporary plates (whole), dots as separators, and older plates without series letters. A plate is
+        // never the start of a longer number ("TS 09 TR 2024" inside "TS 09 TR 2024 1234").
+        const plateRegex = /\b([A-Z]{2}[ .-]?\d{1,2}[ .-]?TR[ .-]?(?:\d{2,4}[ .-]?(?:\d{1,6}|[A-Z]{1,2}\d{1,4})|\d{5,10})|[A-Z]{2}[ .-]?\d{1,2}[A-Z]?[ .-]?[A-Z]{1,3}[ .-]?\d{4}|[A-Z]{2}[ .-]\d{1,2}[ .-]\d{1,4}|\d{2}[ .-]?BH[ .-]?\d{4}[ .-]?[A-Z]{1,2})(?![A-Za-z0-9]|[ .-]\d)/gi;
         let pMatch;
         while ((pMatch = plateRegex.exec(rightText)) !== null) {
             const plate = pMatch[1].trim();
@@ -5629,6 +5652,23 @@
                     const v = fit(cells[col]);
                     if (v && leftText.includes(v)) addTarget(v, postalLabel(head[col], v, row), "pt-address", 97);
                 }
+            }
+        }
+
+        // (v11.5.2) A foreign plate (US "7ABC123", UK "AB12 CDE", "B 1234 XYZ") only behind a plate / registration key: its shape
+        // alone overlaps too many ordinary codes. 4-9 letters and digits, both present; not a company number or a date.
+        {
+            const plateKey = /\b(?:licen[cs]e\s*plate|number\s*plate|plate(?:\s*(?:no\.?|number|#))?|reg(?:istration)?\.?\s*(?:no\.?|number|#)|vehicle\s*(?:no\.?|number|reg(?:istration)?(?:\s*(?:no\.?|number))?))\s*[:#=\-\u2013]\s*["']?([A-Z0-9][A-Z0-9 -]{2,11}[A-Z0-9])(?![A-Za-z0-9])/gi;
+            let pk;
+            while ((pk = plateKey.exec(rightText)) !== null) {
+                const groups = pk[1].split(" ");
+                while (groups.length > 1 && /^[A-Za-z]{4,}$/.test(groups[groups.length - 1])) groups.pop();   // "7ABC123 Expires" -> "7ABC123"
+                const v = groups.join(" ");
+                const core = v.replace(/[ -]/g, "");
+                if (core.length < 4 || core.length > 9 || !/\d/.test(core) || !/[A-Za-z]/.test(core) || isDateFormat(v) || !/^[A-Z0-9 -]+$/.test(v)) continue;
+                if (!leftText.includes(v)) continue;
+                const ex = targetMap.get(v);
+                if (!ex || ex.priority < 92) targetMap.set(v, { text: v, label: "Vehicle Number Plate", cls: "pt-vehicle", priority: 92 });
             }
         }
 
