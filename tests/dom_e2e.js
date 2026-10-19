@@ -52,6 +52,7 @@ const L = [
   'Find me @priya@mastodon.social',
   'Budget: https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/edit#gid=0',
   "Sean O'Brien called; ping srinadh about it",
+  'Temp reg TS 09 TR 2024 1234',
 ];
 const R = L.map(l => l.replace('Council Member', 'Council Beagenhydra').replace('12 March 2025', '19 April 2025'));
 const EXPECT = [
@@ -70,6 +71,7 @@ const EXPECT = [
   ['kavya.nair', 'Person Username'], ['@priya@mastodon.social', 'Person Username'],
   ['https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/edit#gid=0', 'URL/Link'],
   ["Sean O'Brien", 'Person Name'], ['srinadh', 'Person Name'],
+  ['TS 09 TR 2024 1234', 'Vehicle Number Plate'],
 ];
 const MUST_NOT = ['https://cdn.acmecorp-demo.io/static/logo.png', '12.13', '18.10', 'postgres://admin:S3cretPass@db.acme-demo.io:5432/prod'];
 (async () => {

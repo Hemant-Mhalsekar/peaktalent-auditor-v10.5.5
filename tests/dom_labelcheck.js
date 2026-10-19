@@ -93,6 +93,11 @@ same('unchanged JSON key', '"dependencies": {', 'dependencies', '', 'Overscrubbe
 diff('scrubbed person name', 'I met Furkan at the airport.', 'I met Dalvorin at the airport.', 'Dalvorin', '', 'Overscrubbed');
 diff('scrubbed company', 'She joined Accenture in 2019.', 'She joined Velmoratech in 2019.', 'Velmoratech', '', 'Business Name');
 diff('scrubbed phone', 'Call 9876543210 today', 'Call 9123456780 today', '9123456780', '', 'Indian Mobile Number');
+// (v11.5.2) Vehicle Number Plate
+same('plate with dots', 'Reg KA.05.MN.4321 noted', 'KA.05.MN.4321', 'Vehicle Number Plate', 'Credentials');
+same('temporary plate', 'Temp reg TS 09 TR 2024 1234', 'TS 09 TR 2024 1234', 'Vehicle Number Plate', 'Credentials');
+same('foreign plate behind a key', 'Licence plate: 7ABC123', '7ABC123', 'Vehicle Number Plate', 'Credentials');
+diff('plate replaced by a word', 'Car: KA 05 MN 4321', 'Car: hello', 'hello', 'Overscrubbed', 'Vehicle Number Plate');
 // (v11.5.1) Person Name
 same("name with an apostrophe", "Sean O'Brien called", "Sean O'Brien", 'Person Name', 'Business Name');
 same('name with accents', 'José García signed the form', 'José García', 'Person Name', 'Business Name');
