@@ -101,6 +101,43 @@ notAs('Floor: 3rd Floor', '3rd Floor');
 
 // ======================= BUSINESS NAME =======================
 label('Business Name');
+// (v11.5.0) platforms used as a tool are not companies; as an employer they are
+notAs('Ping @rahul_92 on Slack', 'Slack');
+notAs('Watch on YouTube', 'YouTube');
+notAs('Connect on LinkedIn', 'LinkedIn');
+notAs('Join the call on Microsoft Teams', 'Microsoft Teams');
+notAs('Message me on WhatsApp', 'WhatsApp');
+yes('She works at LinkedIn in Bengaluru.', 'LinkedIn');
+yes('He joined Slack in 2020.', 'Slack');
+// a JSON / config key is never a company
+notAs('{"twitter": "@rahul_92"}', 'twitter');
+notAs('{"github": "rahulv92", "linkedin": "rahul-v"}', 'github');
+notAs('{"github": "rahulv92", "linkedin": "rahul-v"}', 'linkedin');
+// missed companies
+yes('Supplier: Müller Logistik GmbH', 'Müller Logistik GmbH');
+yes('Invoice from ZENTRIX ANALYTICS PVT LTD', 'ZENTRIX ANALYTICS PVT LTD');
+yes('Company: Acme Robotics', 'Acme Robotics');
+yes('Organisation: Velora Foods', 'Velora Foods');
+yes('He joined Zentrix last year.', 'Zentrix');
+yes('Ernst & Young audited it', 'Ernst & Young');
+notAs('Ernst & Young audited it', 'Ernst');
+yes('Procter & Gamble ships it', 'Procter & Gamble');
+// (v11.5.0) the dot of Inc. / Ltd. / Corp. / Co. is part of the name
+yes('Contract with Initech Inc. signed', 'Initech Inc.');
+yes('Paid to Velora Foods Ltd.', 'Velora Foods Ltd.');
+yes('Copyright (c) 2024 Acme Robotics Inc.', 'Acme Robotics Inc.');
+yes('Shipped by Globex Corp. today', 'Globex Corp.');
+// one name, one label: no extra label on a part of a company name
+notAs('She works at Tata Consultancy Services in Pune.', 'Tata');
+notAs('Client: Mahindra & Mahindra Ltd', 'Mahindra');
+// (v11.5.0) other organisations: hospitals, universities, schools, government bodies
+yes('Admitted at Apollo Hospitals, Chennai', 'Apollo Hospitals');
+yes('Graduated from Anna University in 2015', 'Anna University');
+yes('Studied at Delhi Public School', 'Delhi Public School');
+yes('Letter from the Ministry of Corporate Affairs', 'Ministry of Corporate Affairs');
+yes('Treated at Fortis Hospital, Mohali', 'Fortis Hospital');
+notAs('The hospital called back', 'hospital');
+notAs('University rankings improved', 'University');
 yes('She works at Tata Consultancy Services in Pune.', 'Tata Consultancy Services');
 yes('Vendor: Zentrix Analytics Pvt Ltd', 'Zentrix Analytics Pvt Ltd');
 yes('Invoice from Initech Software Pvt Ltd', 'Initech Software Pvt Ltd');
@@ -659,6 +696,8 @@ yes('Allowed: 10.0.0.1, 10.0.0.2', '10.0.0.2');
 notAs('Price 1.25.30.40 kg', '1.25.30.40');
 notAs('Section 3.2.1.4 of the policy', '3.2.1.4');
 label2('Overscrubbed');
+yes('Vendor: Zentrix Analytics Pvt Ltd', 'hello', undefined, 'Vendor: hello');   // (v11.5.0) a company replaced by a word
+yes('Vendor: TBD', 'Zentrix Analytics Pvt Ltd', undefined, 'Vendor: Zentrix Analytics Pvt Ltd');   // a word replaced by a company
 yes('DOB: 05-11-1988', 'velmora', undefined, 'DOB: velmora');   // (v11.4.9) a date of birth replaced by a word
 yes('Ship to 12, MG Road, Pune 411001 today', 'hello', undefined, 'Ship to hello today');   // (v11.4.7) an address replaced by a word
 yes('Ship to the warehouse today', '12, MG Road, Pune 411001', undefined, 'Ship to 12, MG Road, Pune 411001 today');   // a word replaced by an address

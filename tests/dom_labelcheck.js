@@ -93,6 +93,13 @@ same('unchanged JSON key', '"dependencies": {', 'dependencies', '', 'Overscrubbe
 diff('scrubbed person name', 'I met Furkan at the airport.', 'I met Dalvorin at the airport.', 'Dalvorin', '', 'Overscrubbed');
 diff('scrubbed company', 'She joined Accenture in 2019.', 'She joined Velmoratech in 2019.', 'Velmoratech', '', 'Business Name');
 diff('scrubbed phone', 'Call 9876543210 today', 'Call 9123456780 today', '9123456780', '', 'Indian Mobile Number');
+// (v11.5.0) Business Name
+same('platform used as a tool', 'Ping @rahul_92 on Slack', 'Slack', '', 'Business Name');
+same('platform as an employer', 'She works at LinkedIn in Bengaluru.', 'LinkedIn', 'Business Name', 'Person Name');
+same('hospital', 'Admitted at Apollo Hospitals, Chennai', 'Apollo Hospitals', 'Business Name', 'Address');
+same('company with Inc.', 'Contract with Initech Inc. signed', 'Initech Inc.', 'Business Name', 'Person Name');
+same('ordinary word in a company slot', 'Vendor: Internal', 'Internal', '', 'Business Name');
+diff('company replaced by a word', 'Vendor: Zentrix Analytics Pvt Ltd', 'Vendor: hello', 'hello', 'Overscrubbed', 'Business Name');
 // (v11.4.10) Financial
 same('IBAN', 'IBAN GB29NWBK60161331926819', 'GB29NWBK60161331926819', 'Account Number', 'Credentials');
 same('routing number', 'Routing Number: 021000021', '021000021', 'Credentials', 'Account Number');

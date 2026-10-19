@@ -1,5 +1,16 @@
 # Changelog
 
+## 11.5.0 - October 2026 (branch v2)
+
+- **CI**: GitHub Actions run every test suite (engine, labels, mass, DOM, end-to-end) on each push and PR, and check that the built copies match the source.
+
+Business Name:
+- **Ordinary words were labeled as companies** when a company has that name: `a young engineer`, `persistent storage`, `a notion`, `republic day`, `elastic band`, `the postman`, `a puma`. A company must now be written as a name; dictionary-word names need company context. `"ernst"` / `"young"` in the company list became `"ernst & young"`.
+- **Platforms used as a tool** (`on Slack`, `on YouTube`, `on LinkedIn`, `via WhatsApp`) and **JSON keys** (`"twitter":`) are not companies; as an employer they are.
+- **Found**: GmbH / AG / Ltda / Pty / ... and accented letters, all-capital names, `Company:` / `Organisation:` keys, the employer after "joined", names with `&`, and organisations (hospitals, universities, schools, institutes, government bodies).
+- **The dot of `Inc.` / `Ltd.` / `Corp.`** stays in the label; **one company, one label** (no extra `Tata` / `Mahindra`).
+- **Company <-> plain word** is Overscrubbed; the mistake check follows all of the above.
+
 ## 11.4.14 - October 2026
 
 Found by a new end-to-end test of the whole page (`tests/dom_e2e.js`: a review page with the 13 chips, every kind of value suggested, highlighted, then labeled right and wrong):
