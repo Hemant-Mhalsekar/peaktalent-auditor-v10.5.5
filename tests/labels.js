@@ -476,6 +476,9 @@ const W1 = 'See https://docs.acmecorp-demo.io/guides/inst\nallation-steps for de
 yes(W1, 'https://docs.acmecorp-demo.io/guides/inst');
 yes(W1, 'allation-steps');
 const W2 = 'See https://docs.acmecorp-demo.io/guides/\ninstallation-steps for details';
+// (v11.4.14) a long line elsewhere in the document does not stop a wrapped link from being joined
+const WL = 'See https://docs.acmecorp-demo.io/guides/inst\nallation-steps for details\n' + '{"blob": "' + 'x'.repeat(300) + '"}';
+yes(WL, 'allation-steps');
 yes(W2, 'installation-steps');
 const W3 = 'See https://docs.acmecorp-demo\n.io/guides/setup now';
 yes(W3, 'https://docs.acmecorp-demo');

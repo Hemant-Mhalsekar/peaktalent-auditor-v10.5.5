@@ -1,4 +1,4 @@
-// PeakTalent Auditor v11.4.13 - console build.
+// PeakTalent Auditor v11.4.14 - console build.
 // Open the PeakTalent review tab, open the browser console (Safari: Develop > Show JavaScript Console,
 // Chrome: Cmd/Ctrl+Option/Alt+J), paste this whole file and press Enter. Pasting again replaces the old copy.
 // GENERATED FILE - edit src/content.js and run `node scripts/build.js`.
@@ -20,7 +20,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.4.13";
+    const PT_VERSION = "11.4.14";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -4725,8 +4725,16 @@
             //   - it is a file name ("index.html") after a line ending in / - _ = & ? % ~ +; or
             //   - the left document has the joined link on one line (then even a plain word: "a/b/c/" + "page").
             // Never: another link, a list marker ("-", "2."), a bracket or quote, "e.g.", or a capitalised word ("Install").
+            // (v11.4.14) "nearly the longest line" is judged against the lines around the link, not the whole document: one
+            // long line elsewhere (a JSON blob, another URL) made every wrapped link look unwrapped
+            const rLinesW = rightText.split("\n");
+            const lineStartsW = []; { let p = 0; for (const l of rLinesW) { lineStartsW.push(p); p += l.length + 1; } }
+            const localMax = (pos) => {
+                let i = 0; while (i + 1 < lineStartsW.length && lineStartsW[i + 1] <= pos) i++;
+                let mx = 0; for (let k = Math.max(0, i - 3); k <= Math.min(rLinesW.length - 1, i + 3); k++) if (rLinesW[k].length > mx) mx = rLinesW[k].length;
+                return mx;
+            };
             let maxLine = 0;
-            for (const l of rightText.split("\n")) if (l.length > maxLine) maxLine = l.length;
             const notPiece = (tok) => /^[a-z][a-z0-9+.-]*:\/\//i.test(tok) || /^(?:[-*\u2022\u2013]|\d{1,3}[.)])$/.test(tok) ||
                 /^[(\["'`<{]/.test(tok) || /^(?:e\.g\.?|i\.e\.?|etc\.?|vs\.?)[,;:]?$/i.test(tok) ||
                 /^[A-Za-z]{1,5}\/[A-Za-z]{1,5}$/.test(tok) || /^\d{1,4}(?:\/\d{1,4}){1,2}$/.test(tok) ||
@@ -4735,6 +4743,9 @@
                 if (notPiece(tok)) return false;
                 if (/[\/?=&#%]/.test(tok) || /^\.[A-Za-z]{2,}/.test(tok)) return true;
                 if (/^[\w.~]+[-_][\w.~-]*$/.test(tok) && lineLen >= 40 && lineLen >= maxLine * 0.8) return true;
+                // (v11.4.14) a break in the middle of a word: the line ends in letters and the next starts with a lowercase piece
+                // joined by - or _ ("inst" + "allation-steps")
+                if (/[a-z]{2}$/i.test(prev) && /^[a-z][a-z0-9]*[-_][\w.~-]*$/.test(tok) && lineLen >= 30) return true;
                 // (v11.4.2) the middle of a long document id ("1AbCdEfGhIjKlMn" + "OpQrStUvWxYz0123456789"): letters and digits mixed
                 if (/^[A-Za-z0-9]{10,}$/.test(tok) && /\d/.test(tok) && /[A-Za-z]/.test(tok) && /[A-Za-z0-9]{6,}$/.test(prev) && lineLen >= 40 && lineLen >= maxLine * 0.8) return true;
                 return WRAP_END.test(prev) && /^[\w-]+\.[A-Za-z0-9]{2,5}$/.test(tok);
@@ -4755,6 +4766,7 @@
                     const startsQuery = /^[?&][^\s]/.test(nx[1]);
                     const prev = pieces[pieces.length - 1];
                     const lineLen = end - (rightText.lastIndexOf("\n", end - 1) + 1);
+                    maxLine = localMax(end - 1);
                     const tok = trimUrlEnd(nx[1]);
                     const literalLeft = !notPiece(tok) && /^[\w.~-]+$/.test(tok) && leftText.includes(pieces.join("") + tok);
                     if (!startsQuery && !isWrapPiece(nx[1], prev, lineLen) && !literalLeft) break;
@@ -5950,7 +5962,14 @@
                         let tokEnd = m.index + matchText.length;
                         while (tokEnd < val.length && !/\s/.test(val[tokEnd])) tokEnd++;
                         const fullToken = val.slice(tokStart, tokEnd);
-                        if (isPartOfUrl(fullToken) || fullToken.includes("://") || /\.[a-z]{2,}(?:\/|$)/i.test(fullToken)) {
+                        // (v11.4.14) A word inside a link or domain is not highlighted ("rahul" in "github.com/rahul"). But that test
+                        // must not block suggestions made for exactly such tokens: an e-mail ends in ".com", a password sits inside
+                        // "postgres://...", a username can be "kavya.nair". Those labels, and a suggestion that is the whole token, are
+                        // always highlighted. (Before, no e-mail address was ever highlighted on the page.)
+                        const core = fullToken.replace(/^[<("'\[`{]+|[>)"'\]`},.;:!?]+$/g, "");
+                        const wholeToken = core.toLowerCase() === matchText.toLowerCase();
+                        const urlSafeLabel = /^(?:Email Address|Credentials|IP Address|Person Username|Account Number|Contact Number|Indian Mobile Number|International Phone Number)$/.test(targetObj.label);
+                        if (!urlSafeLabel && !wholeToken && (isPartOfUrl(fullToken) || fullToken.includes("://") || /\.[a-z]{2,}(?:\/|$)/i.test(fullToken))) {
                             continue;
                         }
                         // User rule: "in mail it is crtly srubbed then it should not be marked"

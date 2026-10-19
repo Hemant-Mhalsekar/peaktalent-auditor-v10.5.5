@@ -1,5 +1,11 @@
 # Changelog
 
+## 11.4.14 - October 2026
+
+Found by a new end-to-end test of the whole page (`tests/dom_e2e.js`: a review page with the 13 chips, every kind of value suggested, highlighted, then labeled right and wrong):
+- **E-mail addresses were never highlighted on the page.** The engine suggested them, but the highlighter skipped any word that looks like a web address (ends in `.com`, `.io`, ... or holds `://`), which every e-mail does. The same check hid the password inside a connection URL, dotted usernames (`kavya.nair`), fediverse handles and the `demo.com` piece of a wrapped e-mail. The check now applies only to labels that must never sit inside a link (names, companies, Overscrubbed, ...); e-mails, credentials, IPs, usernames, accounts and phones, and any suggestion that is the whole word, are highlighted. This bug predates the 11.x work.
+- **Wrapped links next to a long line**: a link broken mid-word was joined only when its line was (nearly) the longest line of the whole document; one long line anywhere (a JSON blob, another URL) stopped it. It is now judged against the lines around it, and a mid-word break followed by a lowercase `-` / `_` piece (`inst` + `allation-steps`) is joined.
+
 ## 11.4.13 - October 2026
 
 - **Overscrubbed: version numbers are not dates.** In a package-lock.json, `"@babel/helper-plugin-utils": "^7.12.13"` (identical on both sides) got `12.13` as Overscrubbed: the changed-date rule took `7.12.13` for a date and compared it with another line of the left that only differs in its version (`"^7.18.10"`). Now a line that is on the left unchanged is skipped, and a version (after `^ ~ v = < >`, after a `version` key, or with an impossible day / month such as `4.17.20`) is never a date.
