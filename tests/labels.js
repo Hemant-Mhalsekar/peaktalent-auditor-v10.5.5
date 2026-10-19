@@ -747,6 +747,7 @@ yes('Allowed: 10.0.0.1, 10.0.0.2', '10.0.0.2');
 notAs('Price 1.25.30.40 kg', '1.25.30.40');
 notAs('Section 3.2.1.4 of the policy', '3.2.1.4');
 label2('Overscrubbed');
+yes('Call reception today', '9845012345', undefined, 'Call 9845012345 today');   // (v11.5.3) a word replaced by a phone
 yes('Car: KA 05 MN 4321', 'hello', undefined, 'Car: hello');   // (v11.5.2) a plate replaced by a word
 yes('Car: unknown', 'KA 05 MN 4321', undefined, 'Car: KA 05 MN 4321');   // a word replaced by a plate
 yes('Signed: Pooja Hegde', 'hello', undefined, 'Signed: hello');   // (v11.5.1) a name replaced by a plain word

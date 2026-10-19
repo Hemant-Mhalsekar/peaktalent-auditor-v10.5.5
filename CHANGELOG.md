@@ -1,5 +1,14 @@
 # Changelog
 
+## 11.5.3 - October 2026 (branch v2)
+
+Contact Number (reviewed on the 13-chip page):
+- **A number in brackets** is found (`Rahul (9845012345) called`).
+- **The `00` international prefix** stays in the label (`0044 20 7946 0321` was cut to `0044 20 7946`).
+- **ID numbers are not phones**: a number behind an order / invoice / ticket / booking / employee-ID key (`Order #9845012345`) is no longer labeled, and the mistake check flags a Contact Number label on one.
+- **Nothing is labeled inside a link**: the digits in `https://wa.me/919876543210` were also labeled Credentials.
+- **A word replaced by a phone number is Overscrubbed.** Extensions and vanity numbers stay unlabeled, by choice.
+
 ## 11.5.2 - October 2026 (branch v2)
 
 Vehicle Number Plate:
