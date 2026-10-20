@@ -457,6 +457,30 @@ same('language', 'Languages: English, Bengali, Hindi', 'Bengali', '', 'Person Na
     }
   }
 
+  // (v11.7.2) Address, second review: the whole address, without its key; never a part of a changed address or code
+  {
+    const AD = [
+      // [left line, right line, labeled text, label, expected ('ok' or the expected label), name]
+      ['Ship to: 12, MG Road, Pune 411001', null, 'Ship to: 12, MG Road, Pune 411001', 'Address', 'Address: 12, MG Road, Pune 411001', 'the key in front is not part of the address'],
+      ['Ship to 12, MG Road, Pune 411001', null, 'MG Road', 'Address', 'Address: 12, MG Road, Pune 411001', 'a part of a full address -> label the whole address'],
+      ['Plot 9, Sector 127, Noida 201301', 'Plot 4, Sector 127, Noida 201301', 'Sector 127, Noida 201301', 'Address', 'No label', 'the unchanged part of a changed address gets no label'],
+      ['12, MG Road, Pune 411001', '12, MG Road, Pune 422002', '12, MG Road', 'Address', 'No label', 'an address whose PIN changed gets no label'],
+      ['const street = "MG Road";', null, 'MG Road', 'Address', 'No label', 'a street name in code is not an address'],
+      ['Bureau: 12 Rue de Rivoli, 75001 Paris', null, '12 Rue de Rivoli, 75001 Paris', 'Address', 'ok', 'a French address is an address'],
+      ['Office: 1-1-2 Oshiage, Sumida-ku, Tokyo 131-0045', null, '1-1-2 Oshiage, Sumida-ku, Tokyo 131-0045', 'Address', 'ok', 'a Japanese address is an address'],
+      ['Near City Mall', null, 'Near City Mall', 'Address', 'No label', 'a landmark alone is not an address'],
+      ['Bengaluru PIN 560001', null, 'Bengaluru PIN 560001', 'Address', 'No label', 'a city + PIN without a street is not an address'],
+    ];
+    for (const [l, r, word, label, exp, name] of AD) {
+      const p = await page([l], [r || l]);
+      const m = await p.annotate(word, label);
+      const st = p.state(m);
+      const ok = exp === 'ok' ? st.mark === 'ok' : (st.mark === 'wrong' && st.expected === exp);
+      check(ok, 'Address review: ' + name, st);
+      p.close();
+    }
+  }
+
   // (v11.4.8) a whole connection URL labeled Credentials: only the password should be
   {
     const line = ['DATABASE_URL=postgres://admin:S3cretPass@db.acme-demo.io:5432/prod'];

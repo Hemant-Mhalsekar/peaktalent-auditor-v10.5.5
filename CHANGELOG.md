@@ -1,5 +1,17 @@
 # Changelog
 
+## 11.7.2 - October 2026 (branch v2)
+
+Address (second review, 13-chip page):
+- **The label starts at the first part of the address**: `#45, 2nd Cross, ...` (the `#` was dropped), `Tower B, 5th Floor, ...`, `Flat 3, 10 Downing Street, ...`, `Level 5, 1 Martin Place, ...`. A lead-in (`Office at`, `Lives in`) is not part of it.
+- **... and runs to its last part**: `1600 Pennsylvania Ave NW Washington DC 20500` (no commas), `100 Queen St W, Toronto, ON M5H 2N2` (direction after the street).
+- **Found**: French (`12 Rue de Rivoli, 75001 Paris`) and Japanese (`1-1-2 Oshiage, Sumida-ku, Tokyo 131-0045`) addresses; `Salai` / `Veedhi` (Tamil for road / street).
+- **Multi-line addresses**: a locality line between two address lines (`Indiranagar`) is labeled too. **One address, one label**: no second label for its tail (`4, Near City Mall, ...`).
+- **Separate fields** (user rule): with a street field in the block, `City:`, `State:` and `ZIP:` values are parts of the address (the ZIP is Address on a page without a Postal Code chip). A city or state field on its own stays unlabeled.
+- **Not an address** (user rules): a landmark alone (`Near City Mall`), a city + PIN without a street (`Bengaluru PIN 560001`).
+- **Mistake check**: flags a label with its key (`Ship to: ...` -> the address only), a part of a full address (`MG Road` -> the whole address), the unchanged part of a changed address (house number, street or PIN changed), and a street name in code.
+- New test `tests/address.js` (58 checks); 9 Address cases in the label check; separate fields in the end-to-end test.
+
 ## 11.7.1 - October 2026 (branch v2)
 
 Credentials (second review, 13-chip page):
