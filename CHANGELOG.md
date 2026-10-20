@@ -1,5 +1,14 @@
 # Changelog
 
+## 11.7.6 - October 2026 (branch v2)
+
+Account Number (second review, 13-chip page; Indian and US data):
+- **Mistake check names the account number** when a label has its key (`Account Number: 5010...` -> only the number) or covers only a part of a spaced number or IBAN (-> the whole number); it said "No label" or accepted the part.
+- **Not accounts**: an order / invoice / ticket number, a customer ID, an amount and a timestamp labeled Account Number are flagged; any 8-18 digit number used to pass.
+- **A plain word replaced by an account number is Overscrubbed** (user rule).
+- Customer IDs, sort codes, BSB, loan / CLABE / folio numbers stay unlabeled (user rules: Indian and US data only).
+- New test `tests/account.js` (24 checks); 9 Account Number cases in the label check.
+
 ## 11.7.5 - October 2026 (branch v2)
 
 URL/Link (second review, 13-chip page):

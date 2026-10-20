@@ -1,4 +1,4 @@
-// PeakTalent Auditor v11.7.5 - console build.
+// PeakTalent Auditor v11.7.6 - console build.
 // Open the PeakTalent review tab, open the browser console (Safari: Develop > Show JavaScript Console,
 // Chrome: Cmd/Ctrl+Option/Alt+J), paste this whole file and press Enter. Pasting again replaces the old copy.
 // GENERATED FILE - edit src/content.js and src/page-hook.js, then run `node scripts/build.js`.
@@ -112,7 +112,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.7.5";
+    const PT_VERSION = "11.7.6";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -702,6 +702,11 @@
         // (v11.4.0) a postal code can have a phone-like shape ("08139-555"): with a postal label it is judged as a postal code below
         const postalL = L === LBL_POSTAL || L === LBL_KODEPOS || L === LBL_CEP;
         if (strongL && strongL !== L && !(L === "Credentials" && PHONE_LABELS.has(strongL)) && !(postalL && isPostalCodeShape(T))) return wrong(strongL, `This is a ${strongL}.`);
+        // (v11.7.6) an account number labeled with its key ("Account Number: 5010...") -> only the number
+        if (L === "Account Number") {
+            const kv = /^([A-Za-z][A-Za-z ./#_-]{1,24}?)\s*[:#=-]?\s*["']?([A-Z]{2}\d{2}(?:\s?[A-Z0-9]{4}){2,7}(?:\s?[A-Z0-9]{1,4})?|\d[\d -]{6,22}\d)["']?$/.exec(T);
+            if (kv && /acc|a\/c|iban|acct/i.test(kv[1])) return wrong("Account Number: " + kv[2], "Only the account number is labeled, not its key.");
+        }
         const keyLike = /^["']?[A-Za-z_][\w.-]*["']?$/.test(T) && new RegExp('["\']?' + escRe(T) + '["\']?\\s*[:=]').test(rLine);
         if (keyLike && !/^@/.test(T)) return wrong(PTC_NONE, `This is a field name / key, not a ${L}.`);
         if (isFieldLabelOrHeader(T)) return wrong(PTC_NONE, `This is a field label or column header, not a ${L}.`);
@@ -772,10 +777,20 @@
                 if (/^@/.test(T) && (BOT_HANDLE.test(T.slice(1)) || isUserIdHandle(T.slice(1)))) return wrong(PTC_NONE, "A bot or a user id is not a person's username.");
                 return wrong(PTC_NONE, "This is not a person's username.");
             }
-            case "Account Number":
+            case "Account Number": {
+                // (v11.7.6) a label with its key, or only a part of the number: the correction names the account number
+                {
+                    const own = [...lookup.values()].find(t => t && t.label === "Account Number" && t.text !== T && t.text.includes(T) && rLine.includes(t.text));
+                    if (own) return wrong("Account Number: " + own.text, "Label the whole account number as one label.");
+                    // an order / invoice / amount / time value is not an account
+                    const before = rLine.slice(0, Math.max(0, rLine.indexOf(T)));
+                    if (/(?<![A-Za-z])(?:order|invoice|inv|ticket|booking|ref(?:erence)?|txn|transaction|pnr|awb|tracking|receipt|bill|claim|case|serial|sku|item|customer\s*id|cust\s*id|cif|amount|amt|total|balance|price|cost|fee|salary|created|updated|modified|timestamp|time|date|epoch|expires?)(?![A-Za-z])[\w\s"'-]{0,12}[:#=]?\s*["']?$/i.test(before))
+                        return wrong(PTC_NONE, "This is an order / customer id, an amount or a time value, not a bank account number.");
+                }
                 if (isIbanFormat(T)) return null;   // (v11.4.10)
                 if (/\b(?:routing|aba|rtn)\b[^\d\n]{0,15}$/i.test(rLine.slice(0, Math.max(0, rLine.indexOf(T))))) return wrong("Credentials", "This is a US routing (ABA) number: it identifies the bank branch, like an IFSC code, so it is Credentials.");
                 return (/^\d[\d -]{7,22}\d$/.test(T) && digits.length >= 8 && digits.length <= 18) ? null : wrong(PTC_NONE, "This is not a bank account number (8-18 digits).");
+            }
             case "Date": {
                 if (!isDateFormat(T)) return wrong(ordinaryWord ? PTC_NONE : PTC_NONE, "This is not a date.");
                 // (v11.4.9) only a full date (day, month, year), behind a DOB key (any spelling or language, "b.")
@@ -4850,6 +4865,18 @@
                             for (const piece of (diff.changed || "").split(/\s+/)) { const ex = targetMap.get(piece); if (ex && ex.label === "Overscrubbed") targetMap.delete(piece); }
                             const ex = targetMap.get(cj);
                             if (!ex || ex.priority < 66) targetMap.set(cj, { text: cj, label: "Overscrubbed", cls: "pt-overscrub", priority: 66 });
+                            continue;
+                        }
+                    }
+                    // (v11.7.6) user rule: a plain word replaced by an account number ("Account: savings" -> "Account: 50100234567891")
+                    {
+                        const ow = (diff.original || "").trim(), cw = (diff.changed || "").trim();
+                        const dg = cw.replace(/\D/g, "");
+                        if (ow && cw && /^[A-Za-z'-]+(?:\s[A-Za-z'-]+){0,2}$/.test(ow) && ow.split(/\s+/).every(w => isCommonWord(w.toLowerCase()) && !isGivenOrSurname(w)) &&
+                            /^\d[\d -]{6,22}\d$/.test(cw) && dg.length >= 8 && dg.length <= 18 && !phoneLabelFor(cw) && !isDateFormat(cw) && rightText.includes(cw) && !leftText.includes(cw)) {
+                            __ptOrdinaryOrigins.add(cw);
+                            const ex = targetMap.get(cw);
+                            if (!ex || ex.priority < 66) targetMap.set(cw, { text: cw, label: "Overscrubbed", cls: "pt-overscrub", priority: 66 });
                             continue;
                         }
                     }
