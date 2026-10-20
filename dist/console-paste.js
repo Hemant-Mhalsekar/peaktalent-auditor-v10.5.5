@@ -1,4 +1,4 @@
-// PeakTalent Auditor v11.7.2 - console build.
+// PeakTalent Auditor v11.7.3 - console build.
 // Open the PeakTalent review tab, open the browser console (Safari: Develop > Show JavaScript Console,
 // Chrome: Cmd/Ctrl+Option/Alt+J), paste this whole file and press Enter. Pasting again replaces the old copy.
 // GENERATED FILE - edit src/content.js and src/page-hook.js, then run `node scripts/build.js`.
@@ -112,7 +112,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.7.2";
+    const PT_VERSION = "11.7.3";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -709,10 +709,18 @@
         const ordinaryWord = plain && plain === T.replace(/\s+/g, " ").trim() && isOrdinaryPhrase(plain);
         const digits = T.replace(/\D/g, "");
         switch (L) {
-            case "Email Address":
+            case "Email Address": {
+                // (v11.7.3) a piece of a connection URL ("postgres://admin:S3cret@db...") is not an e-mail: only the password is labeled
+                const dsnHit = /[a-z][a-z0-9+.-]*:\/\/[^:\/\s@]*:([^@\s\/]+)@/i.exec(rLine);
+                if (dsnHit && T.includes("@") && rLine.includes("://") && rLine.indexOf(T) > rLine.indexOf("://") && T.startsWith(dsnHit[1])) return wrong("Credentials: " + dsnHit[1], "This is part of a connection URL: only its password is labeled (Credentials).");
+                // (v11.7.3) a part of a fediverse handle ("@priya@mastodon.social") is that handle
+                if (isEmail && new RegExp("(?:^|[^\\w.@])@" + escRe(T) + "(?![\\w.-])").test(rLine)) return wrong("Person Username: @" + T, "This is part of a fediverse handle (@name@server): label the whole handle as Person Username.");
                 if (isEmail) return null;
+                // (v11.7.3) a label that covers more or less than the e-mail
+                { const em = emailAroundLabel(T, rLine); if (em) return wrong("Email Address: " + em, "Label exactly the e-mail address, nothing more or less."); }
                 if (isDefaultOrPlaceholderEmail(T)) return wrong(PTC_NONE, "This is a placeholder address (example.com, test.com, ...), not personal data.");
                 return wrong(PTC_NONE, "This is not an e-mail address.");
+            }
             case "URL/Link":
                 if (/^http:\/\//i.test(T) || /^www\./i.test(T)) return wrong(PTC_NONE, "Only https:// links are labeled.");
                 if (isFileAssetLink(T)) return wrong(PTC_NONE, "This links to a file (image, script, style, font, archive, media, data or code). File links are not labeled (documents are).");
@@ -807,6 +815,7 @@
                 return null;
             }
             case "Person Name":
+                { const em = emailAroundLabel(T, rLine); if (em && em.includes(T) && !emailsIn(rLine).reduce((x, e) => x.split(e).join(" "), rLine).includes(T)) return wrong("Email Address: " + em, "This is part of an e-mail address: label the whole e-mail as Email Address."); }   // (v11.7.3)
                 if (ordinaryWord || isLanguageWord(plain)) return wrong(PTC_NONE, "This is an ordinary word, place or language, not a person's name.");
                 // (v11.4.7) a place name inside a suggested address ("Anna Salai", "Baker Street") is part of the Address
                 for (const t of lookup.values()) if (t && t.label === "Address" && t.text !== T && t.text.includes(T) && rLine.includes(t.text)) return wrong(PTC_NONE, "This is a place inside an address, not a person's name. Label the whole address as Address instead.");
@@ -815,6 +824,7 @@
                 if (TECH_TOOLS.has(T.toLowerCase())) return wrong(PTC_NONE, "This is a software / technology name.");
                 return null;
             case "Business Name":
+                { const em = emailAroundLabel(T, rLine); if (em && em.includes(T) && !emailsIn(rLine).reduce((x, e) => x.split(e).join(" "), rLine).includes(T)) return wrong("Email Address: " + em, "This is part of an e-mail address: label the whole e-mail as Email Address."); }   // (v11.7.3)
                 // (v11.5.0) a platform used as a tool ("on Slack", "via WhatsApp") is not a company; as an employer it is
                 if (PLATFORM_NAMES.test(T) && /\b(?:on|via|using|through|with|in|into|over)\s+(?:the\s+|my\s+|our\s+|your\s+)?$/i.test(rLine.slice(0, Math.max(0, rLine.indexOf(T))))) return wrong(PTC_NONE, "A platform used as a tool (on Slack, via WhatsApp) is not a company. As an employer (works at LinkedIn) it is.");
                 if (KNOWN_BUSINESS_NAMES.has(T.toLowerCase()) || T.split(/\s+/).some(w => CORP_SUFFIX_RE.test(w))) { if (!/\bbank\b/i.test(T)) return null; }
@@ -1229,7 +1239,7 @@
     function isDefaultOrPlaceholderEmail(str) {
         if (!str) return false;
         const s = str.trim().toLowerCase();
-        if (/@(?:example\.(?:com|org|net)|test\.(?:com|org)|dummy\.(?:com|org)|sample\.(?:com|org)|placeholder\.(?:com|org)|domain\.com)\b/i.test(s)) return true;
+        if (/@(?:example\.(?:com|org|net)|test\.(?:com|org)|dummy\.(?:com|org)|sample\.(?:com|org)|placeholder\.(?:com|org)|domain\.com|(?:your|my)?company\.com|(?:your|my)domain\.com|website\.com)\b/i.test(s)) return true;   // (v11.7.3) template domains
         // (v11.4.3) the name part alone does not make a placeholder: test@acmecorp-demo.io is a real company's mailbox
         return false;
     }
@@ -3010,7 +3020,8 @@
 
     const NON_EMAIL_FILE_EXTENSIONS = /\.(?:png|jpe?g|gif|svg|webp|ico|bmp|tiff|heic|mp4|mp3|wav|mov|avi|js|ts|jsx|tsx|css|scss|html|xml|json|ya?ml|md|txt|csv|tar|gz|zip|rar|7z|exe|dmg|apk|ipa|bin|pdf|docx?|xlsx?|pptx?)$/i;
 
-    const EMAIL_LOCAL = "[A-Za-z0-9._%+-]+(?:'[A-Za-z0-9._%+-]+)*";
+    // (v11.7.3) accented letters belong to the name part ("jos\u00E9@...", "jo\u00E3o.silva@...", "m\u00FCller@...")
+    const EMAIL_LOCAL = "[A-Za-z0-9._%+\\u00C0-\\u024F-]+(?:'[A-Za-z0-9._%+\\u00C0-\\u024F-]+)*";
 
     // ---- (v11.4.6) Person Username helpers ----
     const GROUP_MENTION = /^(?:here|channel|everyone|all|team|group|room|someone|admins?|moderators?|mods)$/i;
@@ -3048,6 +3059,16 @@
         if (GENERIC_ACCOUNT.test(s)) return false;
         if (/^[A-Za-z]+$/.test(s) && isCommonWord(s.toLowerCase()) && !couldBeName(s)) return false;
         return true;
+    }
+    // (v11.7.3) the real e-mails on a line
+    function emailsIn(line) {
+        const re = new RegExp("(?<![A-Za-z0-9._%+\\u00C0-\\u024F-])" + EMAIL_LOCAL + "@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b", "g");
+        return ((line || "").match(re) || []).filter(isEmailAddressFormat);
+    }
+    // The e-mail on `line` that a label `T` covers only partly or with extra text ("rahul.sharma", "mailto:x@y.z", "<x@y.z>"), or null.
+    function emailAroundLabel(T, line) {
+        for (const em of emailsIn(line)) if (em !== T && (em.includes(T) || T.includes(em))) return em;
+        return null;
     }
     function isEmailAddressFormat(str) {
         if (!str) return false;
@@ -4770,6 +4791,18 @@
                             continue;
                         }
                     }
+                    // (v11.7.3) user rule: a plain word replaced by an e-mail ("Mail support" -> "Mail rahul@infosys.com") is Overscrubbed
+                    {
+                        const ow = (diff.original || "").trim(), cw = (diff.changed || "").replace(/\s+/g, "");
+                        if (ow && cw && /^[A-Za-z'-]+(?:\s[A-Za-z'-]+){0,2}$/.test(ow) && ow.split(/\s+/).every(w => isCommonWord(w.toLowerCase()) && !isGivenOrSurname(w)) &&
+                            isEmailAddressFormat(cw) && rightText.includes(cw) && !leftText.includes(cw)) {
+                            __ptOrdinaryOrigins.add(cw);
+                            for (const piece of (diff.changed || "").split(/\s+/)) { const ex = targetMap.get(piece); if (ex && ex.label === "Overscrubbed") targetMap.delete(piece); }
+                            const ex = targetMap.get(cw);
+                            if (!ex || ex.priority < 66) targetMap.set(cw, { text: cw, label: "Overscrubbed", cls: "pt-overscrub", priority: 66 });
+                            continue;
+                        }
+                    }
                     // (v11.7.1) a plain word replaced by a secret-looking value ("Mode: standard" -> "Mode: Xk9#mPq2vL7"): one label for
                     // the whole value (the diff splits it at "#", "!", ...). A secret replaced by a word is correct redaction.
                     {
@@ -5462,7 +5495,7 @@
         // the label, not an e-mail). Group mentions (@here, @channel, @everyone, @all) are not people. Code is told apart by
         // where the @word stands (isCodeAt), not by its spelling: "Follow @RahulVerma" is a handle, "@Override" above
         // "public void run()" is code.
-        const handleRegex = /(?<![A-Za-z0-9_.@\/])@([A-Za-z_](?:[A-Za-z0-9_.-]{0,28}[A-Za-z0-9_])?)(?:@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}))?(?![A-Za-z0-9_@\/-])/g;   // "@2x" is an image suffix
+        const handleRegex = /(?<![A-Za-z0-9_.@\/\u00C0-\u024F])@([A-Za-z_](?:[A-Za-z0-9_.-]{0,28}[A-Za-z0-9_])?)(?:@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}))?(?![A-Za-z0-9_@\/-])/g;   // "@2x" is an image suffix
         let hM;
         while ((hM = handleRegex.exec(rightText)) !== null) {
             if (hM[1].length < 2 && !hM[2]) continue;
@@ -5521,7 +5554,7 @@
 
         // Step 6: Scan for Email Addresses that exist identically in BOTH left and right documents
         // Rule: "mail should same as left then label it if not no"
-        const emailRegex = new RegExp("(?<![A-Za-z0-9._%+-])" + EMAIL_LOCAL + "@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b", "g");
+        const emailRegex = new RegExp("(?<![A-Za-z0-9._%+\\u00C0-\\u024F-])" + EMAIL_LOCAL + "@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b", "g");
         const rightEmails = rightText.match(emailRegex) || [];
         for (const em of rightEmails) {
             // "git@github.com:acme/tool.git" is an SSH remote, not an e-mail.

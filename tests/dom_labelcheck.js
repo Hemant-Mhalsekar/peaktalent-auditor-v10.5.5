@@ -481,6 +481,31 @@ same('language', 'Languages: English, Bengali, Hindi', 'Bengali', '', 'Person Na
     }
   }
 
+  // (v11.7.3) Email Address, second review: exactly the e-mail, never a part of a handle or a connection URL
+  {
+    const EMC = [
+      // [left line, right line, labeled text, label, expected ('ok' or the expected label), name]
+      ['<a href="mailto:priya@acme-demo.io">Write</a>', null, 'mailto:priya@acme-demo.io', 'Email Address', 'Email Address: priya@acme-demo.io', 'mailto: is not part of the e-mail'],
+      ['From: Rahul <rahul@infosys.com>', null, '<rahul@infosys.com>', 'Email Address', 'Email Address: rahul@infosys.com', 'the < > are not part of the e-mail'],
+      ['Mail rahul.sharma@infosys.com', null, 'rahul.sharma', 'Email Address', 'Email Address: rahul.sharma@infosys.com', 'only the name part labeled -> the whole e-mail'],
+      ['Find me @priya@mastodon.social', null, 'priya@mastodon.social', 'Email Address', 'Person Username: @priya@mastodon.social', 'a part of a fediverse handle -> the whole handle'],
+      ['DATABASE_URL=postgres://admin:S3cret99@db.acme-demo.io/app', null, 'S3cret99@db.acme-demo.io', 'Email Address', 'Credentials: S3cret99', 'a piece of a connection URL is not an e-mail'],
+      ['Mail rahul.sharma@infosys.com', null, 'rahul.sharma', 'Person Name', 'Email Address: rahul.sharma@infosys.com', 'a name inside an e-mail -> label the whole e-mail'],
+      ['Mail rahul@infosys.com', null, 'infosys', 'Business Name', 'Email Address: rahul@infosys.com', 'a company inside an e-mail -> label the whole e-mail'],
+      ['Mail josé@empresa.com.br', null, 'josé@empresa.com.br', 'Email Address', 'ok', 'an e-mail with an accent is an e-mail'],
+      ['Mail name@company.com', null, 'name@company.com', 'Email Address', 'No label', 'a template address is not personal data'],
+      ['Mail support', 'Mail rahul@infosys.com', 'rahul@infosys.com', 'Overscrubbed', 'ok', 'a word replaced by an e-mail is Overscrubbed'],
+    ];
+    for (const [l, r, word, label, exp, name] of EMC) {
+      const p = await page([l], [r || l]);
+      const m = await p.annotate(word, label);
+      const st = p.state(m);
+      const ok = exp === 'ok' ? st.mark === 'ok' : (st.mark === 'wrong' && st.expected === exp);
+      check(ok, 'Email review: ' + name, st);
+      p.close();
+    }
+  }
+
   // (v11.4.8) a whole connection URL labeled Credentials: only the password should be
   {
     const line = ['DATABASE_URL=postgres://admin:S3cretPass@db.acme-demo.io:5432/prod'];
