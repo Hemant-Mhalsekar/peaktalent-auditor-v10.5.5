@@ -1,4 +1,4 @@
-// PeakTalent Auditor - page hook (v11.6.0).
+// PeakTalent Auditor - page hook (v11.7.0).
 // Runs inside the page (Chrome: content script with "world": "MAIN", at document_start; userscript: page context) so it can
 // see the review data the dashboard itself downloads. It reads ONLY the label list and the annotation spans of
 // GET .../annotation-review and of the dashboard's own add / change / remove requests, and hands them to the auditor with
@@ -13,9 +13,11 @@
     const post = (type, data) => { try { window.postMessage({ source: 'pt-auditor-hook', type, data }, window.location.origin); } catch (e) {} };
     const span = (a) => ({ id: a.id || null, label_id: a.label_id, start: a.start, end: a.end, text: typeof a.text === 'string' ? a.text : '' });
 
-    function onReview(json) {
+    function onReview(json, url) {
         if (!json || !Array.isArray(json.labels)) return;
+        const fromUrl = /\/tasks\/([^/]+)\//.exec(url || '');
         const data = {
+            task: String(json.task_id || (fromUrl && fromUrl[1]) || ''),   // (v11.7.0) the task id only, to count learned terms per task
             labels: json.labels.map(l => ({ id: l.id, title: l.title, slug: l.slug, color: l.color })),
             right: (json.right_annotations || []).map(span),
             left: (json.left_annotations || []).map(span),
@@ -30,7 +32,7 @@
             if (!m) return;
             method = (method || 'GET').toUpperCase();
             const isAnnotations = /\/annotation-review\/annotations/.test(url);
-            if (!isAnnotations && method === 'GET') { onReview(JSON.parse(resText)); return; }
+            if (!isAnnotations && method === 'GET') { onReview(JSON.parse(resText), url); return; }
             if (!isAnnotations) return;
             const id = m[1] || null;
             if (method === 'POST' && !id) {

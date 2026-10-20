@@ -36,6 +36,7 @@ if (haveJsdom) {
     execFileSync(process.execPath, [rel('tests', 'dom_labelcheck.js')], { stdio: 'inherit', cwd: root });
     execFileSync(process.execPath, [rel('tests', 'dom_e2e.js')], { stdio: ['ignore', 'inherit', 'ignore'], cwd: root });
     execFileSync(process.execPath, [rel('tests', 'dom_review_data.js')], { stdio: ['ignore', 'inherit', 'ignore'], cwd: root });
+    execFileSync(process.execPath, [rel('tests', 'dom_learning.js')], { stdio: ['ignore', 'inherit', 'ignore'], cwd: root });
     execFileSync(process.execPath, [rel('tests', 'dom_chrome_colours.js')], { stdio: ['ignore', 'inherit', 'ignore'], cwd: root });
   }
   catch (e) { console.error('\nBuild stopped: DOM tests failed.'); process.exit(1); }

@@ -34,6 +34,7 @@ async function refresh() {
   $('stats').hidden = false;
   $('tags').textContent = res.tags;
   $('mistakes').textContent = res.mistakes || 0;
+  showLearning(await send(tab.id, { action: 'learning' }));
   // (v11.3.5) labels the check could not read or judge: "0 mistakes" must not look like "all correct" when this is not 0
   const notChecked = res.notChecked || 0;
   if ($('notchecked')) $('notchecked').textContent = notChecked;
@@ -61,6 +62,43 @@ $('diag').addEventListener('click', async () => {
   $('diagtext').select();
   try { await navigator.clipboard.writeText(text); $('diag').textContent = 'Copied - paste it in your message'; }
   catch (e) { try { document.execCommand('copy'); $('diag').textContent = 'Copied - paste it in your message'; } catch (x) { $('diag').textContent = 'Select the text below and copy it'; } }
+});
+
+// (v11.7.0) learning from reviewers: what has been learned on this computer, with Export (JSON) and Reset
+function showLearning(res) {
+  if (!res || !res.summary) return;
+  const s = res.summary;
+  $('learn').hidden = false;
+  $('l-dec').textContent = s.decisions;
+  $('l-hidden').textContent = s.hiddenTexts;
+  $('l-terms').textContent = s.learnedTerms;
+  const low = s.labels.filter(x => x.low).map(x => x.label);
+  $('l-low').textContent = low.length ? low.join(', ') : 'none';
+}
+
+$('l-export').addEventListener('click', async () => {
+  const tab = await activeTab();
+  const res = tab && await send(tab.id, { action: 'learning-export' });
+  if (!res || !res.json) return;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([res.json], { type: 'application/json' }));
+  a.download = 'peaktalent-learning-' + new Date().toISOString().slice(0, 10) + '.json';
+  document.body.appendChild(a); a.click(); a.remove();
+});
+
+// Reset asks for a second click instead of a dialog (a dialog closes the popup)
+let resetArmed = null;
+$('l-reset').addEventListener('click', async () => {
+  if (!resetArmed) {
+    $('l-reset').textContent = 'Click again to reset';
+    resetArmed = setTimeout(() => { resetArmed = null; $('l-reset').textContent = 'Reset'; }, 3000);
+    return;
+  }
+  clearTimeout(resetArmed); resetArmed = null;
+  const tab = await activeTab();
+  const res = tab && await send(tab.id, { action: 'learning-reset' });
+  $('l-reset').textContent = 'Reset';
+  showLearning(res);
 });
 
 refresh();

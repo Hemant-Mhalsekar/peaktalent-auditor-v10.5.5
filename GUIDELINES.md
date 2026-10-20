@@ -314,5 +314,21 @@ Every document processed by the automated engine or human annotator must pass a 
 4. **State Code Authenticity Check**:
    - Confirm every `Vehicle Number Plate` begins with an official 2-letter Indian State/UT code (or a legacy code listed in 5.4).
 
+### 7.1 Learning from reviewers (v11.7.0)
+
+The auditor learns from what reviewers save, on each reviewer's own computer:
+
+| What the reviewer does | What the auditor learns |
+| --- | --- |
+| Saves the suggested label on suggested text | Accepted (for the label and for that exact text) |
+| Saves another label on suggested text, or deletes the suggested label | Rejected |
+| Ignores a suggestion | Nothing |
+| Labels text that was not suggested | Remembered; suggested once the same label is saved on 2 different tasks |
+
+- A text rejected 3+ times and never accepted stops being suggested with that label.
+- A label with 20+ decisions and under 30% accepted is shown faded ("low confidence").
+- The label check and the rules in this document are never changed by learning.
+- Use the toolbar popup to see the counts, **Export** them as JSON, or **Reset** them.
+
 > The browser auditor is an assistant, not an authority. It highlights likely labels and likely mistakes; the annotator makes the final call. Known gaps are listed in the README under *Known limitations*.
 
