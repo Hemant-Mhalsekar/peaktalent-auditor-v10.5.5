@@ -54,6 +54,14 @@ const L = [
   "Sean O'Brien called; ping srinadh about it",
   'Temp reg TS 09 TR 2024 1234',
   'Rahul (9845012346) called about Order #9845012399',
+  'Shipping details',
+  'Street: 14 Linking Road',
+  'City: Mumbai',
+  'ZIP: 400050',
+  'Thanks',
+  'Pincode: 560099',
+  'Thanks again',
+  '#45, 2nd Cross, Indiranagar, Bengaluru - 560038',
 ];
 const R = L.map(l => l.replace('Council Member', 'Council Beagenhydra').replace('12 March 2025', '19 April 2025'));
 const EXPECT = [
@@ -73,8 +81,10 @@ const EXPECT = [
   ['https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/edit#gid=0', 'URL/Link'],
   ["Sean O'Brien", 'Person Name'], ['srinadh', 'Person Name'],
   ['TS 09 TR 2024 1234', 'Vehicle Number Plate'], ['9845012346', 'Contact Number'], ['Rahul', 'Person Name'],   // a later mention of "Rahul Sharma"
+  // (v11.7.2) separate address fields: the ZIP is part of the address (no Postal Code chip on this page)
+  ['14 Linking Road', 'Address'], ['Mumbai', 'Address'], ['400050', 'Address'], ['#45, 2nd Cross, Indiranagar, Bengaluru - 560038', 'Address'],
 ];
-const MUST_NOT = ['9845012399', 'https://cdn.acmecorp-demo.io/static/logo.png', '12.13', '18.10', 'postgres://admin:S3cretPass@db.acme-demo.io:5432/prod'];
+const MUST_NOT = ['560099', '9845012399', 'https://cdn.acmecorp-demo.io/static/logo.png', '12.13', '18.10', 'postgres://admin:S3cretPass@db.acme-demo.io:5432/prod'];
 (async () => {
   const dom = new JSDOM(`<!doctype html><body><div>${chips}<span>Reference · read-only</span><span>Annotate here</span><span>left.docx-1</span><span>right.docx-1</span></div>
     <div id="left">${L.map(l => `<div>${esc(l)}</div>`).join('')}</div><div id="right">${R.map(l => `<div>${esc(l)}</div>`).join('')}</div></body>`,
@@ -91,7 +101,7 @@ const MUST_NOT = ['9845012399', 'https://cdn.acmecorp-demo.io/static/logo.png', 
   const tags = Array.from(Rp.querySelectorAll('span.pt-tag')).map(t => [t.textContent, t.getAttribute('data-label')]);
   let bad = 0;
   for (const [txt, lab] of EXPECT) { const hit = tags.find(([x]) => x === txt); if (!hit || hit[1] !== lab) { bad++; console.log('✗ MISSING/WRONG', JSON.stringify(txt), 'want', lab, 'got', hit ? hit[1] : 'nothing'); } }
-  for (const txt of MUST_NOT) if (tags.some(([x]) => x === txt)) { bad++; console.log('✗ SHOULD NOT TAG', txt); }
+  for (const txt of MUST_NOT) if (tags.some(([x]) => x === txt)) { bad++; console.log('✗ SHOULD NOT TAG', txt, JSON.stringify(tags.filter(([x]) => x === txt))); }
   const extra = tags.filter(([x]) => !EXPECT.some(([t]) => t === x));
   console.log('extra tags:', JSON.stringify(extra));
   console.log('status:', (w.document.getElementById('pt-status-text') || {}).textContent);

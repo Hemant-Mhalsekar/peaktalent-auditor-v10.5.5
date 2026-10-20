@@ -15,7 +15,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.7.1";
+    const PT_VERSION = "11.7.2";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -665,10 +665,29 @@
                 const ctxTxt = rLine + " " + lineOf(leftText, T);
                 return DOB_KEY_RE.test(ctxTxt) ? null : wrong(PTC_NONE, "Only dates of birth are labeled.");
             }
-            case "Address":   // (v11.4.0) full or partial; a city, state, country or postal code alone is not an address
+            case "Address": {   // (v11.4.0) full or partial; a city, state, country or postal code alone is not an address
+                // (v11.7.2) the key in front ("Ship to: ") is not part of the address
+                const keyed = /^([A-Za-z][A-Za-z /]{1,24}):\s*(\S.*)$/.exec(T);
+                if (keyed && (isCompleteAddress(keyed[2]) || isPartialAddress(keyed[2]))) return wrong("Address: " + keyed[2], `The key "${keyed[1]}:" is not part of the address.`);
+                // (v11.7.2) a street name in code ("const street = \"MG Road\";") is not an address
+                if (/^\s*(?:const|let|var|final|val|private|public|static|String|string|def)\b|;\s*$/.test(rLine) && /["'`]/.test(rLine)) return wrong(PTC_NONE, "This is a value in code, not an address.");
+                // (v11.7.2) user rule: the whole address is one label
+                for (const t of lookup.values()) if (t && t.label === "Address" && t.text !== T && t.text.includes(T) && rLine.includes(t.text)) return wrong("Address: " + t.text, "Label the whole address as one label.");
+                // (v11.7.2) a part of an address that was changed (house number, street or PIN): no label at all
+                {
+                    const at = rLine.indexOf(T);
+                    if (at >= 0) {
+                        const segs = rLine.slice(0, at).split(/,\s*/); segs.pop();
+                        let k = segs.length; while (k > 0 && k > segs.length - 2 && /\d|^(?:flat|plot|house|door|shop|unit|tower|wing|block|floor|level|suite)\b/i.test(segs[k - 1])) k--;
+                        const start = k < segs.length ? rLine.indexOf(segs[k]) : at;
+                        const S = rLine.slice(start).replace(/^[A-Za-z][A-Za-z /]{1,24}:\s*/, "").replace(/[\s.,;]+$/, "");
+                        if (S !== T && S.includes(T) && isCompleteAddress(S) && !(leftText || "").includes(S)) return wrong(PTC_NONE, "This is part of an address that was changed (scrubbed). A changed address gets no label at all.");
+                    }
+                }
                 if (isCompleteAddress(T) || isPartialAddress(T)) return null;
                 if (isPostalCodeShape(T) && !/\s\S+\s/.test(T)) return labelForPage(LBL_POSTAL) ? wrong(LBL_POSTAL, "A postal code on its own is labeled Postal Code, not Address.") : wrong(PTC_NONE, "A postal code on its own is not an address.");
                 return wrong(PTC_NONE, "Not an address (a city, state or country alone is not labeled).");
+            }
             case "Credentials": {
                 if (ordinaryWord) return wrong(PTC_NONE, "This is an ordinary word, not a credential.");
                 if (isPlaceholderSecret(T)) return wrong(PTC_NONE, "This is a placeholder (YOUR_API_KEY_HERE, <token>, xxxx), not a real secret.");   // (v11.4.8)
@@ -1735,6 +1754,8 @@
         let s = str.trim();
         // (v11.5.0) the dot of a company abbreviation is part of the name ("Initech Inc.", "Velora Foods Ltd.", "Globex Corp.")
         if (/\s(?:Inc|Ltd|Corp|Co|Pvt|Bros|Plc|Mfg|Intl|Ltda|Bhd|Tbk)\.$/.test(s.replace(/["'*_\s]+$/, "")) && /^[\p{Lu}0-9]/u.test(s.replace(/^["'*_(\s]+/, ""))) return s.replace(/^["'*_(\s]+/, "").replace(/["'*_\s]+$/, "");
+        // (v11.7.2) an address that starts with its house number "#45, 2nd Cross, ..." keeps the "#"
+        if (/^#\s?\d/.test(s) && s.length >= 15 && isCompleteAddress(s)) return s.replace(/[\s,;.]+$/, "");
         // (v11.4.5) an IPv6 address keeps its leading / trailing colons ("::ffff:192.168.1.10", "2001:db8::")
         if (/^[0-9A-Fa-f:.]+$/.test(s) && s.includes("::") && isIpAddressFormat(s)) return s;
         // (v11.4.0) a phone number written with its area code in brackets keeps them: "(022) 2345 6789", "+1 (415) 732-0198"
@@ -2846,7 +2867,7 @@
     // Street words that are often ordinary words (Drive, Way, Place, Court, Square) need a house number in front.
     const ADDR_NAME = "(?:[A-Z][A-Za-z'\u00C0-\u017F.-]*|\\d+(?:st|nd|rd|th))";
     const ADDR_PREMISE = "(?:(?:[Ff]lat|[Pp]lot|[Hh]ouse|[Dd]oor|[Ss]hop|[Uu]nit|[Oo]ffice|[Aa]pt\\.?|[Aa]partment|[Nn]o\\.?|#)\\s*(?:[Nn]o\\.?\\s*)?#?\\d+[A-Za-z]?(?:[-/]\\d+[A-Za-z]?)?|\\d+[A-Za-z]?(?:[-/]\\d+[A-Za-z]?)?)";
-    const ADDR_SUFFIX_SAFE = "Road|Rd|Street|St|Lane|Ln|Avenue|Ave|Boulevard|Blvd|Marg|Nagar|Layout|Colony|Chowk|Gali|Galli|Enclave|Vihar|Puram|Peth|Highway|Hwy|Parkway|Pkwy|Expressway|Expy|Freeway|Turnpike";
+    const ADDR_SUFFIX_SAFE = "Road|Rd|Street|St|Lane|Ln|Avenue|Ave|Boulevard|Blvd|Marg|Salai|Veedhi|Veethi|Nagar|Layout|Colony|Chowk|Gali|Galli|Enclave|Vihar|Puram|Peth|Highway|Hwy|Parkway|Pkwy|Expressway|Expy|Freeway|Turnpike";
     const ADDR_SUFFIX_RISKY = "Drive|Dr|Way|Court|Ct|Place|Pl|Square|Sq|Terrace|Path|Close|Crescent";
     const ADDR_PREFIX = "(?:Rua|R\\.|Avenida|Av\\.|Travessa|Alameda|Pra[c\u00E7]a|Rodovia|Estrada|Jl\\.|Jalan|Gg\\.|Gang|Rue|Calle|Avenue\\s+de|Village|Vill\\.|Gram|Mohalla)";
     // (v11.4.7) What follows the street, comma by comma, up to the end of the address: unit, locality, city, state, postcode of
@@ -2854,14 +2875,23 @@
     // "10115 Berlin", "Dist. Gorakhpur"). Each part starts with a capital or a digit, so "MG Road, then go home" stops at the road.
     const ADDR_WORD = "(?:[A-Z0-9#][A-Za-z0-9'\u00C0-\u017F./#&-]*|de|da|do|dos|das|di|of|the|and|el|la|le)";
     const ADDR_PLACES = "(?:,[ \\t]*" + ADDR_WORD + "(?:(?:[ \\t]+-[ \\t]+|[ \\t]+)" + ADDR_WORD + "){0,5})*(?=[ \\t]*(?:[.,;)\\]\"']|$|\\s))";
+    // (v11.7.2) a unit, floor or tower in front of the house number ("Flat 3, 10 Downing Street", "Level 5, 1 Martin Place",
+    // "Tower B, 5th Floor, ..."), a direction after the street ("Ave NW", "Queen St W"), a US "City ST 12345" without commas,
+    // French streets ("12 Rue de Rivoli", "8 Avenue des Champs-Elysees") and Japanese block numbers ("1-1-2 Oshiage, Sumida-ku")
+    const ADDR_UNIT = "(?:(?:[Ff]lat|[Aa]pt\\.?|[Aa]partment|[Uu]nit|[Ss]uite|[Ll]evel|[Ff]loor|[Tt]ower|[Ww]ing|[Bb]lock|[Bb]ldg\\.?|[Bb]uilding|[Ss]hop|[Oo]ffice|[Rr]oom)\\s+#?[A-Za-z0-9-]{1,6}|\\d+(?:st|nd|rd|th)\\s+[Ff]loor),\\s+";
+    const ADDR_DIR = "(?:\\s+(?:N|S|E|W|NE|NW|SE|SW)\\.?(?![A-Za-z]))?";
+    const ADDR_US_TAIL = "(?:[ \\t]+(?:[A-Z][a-z]+[ \\t]+){1,3}[A-Z]{2}[ \\t]+\\d{5}(?:-\\d{4})?(?![\\w-]))";
+    const ADDR_FR = "\\d+[A-Za-z]?(?:\\s*(?:bis|ter))?,?\\s+(?:Rue|Avenue|Boulevard|Bd|Place|All[e\u00E9]e|Impasse|Chemin|Quai|Cours|Route)\\s+(?:(?:de\\s+la|de|du|des|d'|la|le|l')\\s*)?(?:" + ADDR_NAME + "(?:-[A-Z][A-Za-z\u00C0-\u017F'-]*)*\\s*){1,4}";
+    const ADDR_JP = "\\d{1,4}(?:-\\d{1,4}){1,2}\\s+[A-Z][a-z]+(?:[- ][A-Za-z]+)?,\\s*[A-Z][a-z]+-(?:ku|shi|cho|machi|gun|mura)";
     const PARTIAL_ADDRESS_SOURCE =
-        "(?<![A-Za-z0-9])(?:" +
+        "(?<![A-Za-z0-9#])(?:" + ADDR_UNIT + "){0,2}(?:" +
+            ADDR_FR + "|" + ADDR_JP + "|" +
             "(?:" + ADDR_PREMISE + ",?\\s+)?(?:" + ADDR_NAME + "\\s+){1,4}(?:" + ADDR_SUFFIX_SAFE + ")\\b\\.?" +
             "|" + ADDR_PREMISE + ",?\\s+(?:" + ADDR_NAME + "\\s+){1,4}(?:" + ADDR_SUFFIX_RISKY + ")\\b\\.?" +
             "|" + ADDR_PREFIX + "\\s+(?:" + ADDR_NAME + "\\s*){1,4}(?:,?\\s*(?:No\\.?\\s*)?\\d+[A-Za-z]?)?" +
             "|[A-Z][a-z\u00E4\u00F6\u00FC\u00DF]+(?:strasse|stra\u00DFe|str\\.|weg|platz|allee|gasse|damm|ring)\\s+\\d+[a-z]?" +   // Hauptstrasse 5
             "|(?:P\\.?\\s?O\\.?\\s?Box|Post\\s+Box|PO\\s+Box)\\s*\\d+" +
-        ")(?!\\s+[A-Z][a-z])" + ADDR_PLACES;
+        ")" + ADDR_DIR + "(?:" + ADDR_US_TAIL + ADDR_PLACES + "|(?!\\s+[A-Z][a-z])" + ADDR_PLACES + ")";
     const NOT_STREET_START = /^(?:the|a|an|this|that|these|those|our|your|my|their|his|her|its|on|in|at|to|from|via|main|new|old|next|last|each|every|any|no|wall|easy|sesame|memory|fast|silk|abbey|google|test|high|one|two|first|second)$/i;
     function isPartialAddress(str) {
         const s = (str || "").trim();
@@ -2871,7 +2901,7 @@
         if (!m) return false;
         // the first word of a street name without a house number must not be an ordinary word ("The Road", "Wall Street")
         const first = s.split(/[\s,]+/)[0];
-        if (!/\d/.test(first) && !new RegExp("^" + ADDR_PREFIX + "$", "i").test(first) && !/^(?:flat|plot|house|door|shop|unit|office|apt\.?|apartment|no\.?|#)$/i.test(first) && NOT_STREET_START.test(first)) return false;
+        if (!/\d/.test(first) && !new RegExp("^" + ADDR_PREFIX + "$", "i").test(first) && !/^(?:flat|plot|house|door|shop|unit|office|apt\.?|apartment|no\.?|#|suite|level|floor|tower|wing|block|bldg\.?|building|room)$/i.test(first) && NOT_STREET_START.test(first)) return false;
         return true;
     }
     // Which phone label a value gets, or null when it is not a phone number on its own.
@@ -3056,12 +3086,14 @@
         if (s.length < 15) return false;
         const words = s.split(/[\s,]+/);
         if (words.length < 3) return false;
-        const hasStreet = /\b(?:road|rd\b|street|st\b|lane|ln\b|avenue|ave\b|crescent|cres\b|drive|dr\b|nagar|layout|colony|sector|block|cross|main|marg|chowk|rasta)\b/i.test(s);
+        const hasStreet = /\b(?:road|rd\b|salai|veedhi|veethi|street|st\b|lane|ln\b|avenue|ave\b|crescent|cres\b|drive|dr\b|nagar|layout|colony|sector|block|cross|main|marg|chowk|rasta)\b/i.test(s);
         const hasPremise = /(?:^|\b)(?:#?\d+[a-zA-Z]?(?:[-/]\d+[a-zA-Z]?)?|plot(?:\s*no\.?)?\s*\d+|flat(?:\s*no\.?)?\s*\d+|door(?:\s*no\.?)?\s*\d+|house(?:\s*no\.?)?\s*\d+|bldg|building|tower|floor|apt|apartment)\b/i.test(s);
+        const hasOtherNumber = /(?:^|\b)(?:#?\d+[a-zA-Z]?(?:[-/]\d+[a-zA-Z]?)?|plot(?:\s*no\.?)?\s*\d+|flat(?:\s*no\.?)?\s*\d+|door(?:\s*no\.?)?\s*\d+|house(?:\s*no\.?)?\s*\d+|bldg|building|tower|floor|apt|apartment)\b/i.test(s.replace(/\b[1-9][0-9]{5}\b/g, " "));
         const hasPincode = /\b[1-9][0-9]{5}\b/.test(s);
         const hasCity = /\b(?:pune|bengaluru|bangalore|mumbai|delhi|new\s*delhi|hyderabad|chennai|kolkata|ahmedabad|surat|jaipur|lucknow|kanpur|nagpur|indore|thane|bhopal|visakhapatnam|patna|vadodara|ghaziabad|ludhiana|agra|nashik|faridabad|meerut|rajkot|varanasi|srinagar|aurangabad|dhanbad|amritsar|navi\s*mumbai|allahabad|howrah|gwalior|jabalpur|coimbatore|vijayawada|jodhpur|madurai|raipur|kota|chandigarh|guwahati|solapur|mysuru|mysore|tiruchirappalli|bareilly|aligarh|tiruppur|gurgaon|gurugram|moradabad|jalandhar|bhubaneswar|salem|warangal|jalgaon|noida)\b/i.test(s);
         if (hasStreet && hasPremise && (hasCity || hasPincode)) return true;
-        if (hasPremise && hasCity && hasPincode) return true;
+        // (v11.7.2) without a street, the house number must be another number than the PIN ("Bengaluru PIN 560001" is not an address)
+        if (hasOtherNumber && hasCity && hasPincode) return true;
         return false;
     }
 
@@ -3914,7 +3946,11 @@
         const chips = pageChipNames();
         if (!chips || chips.size === 0) return targets;
         const out = [];
-        for (const t of targets) { const l = labelForPage(t.label, chips); if (l) { if (l !== t.label) t.label = l; out.push(t); } }
+        for (const t of targets) {
+            let l = labelForPage(t.label, chips);
+            if (!l && t.fallback) l = labelForPage(t.fallback, chips);   // (v11.7.2) e.g. a ZIP inside an address block -> Address
+            if (l) { if (l !== t.label) t.label = l; out.push(t); }
+        }
         out.scrubbedNames = targets.scrubbedNames; out.ordinaryWords = targets.ordinaryWords;
         return out;
     }
@@ -5969,10 +6005,14 @@
         const isAddrLine = (l) => { const t = l.trim(); return t.length > 0 && t.length <= 120 && !t.includes("|") && (looksLikeAddressPart(t) || containsPlace(t) || /^(?:[A-Z][a-z]+\s?){1,3},?$/.test(t) && containsPlace(t) || !!addrTail(t) ||
             isPartialAddress(t.replace(/^[A-Za-z][A-Za-z /]{1,24}:\s*/, "").replace(/[,\s]+$/, "")) ||
             /^(?:[A-Z][a-z]+(?:\s[A-Z][a-z]+)*,?\s+)?(?:[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}|[A-Z]{2}\s+\d{5}(?:-\d{4})?|\d{5}(?:-\d{3,4})?(?:\s+[A-Z][a-z]+)?)$/.test(t)); };
+        // (v11.7.2) a locality line between two address lines ("12, MG Road" / "Indiranagar" / "Bengaluru 560038") is part of the block
+        const isBridge = (k) => k > 0 && k + 1 < rightLines.length && /^[A-Z][A-Za-z.'-]+(?:\s[A-Z][A-Za-z.'-]+){0,2},?$/.test(rightLines[k].trim()) &&
+            !rightLines[k].trim().replace(/,$/, "").split(/\s+/).some(w => isCommonWord(w.toLowerCase())) &&
+            isAddrLine(rightLines[k - 1]) && isAddrLine(rightLines[k + 1]);
         const blockAround = (i) => {
             let a = i, b = i;
-            while (a - 1 >= 0 && isAddrLine(rightLines[a - 1]) && i - a < 5) a--;
-            while (b + 1 < rightLines.length && isAddrLine(rightLines[b + 1]) && b - i < 5) b++;
+            while (a - 1 >= 0 && (isAddrLine(rightLines[a - 1]) || isBridge(a - 1)) && i - a < 5) a--;
+            while (b + 1 < rightLines.length && (isAddrLine(rightLines[b + 1]) || isBridge(b + 1)) && b - i < 5) b++;
             return rightLines.slice(a, b + 1).map(l => l.trim()).filter(Boolean);
         };
         for (let i = 0; i < rightLines.length; i++) {
@@ -5985,11 +6025,16 @@
                 let cand = piece.replace(/^[\s\-:]+/, "").replace(/^[A-Za-z][A-Za-z /]{1,24}:\s*(?=\S)/, "").replace(/[\s\-:]+$/, "").trim();
                 // (v11.4.7) a quoted CSV / JSON cell ("1,\"12, MG Road, Pune 411001\"") holds the address: only what is inside the quotes
                 { const q = /"([^"]{15,})"/.exec(cand); if (q) cand = q[1].trim(); }
+                // (v11.7.2) a lead-in phrase is not part of the address ("Office at Anna Salai, Chennai 600002", "Lives in ...")
+                { const lead = /^(?:[A-Za-z]+\s+){1,4}(?:at|to|in|on)\s+(?=[A-Z0-9#])/.exec(cand); if (lead && isCompleteAddress(cand.slice(lead[0].length))) cand = cand.slice(lead[0].length); }
                 // (v10.5.4) an address inside a sentence ("Delivered to 5th Floor, ..., Hyderabad 500081 yesterday"):
                 // keep only the part from the first house / floor / plot number to the PIN code.
                 {
                     const inner = cand.length > 400 ? null : cand.match(/(?:\b(?:flat|plot|house|h\.?\s?no|door|no\.|shop|unit)\s*[#\w-]*|#\s*\d|\b\d+[a-z]?(?:st|nd|rd|th)?\b)[^\n]*?\b[1-9]\d{2}\s?\d{3}\b/i);
-                    if (inner && inner[0].length < cand.length && inner[0].length >= 15 && isCompleteAddress(inner[0]) && !isCompleteAddress(cand.replace(inner[0], "").trim() || "x")) {
+                    // (v11.7.2) a tower / wing / block / unit in front belongs to the address ("Tower B, 5th Floor, ...")
+                    const pre = inner ? cand.slice(0, cand.indexOf(inner[0])) : "";
+                    const unitPre = /^(?:(?:tower|wing|block|bldg\.?|building|level|flat|apt\.?|apartment|unit|suite|shop|office|room|floor)\s+#?[A-Za-z0-9-]{1,6},\s*)+$/i.test(pre);
+                    if (inner && !unitPre && inner[0].length < cand.length && inner[0].length >= 15 && isCompleteAddress(inner[0]) && !isCompleteAddress(cand.replace(inner[0], "").trim() || "x")) {
                         if (cand.indexOf(inner[0]) > 0 || cand.length > cand.indexOf(inner[0]) + inner[0].length) cand = inner[0];
                     }
                 }
@@ -6019,6 +6064,8 @@
                 if (piece.length < 2) continue;
                 const ex = targetMap.get(piece);
                 if (!ex || ex.priority < 85) targetMap.set(piece, { text: piece, label: "Address", cls: "pt-address", priority: 85 });
+                // (v11.7.2) a postal code in an address block is part of that address where the page has no postal-code chip
+                else if (ex.label === LBL_POSTAL || ex.label === LBL_KODEPOS || ex.label === LBL_CEP) ex.fallback = "Address";
                 const withKey = l.replace(/[,\s]+$/, "");
                 if (withKey !== piece && targetMap.get(withKey) && targetMap.get(withKey).label === "Address") targetMap.delete(withKey);
             }
@@ -6044,6 +6091,16 @@
                     if (block.length > 1 && !leftNorm.includes(normWs(block.join(" ")))) continue;   // part of a scrubbed address
                     addTarget(cand, "Address", "pt-address", 84, true);
                 }
+            }
+        }
+
+        // (v11.7.2) one address, one label: drop an Address that is only the end of a longer Address on the same line
+        // ("4, Near City Mall, ..." inside "Shop 4, Near City Mall, ...")
+        {
+            const addrs = [...targetMap.values()].filter(t => t.label === "Address");
+            for (const t of addrs) {
+                const longer = addrs.find(u => u !== t && u.text.length > t.text.length && u.text.endsWith(t.text));
+                if (longer && rightText.split("\n").every(l => !l.includes(t.text) || l.includes(longer.text))) targetMap.delete(t.text);
             }
         }
 

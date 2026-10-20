@@ -221,6 +221,10 @@ The platform mandates that the following **15 categories are strictly classified
 - **Every country** (v11.4.7): the label runs to the end of the address: unit, city, state and postcode (`221B Baker Street, Apt 4, London NW1 6XE`, `350 Fifth Avenue, Suite 3300, New York, NY 10118`, `Rua Augusta 1500, Consolacao, Sao Paulo - SP, 01304-001`, `Hauptstrasse 5, 10115 Berlin`). Village addresses (`Village Rampur, Post Sadar, Dist. Gorakhpur, UP 273001`) and **PO boxes** (`P.O. Box 1234, Dubai, UAE`) are addresses.
 - **A company first, then its address** (v11.4.7): `Infosys Ltd, Electronics City, Hosur Road, Bengaluru 560100` → `Infosys Ltd` is a Business Name, the rest is the Address.
 - **Place names inside an address are not people** (`Anna Salai`, `Baker Street`, `Sao Paulo`).
+- **From the first part to the last (v11.7.2)**: a unit, tower, level or `#` in front is part of the address (`Tower B, 5th Floor, ...`, `#45, 2nd Cross, ...`); a lead-in such as `Office at` is not. French and Japanese addresses are covered.
+- **Separate fields (v11.7.2)**: when a street field is in the block, the `City:`, `State:` and `ZIP:` values are labeled Address too; a city or state field alone is not.
+- **Not an address (v11.7.2)**: a landmark alone (`Near City Mall`, `Opp. SBI Bank`); a city + PIN without a street (`Bengaluru PIN 560001`). `C/O Ramesh Kumar, ...`: the name is Person Name, the rest Address.
+- **One label for the whole address (v11.7.2)**: labeling only a part of it (`MG Road` in `12, MG Road, Pune 411001`) is flagged.
 - An address replaced by a plain word, or a plain word by an address, is **Overscrubbed**. Addresses inside code (`const street = "MG Road";`) are not labeled.
 
 ### 5.6 Overscrubbed (Partial Isolation Rule)
