@@ -1,5 +1,12 @@
 # Changelog
 
+## 11.6.0 - October 2026 (branch v2)
+
+- **Exact labels from the dashboard's own data.** A small page hook (`src/page-hook.js`, loaded inside the page at start) reads the label list and the annotation spans the dashboard already downloads (`GET .../annotation-review`) and saves (`POST .../annotations`, plus changes and removals), and hands them to the auditor. The mistake check now knows each label's exact name instead of guessing from its colour: labels that share a colour (the ~80-label page) are no longer "unsure". The hook makes no request, keeps no document links or tokens, and changes nothing the dashboard sends; without its data the colour is read as before. Alt+Shift+D shows whether review data was received and how many labels were read exactly.
+- The userscript now starts at `document-start` so the hook sees the review data; the console build reads exact labels for changes made after it is pasted.
+- **(11.5.4) A company name inside a code tag** (`Juno` in `@OnJunoAPI`) labeled Business Name is no longer flagged.
+- New test `tests/dom_review_data.js` (shared colour + review data, newly saved labels, fallback, privacy).
+
 ## 11.5.3 - October 2026 (branch v2)
 
 Contact Number (reviewed on the 13-chip page):

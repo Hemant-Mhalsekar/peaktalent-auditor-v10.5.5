@@ -35,6 +35,7 @@ if (haveJsdom) {
     execFileSync(process.execPath, [rel('tests', 'dom_large.js')], { stdio: 'inherit', cwd: root });
     execFileSync(process.execPath, [rel('tests', 'dom_labelcheck.js')], { stdio: 'inherit', cwd: root });
     execFileSync(process.execPath, [rel('tests', 'dom_e2e.js')], { stdio: ['ignore', 'inherit', 'ignore'], cwd: root });
+    execFileSync(process.execPath, [rel('tests', 'dom_review_data.js')], { stdio: ['ignore', 'inherit', 'ignore'], cwd: root });
     execFileSync(process.execPath, [rel('tests', 'dom_chrome_colours.js')], { stdio: ['ignore', 'inherit', 'ignore'], cwd: root });
   }
   catch (e) { console.error('\nBuild stopped: DOM tests failed.'); process.exit(1); }
@@ -51,6 +52,11 @@ if (manifest.version !== version) {
   console.error(`Version mismatch: src/content.js says ${version}, extension/manifest.json says ${manifest.version}`);
   process.exit(1);
 }
+
+// (v11.6.0) the page hook runs inside the page (world MAIN, document_start) and passes the dashboard's review data on
+// (written before the manifest check below, which needs the file to exist)
+const hook = read('src/page-hook.js');
+fs.writeFileSync(rel('extension', 'page-hook.js'), hook);
 
 // Root manifest (v11.2.2): Chrome's "Load unpacked" then also works on the PROJECT folder itself, not only on extension/.
 // Choosing the project folder used to fail with "Manifest file is missing or unreadable".
@@ -83,20 +89,28 @@ const userscript = `// ==UserScript==
 // @version      ${version}
 // @description  Highlights PII/BII, credentials and overscrubbed text on PeakTalent review screens. Works fully offline.
 // @match        https://dashboard.peaktalent.ai/*
-// @run-at       document-idle
+// @run-at       document-start
 // @noframes
 // @grant        none
 // ==/UserScript==
-// GENERATED FILE - edit src/content.js and run \`node scripts/build.js\`.
+// GENERATED FILE - edit src/content.js and src/page-hook.js, then run \`node scripts/build.js\`.
 
-${src}`;
+// Page hook first (it must see the review data the dashboard loads), the auditor once the page is ready.
+${hook}
+(function __ptStartAuditor() {
+    if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', __ptStartAuditor, { once: true }); return; }
+${src}
+})();`;
 fs.writeFileSync(rel('dist', 'peaktalent-auditor.user.js'), userscript);
 
 const paste = `// PeakTalent Auditor v${version} - console build.
 // Open the PeakTalent review tab, open the browser console (Safari: Develop > Show JavaScript Console,
 // Chrome: Cmd/Ctrl+Option/Alt+J), paste this whole file and press Enter. Pasting again replaces the old copy.
-// GENERATED FILE - edit src/content.js and run \`node scripts/build.js\`.
+// GENERATED FILE - edit src/content.js and src/page-hook.js, then run \`node scripts/build.js\`.
+// Pasted after the page loaded, it reads labels from the review data only for changes made from now on; reload the
+// review and paste again to read every label exactly.
 
+${hook}
 ${src}`;
 fs.writeFileSync(rel('dist', 'console-paste.js'), paste);
 

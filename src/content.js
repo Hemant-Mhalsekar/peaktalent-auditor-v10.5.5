@@ -15,7 +15,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.5.3";
+    const PT_VERSION = "11.6.0";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -540,7 +540,9 @@
         const inLeft = (() => {
             if (!leftText || leftText.indexOf(T) < 0) return false;
             if (T.length >= 5) return true;
-            return new RegExp("(?:^|[^\\p{L}\\p{N}_])" + escRe(T) + "(?![\\p{L}\\p{N}_])", "u").test(leftText);
+            if (new RegExp("(?:^|[^\\p{L}\\p{N}_])" + escRe(T) + "(?![\\p{L}\\p{N}_])", "u").test(leftText)) return true;
+            // (v11.5.4) a part of a code name ("Juno" in "@OnJunoAPI", "JunoClient"): bounded by camelCase steps
+            return /^\p{Lu}\p{Ll}+$/u.test(T) && new RegExp("(?:^|[^\\p{L}\\p{N}_]|(?<=\\p{Ll}))" + escRe(T) + "(?=\\p{Lu}|[^\\p{L}\\p{N}]|$)", "u").test(leftText);
         })();
         const words = T.split(/[\s\-_/.,:;()]+/).filter(Boolean);
         const sugg = (w) => lookup.get(w) || lookup.get(w.toLowerCase());
@@ -1391,9 +1393,73 @@
         return __bestColour(values, pal, base);
     }
 
+    // ---- (v11.6.0) Exact labels from the dashboard's own review data ----
+    // The page hook (src/page-hook.js, inside the page) passes on the label list and the annotation spans the dashboard
+    // downloads (GET .../annotation-review) and saves (add / change / remove). With them a reviewer's label is known exactly
+    // (its title), whatever its colour: no guessing, no "unsure" when labels share a colour. Without them (hook not loaded,
+    // a console build pasted late, an unknown format) the colour is read as before.
+    const __ptReview = { titles: new Map(), right: [], ready: false, hits: 0, misses: 0 };
+    function applyReviewMessage(type, data) {
+        try {
+            if (type === "review" && data && Array.isArray(data.labels)) {
+                __ptReview.titles = new Map(data.labels.map(l => [l.id, l.title]));
+                __ptReview.right = (data.right || []).filter(a => a && a.label_id && typeof a.text === "string");
+                __ptReview.ready = true;
+            } else if (!__ptReview.ready) {
+                return;
+            } else if (type === "added" && Array.isArray(data)) {
+                for (const a of data) if (a && a.label_id && typeof a.text === "string") __ptReview.right.push(a);
+            } else if (type === "removed" && data && data.id) {
+                __ptReview.right = __ptReview.right.filter(a => a.id !== data.id);
+            } else if (type === "changed" && data && data.id) {
+                for (const a of __ptReview.right) if (a.id === data.id) a.label_id = data.label_id;
+            }
+        } catch (e) {}
+    }
+    try {
+        ptOn(window, "message", (e) => {
+            // only this page's own hook (same window and origin); a message from another frame or site is ignored
+            if ((e.source && e.source !== window) || (e.origin && e.origin !== window.location.origin) || !e.data || e.data.source !== "pt-auditor-hook") return;
+            applyReviewMessage(e.data.type, e.data.data);
+            try { if (typeof forceRescan === "function" && window.__pt_auto_active) setTimeout(() => forceRescan(), 50); } catch (x) {}
+        });
+        if (window.__ptReviewData) applyReviewMessage("review", window.__ptReviewData);   // the data arrived before this script
+    } catch (e) {}
+    const normWs = (x) => (x || "").replace(/\s+/g, " ").trim();
+    function textOffsetIn(root, el) {
+        try {
+            const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+            let n, off = 0;
+            while ((n = w.nextNode())) { if (el.contains(n)) return off; off += n.nodeValue.length; }
+        } catch (e) {}
+        return -1;
+    }
+    // The exact title of the reviewer's label on `el`, or null when the review data does not say.
+    function reviewLabelFor(el) {
+        if (!__ptReview.ready || !__ptReview.right.length) return null;
+        const T = normWs(el.textContent);
+        if (!T) return null;
+        const cands = __ptReview.right.filter(a => normWs(a.text) === T);
+        if (!cands.length) { __ptReview.misses++; return null; }
+        const titles = new Set(cands.map(a => __ptReview.titles.get(a.label_id)).filter(Boolean));
+        let pick = cands[0];
+        if (titles.size > 1) {   // the same text labeled differently in places: the annotation nearest to this element
+            const { rightPane } = getPanes();
+            const off = rightPane ? textOffsetIn(rightPane, el) : -1;
+            if (off >= 0) pick = cands.reduce((b, a) => Math.abs(a.start - off) < Math.abs(b.start - off) ? a : b, cands[0]);
+        }
+        const title = __ptReview.titles.get(pick.label_id) || null;
+        if (title) __ptReview.hits++;
+        return title;
+    }
+
     function detectAssignedCategory(el) {
         if (!el || el.nodeType !== 1) return null;
         try { __ptAmbiguous.delete(el); } catch (e) {}   // (v11.3.6) set again below only when the colour is shared by several labels
+        // (v11.6.0) the dashboard's own data names the label exactly
+        try {
+            if (!(el.classList && el.classList.contains("pt-tag"))) { const exact = reviewLabelFor(el); if (exact) return exact; }
+        } catch (e) {}
         // Our own suggestion spans carry data-label / pt-* classes too. They must never be read as the
         // reviewer's label: a Person Name label placed around our "Overscrubbed" suggestion was read as
         // Overscrubbed, so the mistake was never shown.
@@ -6598,6 +6664,7 @@
             const s = __ptLabelStats;
             if (s) out("  not checked:", labelsNotChecked(), "| errors:", s.errors | 0, "| unread:", s.unread | 0, "| unsure (shared colour):", s.ambiguous | 0, "| too short:", (s.skipped || {}).tooShort | 0, "| too long:", (s.skipped || {}).tooLong | 0, "| checked:", s.checked | 0, s.lastError ? "| last check error: " + s.lastError : "");
         } catch (e) {}
+        out("  review data (exact labels):", __ptReview.ready ? `yes - ${__ptReview.titles.size} labels, ${__ptReview.right.length} annotations, ${__ptReview.hits} labels read exactly, ${__ptReview.misses} not matched` : "not received (labels read by colour)");
         if (__ptLastError) out("  last error:", __ptLastError);
         try {
             __ptPalette.t = 0;
@@ -6732,7 +6799,8 @@
             extractDynamicTargets, classifyDiff, isCredentialsFormat, isVehiclePlateFormat, isDateFormat,
             isIpAddressFormat, isAccountNumberFormat, isBusinessName, isPersonName, isTokenInBusinessContext,
             isCompleteAddress, diffTokensGlobalLCS, applyAllTargetsInSinglePass, VERSION: PT_VERSION,
-            stats: () => ({ lastRunMs, viewport: __ptViewportInfo }), parseColourToRgba, labelStats: () => __ptLabelStats
+            stats: () => ({ lastRunMs, viewport: __ptViewportInfo }), parseColourToRgba, labelStats: () => __ptLabelStats,
+            reviewData: () => ({ ready: __ptReview.ready, labels: __ptReview.titles.size, annotations: __ptReview.right.length, hits: __ptReview.hits })
         };
     }
 

@@ -154,6 +154,8 @@ The platform mandates that the following **15 categories are strictly classified
 - **Account ID vs Account Number**: any 12-digit number identical on both sides is treated as Aadhaar / cloud Account ID (Credentials). A 12-digit **bank** account number therefore also lands in Credentials — re-label it as `Account Number` by hand.
 - **Exclusion**: Keys such as `account_id`, `_account_id`, `PolicyId`, `password`, `pin`, `otp`, `secret`, `api_key` must **never** receive an annotation badge.
 
+- **How the auditor knows your label (v11.6.0)**: it reads the label's exact name from the dashboard's own review data (the label list and the annotations the page downloads and saves), so two labels with the same colour are never confused. When that data is not available it falls back to the label's colour.
+
 ### 5.2 Person Name
 - **Condition**: Only mark if **unscrubbed** and identical on both sides (`Left == Right`).
 - **Compound Names**: PascalCase names (`OrlaKestrelbrook`) or single lowercase names (`srinadh`) that represent human names are protected from being marked as Overscrubbed.
@@ -178,6 +180,7 @@ The platform mandates that the following **15 categories are strictly classified
   - **Software / Cloud Infrastructure**: `Database@AWS`, `Amazon ODB`, `Cloud SQL`, `OAuth`, `Node.js`, `Kubernetes`, `Docker` are technical assets, not Business Names.
   - **Legal entity types and placeholders**: `C Corporation`, `LLC`, `Sole Proprietorship`, and anything inside a form placeholder such as `[E.g., …]` or `[Insert company name]` are not Business Names.
   - **Words inside links**: `github` inside `https://github.com/...` is part of the URL, not a Business Name.
+  - **(v11.5.4) A company name inside a code tag or identifier is still a Business Name** (`Juno` in `@OnJunoAPI`): a reviewer's label there is not a mistake.
   - **A lone suffix word** (`Analytics`, `Solutions`, `Group`) is not a company on its own; it needs a name in front (`Acme Analytics`).
   - **(v11.5.0) Platforms used as a tool** (`on Slack`, `via WhatsApp`, `Watch on YouTube`, `Microsoft Teams`) are not companies; as an employer (`works at LinkedIn`, `joined Slack`) they are. A JSON / config key (`"twitter":`) is never a company.
   - **(v11.5.0) Ordinary words are not companies**, even when a company has that name: `a young engineer`, `persistent storage`, `a notion`, `the postman`. A company is written as a name; one that is also a dictionary word (`Persistent`, `Notion`) needs company context and does not count at the start of a sentence. An ordinary word in a company slot (`Vendor: Internal`, `Client: Rejected`) is not a company.

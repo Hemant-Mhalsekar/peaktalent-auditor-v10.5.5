@@ -420,6 +420,16 @@ same('language', 'Languages: English, Bengali, Hindi', 'Bengali', '', 'Person Na
     }
   }
 
+  // (v11.5.4) a company name inside a code tag ("@OnJunoAPI") labeled Business Name is accepted, as reviewers are told to label it
+  {
+    const line = ['@OnJunoAPI', 'Scenario: Get Externally Linked Accounts'];
+    const p = await page(line, line);
+    const m = await p.annotate('Juno', 'Business Name', true);
+    const st = p.state(m);
+    check(st.mark !== 'wrong', 'Business Name on "Juno" inside "@OnJunoAPI" is not a mistake', st);
+    p.close();
+  }
+
   // (v11.4.8) a whole connection URL labeled Credentials: only the password should be
   {
     const line = ['DATABASE_URL=postgres://admin:S3cretPass@db.acme-demo.io:5432/prod'];
