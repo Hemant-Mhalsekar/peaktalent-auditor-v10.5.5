@@ -1,5 +1,17 @@
 # Changelog
 
+## 11.7.1 - October 2026 (branch v2)
+
+Credentials (second review, 13-chip page):
+- **A label whose text is a label name is checked again.** `Password`, `Address` or `Date` labeled inside a document was taken for one of the dashboard's label chips and never checked (every label was affected).
+- **The mistake check uses the suggestion rules.** A Credentials label on a key + value (`Password: Tr0ub4dor&3` -> only the value), code (`process.env.API_KEY`), a plain object id (`"id": "26527fe0-..."`), an order / booking / invoice number, or a bare 3-4 digit number away from its key (`Room 4821`) is flagged. A label that also covers `Bearer`, `Basic` or `ssh-rsa` in front of the secret is accepted: the secret is what counts.
+- **A PIN is 4 digits** (user rule): six digits after `PIN` / `Pincode` is a postal PIN code and is no longer labeled; a Credentials label on one is flagged.
+- **Found**: an OTP in a sentence (`OTP code 482913 expires`, `Use OTP 4821`), HTTP Basic credentials (`Authorization: Basic <base64>`), Azure `AccountKey=` / `SharedAccessKey=`.
+- **SSH keys**: only the key is labeled, not the `ssh-rsa` / `ssh-ed25519` in front; ed25519 and ECDSA keys are found too.
+- **A plain word replaced by a secret-looking value** (`Mode: standard` -> `Mode: Xk9#mPq2vL7`) is one Overscrubbed label; it was split at the `#`. A secret replaced by a plain word stays unlabeled (correct redaction).
+- Order and booking IDs are not credentials (user rule); docker image digests stay Credentials (SHA).
+- New test `tests/credentials.js` (67 checks); 12 Credentials cases added to the label check.
+
 ## 11.7.0 - October 2026 (branch v2)
 
 - **Learning from reviewers.** The reviewer's own saves (seen through the page hook) now score the suggestions, on this computer only:

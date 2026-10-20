@@ -430,6 +430,33 @@ same('language', 'Languages: English, Bengali, Hindi', 'Bengali', '', 'Person Na
     p.close();
   }
 
+  // (v11.7.1) Credentials, second review: the check uses the same rules as the suggestions
+  {
+    const CR = [
+      // [line, labeled text, label, expected verdict ('wrong' + expected label, or 'ok'), name]
+      ['Password: Tr0ub4dor&3', 'Password', 'Credentials', ['wrong', 'No label'], 'a key name that is also a label name ("Password") is checked'],
+      ['Ship to Address: 12 MG Road', 'Address', 'Person Name', ['wrong', 'No label'], 'the word "Address" labeled in the document is checked, not taken for a label chip'],
+      ['Password: Tr0ub4dor&3', 'Password: Tr0ub4dor&3', 'Credentials', ['wrong', 'Credentials: Tr0ub4dor&3'], 'key + value labeled -> only the value'],
+      ['Authorization: Bearer abc123XYZ789tokenValue456', 'Bearer abc123XYZ789tokenValue456', 'Credentials', ['ok'], '"Bearer" + token is accepted (the token is labeled)'],
+      ['const key = process.env.API_KEY;', 'process.env.API_KEY', 'Credentials', ['wrong', 'No label'], 'code reference labeled Credentials is a mistake'],
+      ['"id": "26527fe0-1b3c-4d5e-8f9a-0b1c2d3e4f5a"', '26527fe0-1b3c-4d5e-8f9a-0b1c2d3e4f5a', 'Credentials', ['wrong', 'No label'], 'a plain object id is not a credential'],
+      ['invocation_id: c4a7d8e2-1b3c-4d5e-8f9a-0b1c2d3e4f5a', 'c4a7d8e2-1b3c-4d5e-8f9a-0b1c2d3e4f5a', 'Credentials', ['ok'], 'an invocation id is a credential'],
+      ['Order ID: ORD-2024-778812', 'ORD-2024-778812', 'Credentials', ['wrong', 'No label'], 'an order id is not a credential'],
+      ['Room 4821 is free', '4821', 'Credentials', ['wrong', 'No label'], 'a bare 4-digit number is not a credential'],
+      ['PIN: 4821', '4821', 'Credentials', ['ok'], 'a 4-digit PIN is a credential'],
+      ['PIN: 411001', '411001', 'Credentials', ['wrong', 'No label'], 'six digits after PIN is a postal PIN code, not a credential'],
+      ['OTP code 482913 expires', '482913', 'Credentials', ['ok'], 'an OTP in a sentence is a credential'],
+    ];
+    for (const [line, word, label, [want, exp], name] of CR) {
+      const p = await page([line], [line]);
+      const m = await p.annotate(word, label);
+      const st = p.state(m);
+      const ok = want === 'ok' ? st.mark === 'ok' : (st.mark === 'wrong' && st.expected === exp);
+      check(ok, 'Credentials review: ' + name, st);
+      p.close();
+    }
+  }
+
   // (v11.4.8) a whole connection URL labeled Credentials: only the password should be
   {
     const line = ['DATABASE_URL=postgres://admin:S3cretPass@db.acme-demo.io:5432/prod'];

@@ -15,7 +15,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.7.0";
+    const PT_VERSION = "11.7.1";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -669,10 +669,27 @@
                 if (isCompleteAddress(T) || isPartialAddress(T)) return null;
                 if (isPostalCodeShape(T) && !/\s\S+\s/.test(T)) return labelForPage(LBL_POSTAL) ? wrong(LBL_POSTAL, "A postal code on its own is labeled Postal Code, not Address.") : wrong(PTC_NONE, "A postal code on its own is not an address.");
                 return wrong(PTC_NONE, "Not an address (a city, state or country alone is not labeled).");
-            case "Credentials":
+            case "Credentials": {
                 if (ordinaryWord) return wrong(PTC_NONE, "This is an ordinary word, not a credential.");
                 if (isPlaceholderSecret(T)) return wrong(PTC_NONE, "This is a placeholder (YOUR_API_KEY_HERE, <token>, xxxx), not a real secret.");   // (v11.4.8)
+                // (v11.7.1) the same rules as the suggestions
+                const before = rLine.slice(0, Math.max(0, rLine.indexOf(T)));
+                // the token after "Bearer" / "Basic" / the key type of an SSH key: a label that also covers that word still covers the secret
+                const typed = /^(?:Bearer|Basic|ssh-(?:rsa|ed25519|dss)|ecdsa-sha2-nistp\d+)\s+(\S+)$/i.exec(T);
+                if (typed) return isPlaceholderSecret(typed[1]) ? wrong(PTC_NONE, "This is a placeholder, not a real secret.") : null;
+                const inner = credentialValuesInLine(T).find(c => c.value !== T && T.includes(c.value));
+                if (inner) return wrong("Credentials: " + inner.value, "Only the value is labeled, not its key (" + inner.key + ").");
+                if (isCodeLikeValue(T)) return wrong(PTC_NONE, "This is code (a variable, call or reference), not a secret.");
+                if (/\b(?:order|booking|invoice|inv|ticket|pnr|awb|tracking|receipt|bill|claim|case|sku|item)\b(?:\s*(?:id|no\.?|number|ref(?:erence)?|#))?["']?\s*[:=#-]?\s*["']?$/i.test(before) && !/\b(?:txn|transaction|utr)\b/i.test(before))
+                    return wrong(PTC_NONE, "An order / booking / invoice / ticket number is not a credential.");
+                if (new RegExp('(?:^|[{,\\[]\\s*|\\n\\s*)["\']?(?:node_id|id|user_id|gravatar_id)["\']?\\s*[:=]\\s*["\']?' + escRe(T), "im").test(rightText || ""))
+                    return wrong(PTC_NONE, "A plain object id (id, node_id, user_id) is not a credential.");
+                if (/^\d{5,6}$/.test(T) && /\b(?:pin|pincode|pin\s*code)\b["']?\s*[:=-]?\s*["']?$/i.test(before))
+                    return wrong(PTC_NONE, "Six digits after PIN is a postal PIN code, not a secret (a PIN is 4 digits).");
+                if (/^\d{3,4}$/.test(T) && !/\b(?:cvv|cvc|cvv2|pin|m-?pin|otp|security\s*code|passcode)\b(?:\s+(?:code|no\.?|number))?["']?\s*(?:[:=-]|is)?\s*["']?$/i.test(before))
+                    return wrong(PTC_NONE, "A 3-4 digit number is a credential only right after its key (CVV, PIN, OTP).");
                 return null;
+            }
             case "Person Name":
                 if (ordinaryWord || isLanguageWord(plain)) return wrong(PTC_NONE, "This is an ordinary word, place or language, not a person's name.");
                 // (v11.4.7) a place name inside a suggested address ("Anna Salai", "Baker Street") is part of the Address
@@ -713,7 +730,11 @@
         // (v11.3.1) the same controls with an icon or extra characters ("\u270E Annotate here", "Annotate here \u2192")
         if (t.length <= 40 && /\b(?:annotate\s+here|read[\s-]*only|submit\s+for\s+review|change\s+label)\b/i.test(t)) return true;
         if (/^(?:left|right)\.[A-Za-z0-9]+-[0-9a-f]{6,}$/i.test(t)) return true;                       // file name header
-        if (LABEL_NAMES.some(l => l.toLowerCase() === t.toLowerCase())) return true;                    // a label chip
+        // a label chip - but only outside the documents: "Password", "Address" or "Date" labeled IN a document is a real label (v11.7.1)
+        if (LABEL_NAMES.some(l => l.toLowerCase() === t.toLowerCase())) {
+            const { leftPane: lp0, rightPane: rp0 } = getPanes();
+            if (!((rp0 && rp0.contains(el)) || (lp0 && lp0.contains(el)))) return true;
+        }
         // (v11.3.2) a control is a <button>, or sits in a menu / popover / header that does NOT contain the document.
         // The whole review screen is itself a dialog (role="dialog"): the old rule treated every label inside it as a
         // control, so no label was ever checked ("labels not readable").
@@ -3804,7 +3825,9 @@
         if (/invocation|execution|request|lambda|run/.test(k)) return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v) || /^[A-Za-z0-9-]{16,}$/.test(v) && /\d/.test(v);
         if (/^sha|hash|commit/.test(k)) return /^(?:[0-9a-f]{7,64}|sha256:[0-9a-f]{64})$/i.test(v);
         if (/transaction|txn|tx\s|utr/.test(k)) return /^(?:0x[0-9a-f]{16,64}|[A-Za-z0-9-]{8,40})$/i.test(v) && /\d/.test(v);
-        if (/^(?:otp|pin|m-?pin|upi\s*pin|atm\s*pin)$|one.*time/.test(k)) return /^\d{4,8}$/.test(v);
+        // (v11.7.1) user rule: a PIN is 4 digits (six digits after "PIN" is a postal PIN code); an OTP 4-8
+        if (/^(?:pin|m-?pin|upi\s*pin|atm\s*pin)$/.test(k)) return /^\d{4}$/.test(v);
+        if (/^otp$|one.*time/.test(k)) return /^\d{4,8}$/.test(v);
         // 2. Generic secrets (password, token, API key, security answer, ...): reject code, references, placeholders.
         if (isCodeLikeValue(v)) return false;
         if (/^(?:your|enter|insert|example|sample|test|dummy|placeholder|changeme|password|secret|token|string|value|xxxx)/i.test(v)) return false;
@@ -3815,6 +3838,15 @@
         return true;
     }
 
+    // (v11.7.1) base64 -> text ("" when it is not valid base64); no atob, so it works the same everywhere
+    function b64ToText(v) {
+        const A = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        const t = String(v || "").replace(/=+$/, "");
+        if (!t || t.length % 4 === 1 || /[^A-Za-z0-9+\/]/.test(t)) return "";
+        let out = "", bits = 0, acc = 0;
+        for (const ch of t) { acc = (acc << 6) | A.indexOf(ch); bits += 6; if (bits >= 8) { bits -= 8; out += String.fromCharCode((acc >> bits) & 255); } }
+        return out;
+    }
     function credentialValuesInLine(line) {
         const out = [];
         CRED_LINE_RE.lastIndex = 0;
@@ -4605,6 +4637,20 @@
                             continue;
                         }
                     }
+                    // (v11.7.1) a plain word replaced by a secret-looking value ("Mode: standard" -> "Mode: Xk9#mPq2vL7"): one label for
+                    // the whole value (the diff splits it at "#", "!", ...). A secret replaced by a word is correct redaction.
+                    {
+                        const ow = (diff.original || "").trim(), cw = (diff.changed || "").replace(/\s+/g, "");
+                        if (ow && cw && /^[A-Za-z'-]+$/.test(ow) && isCommonWord(ow.toLowerCase()) && !isGivenOrSurname(ow) && cw.length >= 6 && cw.length <= 64 &&
+                            /[A-Za-z]/.test(cw) && /\d/.test(cw) && /^[\x21-\x7e]+$/.test(cw) && !/^https?:|@|^\d[\d.,\/:-]*$/.test(cw) &&
+                            rightText.includes(cw) && !leftText.includes(cw) && !isVehiclePlateFormat(cw) && !isDateFormat(cw)) {
+                            __ptOrdinaryOrigins.add(cw);
+                            for (const piece of (diff.changed || "").split(/\s+/)) { const ex = targetMap.get(piece); if (ex && ex.label === "Overscrubbed") targetMap.delete(piece); }
+                            const ex = targetMap.get(cw);
+                            if (!ex || ex.priority < 66) targetMap.set(cw, { text: cw, label: "Overscrubbed", cls: "pt-overscrub", priority: 66 });
+                            continue;
+                        }
+                    }
                     // (v11.5.2) a number plate replaced by a plain word, or a plain word by a plate
                     {
                         const ow = (diff.original || "").trim(), cw = (diff.changed || "").trim();
@@ -5154,10 +5200,11 @@
                 addTarget(pVal, "Credentials", "pt-credentials", 95, true);
             }
         }
-        const kvPinOtpRegex = /(?:["']?(?:pin|otp)["']?\s*[:=]\s*["']?)(\d{4,8})/gi;
+        // (v11.7.1) a PIN is 4 digits; an OTP 4-8, also in a sentence ("OTP code 482913 expires", "Use OTP 4821")
+        const kvPinOtpRegex = /(?:["']?pin["']?\s*[:=]\s*["']?)(\d{4})(?!\d)|(?:\b(?:otp|one[\s-]time\s+(?:password|passcode|code|pin))(?:\s+(?:code|number|no\.?))?(?:\s+is)?\s*[:=-]?\s*["']?)(\d{4,8})(?!\d)/gi;
         let pinM;
         while ((pinM = kvPinOtpRegex.exec(rightText)) !== null) {
-            const pVal = pinM[1];
+            const pVal = pinM[1] || pinM[2];
             if (pVal && leftText.includes(pVal)) {
                 addTarget(pVal, "Credentials", "pt-credentials", 95, true);
             }
@@ -5245,9 +5292,11 @@
         }
 
         // 12. SHA/SSH/Hash Key (Hash values SHA-1/SHA-256 or SSH keys)
-        const sshMatches = rightText.match(/\bssh-rsa\s+[A-Za-z0-9+/=]{20,}/g) || [];
-        for (const ssh of sshMatches) {
-            if (leftText.includes(ssh)) addTarget(ssh, "Credentials", "pt-credentials", 95);
+        // (v11.7.1) only the key, not the "ssh-rsa" type in front of it
+        const sshRe = /\b(?:ssh-(?:rsa|ed25519|dss)|ecdsa-sha2-nistp\d+)\s+([A-Za-z0-9+/]{20,}={0,2})/g;
+        let sshM;
+        while ((sshM = sshRe.exec(rightText)) !== null) {
+            if (leftText.includes(sshM[1])) addTarget(sshM[1], "Credentials", "pt-credentials", 96, true);
         }
 
         // 13. VPC ID (Isolated private network in the cloud)
@@ -5513,6 +5562,20 @@
         {
             const vendorRe = /\b(?:GOCSPX-[A-Za-z0-9_-]{20,}|gl(?:rt|ptt)-[A-Za-z0-9_-]{16,}|dckr_pat_[A-Za-z0-9_-]{20,}|xkeysib-[a-f0-9]{64}-[A-Za-z0-9]{16}|sntrys_[A-Za-z0-9_=-]{20,}|pypi-[A-Za-z0-9_-]{30,}|shp(?:at|ss|ca|pa)_[a-f0-9]{32}|rzp_(?:live|test)_[A-Za-z0-9]{14,}|hf_[A-Za-z0-9]{30,}|sk-ant-[A-Za-z0-9_-]{20,})/g;
             for (const v of (rightText.match(vendorRe) || [])) if (leftText.includes(v) && !isPlaceholderSecret(v)) addTarget(v, "Credentials", "pt-credentials", 98, true);
+            // (v11.7.1) HTTP Basic credentials (base64 of "user:password") and Azure connection-string keys: the value only
+            const basicRe = /\bBasic\s+([A-Za-z0-9+\/]{8,}={0,2})(?![A-Za-z0-9+\/=])/g;
+            let basM;
+            while ((basM = basicRe.exec(rightText)) !== null) {
+                const v = basM[1];
+                const dec = b64ToText(v);
+                if (/^[\x20-\x7e]+:[\x20-\x7e]*$/.test(dec) && leftText.includes(v)) addTarget(v, "Credentials", "pt-credentials", 98, true);
+            }
+            const azureRe = /\b(?:AccountKey|SharedAccessKey|SharedAccessSignature|SharedSecret)=([A-Za-z0-9+\/%&=:-]{20,}?)(?=;|["'\s]|$)/gm;
+            let azM;
+            while ((azM = azureRe.exec(rightText)) !== null) {
+                const v = azM[1];
+                if (leftText.includes(v) && !isPlaceholderSecret(v)) addTarget(v, "Credentials", "pt-credentials", 98, true);
+            }
             const bearerRe = /\bBearer\s+([A-Za-z0-9._~+\/-]{16,}=*)/g;
             let bm;
             while ((bm = bearerRe.exec(rightText)) !== null) {
