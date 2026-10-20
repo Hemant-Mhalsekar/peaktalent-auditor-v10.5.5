@@ -1,5 +1,16 @@
 # Changelog
 
+## 11.7.4 - October 2026 (branch v2)
+
+Person Username (second review, 13-chip page):
+- **A Username / Login column** of a table, CSV or TSV file is read: the header names it, the rows hold the usernames. Before, only a key cell followed by its value in the same row was.
+- **Usernames in every shape** (user rule): Reddit `u/rahul_92`, Discord `rahul#1234`, and the user folder of a file path (`/home/rahul/`, `/Users/priya.k/`, `C:\Users\rahul.sharma\`); system folders (`Public`, `Shared`, `ubuntu`, `runner`, ...) are not. A git author's one-word login (`Author: rahulverma <...>`) is a Person Username, not a Person Name.
+- **Not usernames** (user rules): bots (`@dependabot`, `@renovate[bot]`, `@github-actions`), user ids (`<@U024BE7LH>`), SQL variables (`SELECT @UserId`, `DECLARE @Total`) and spreadsheet references (`=SUM(@Table1)`). `Username: Rahul Sharma` is only a Person Name (an extra `Rahul` username was added).
+- **A plain word replaced by a handle is Overscrubbed** (user rule).
+- **Mistake check** names the username to label: a handle without its `@`, with a full stop, or with its key (`Username: rahul_92`); it said "No label".
+- A platform name used as a field name (`Instagram - @priya.clicks`) is no longer a Business Name.
+- New test `tests/username.js` (43 checks); 10 Username cases in the label check.
+
 ## 11.7.3 - October 2026 (branch v2)
 
 Email Address (second review, 13-chip page):
