@@ -1,5 +1,14 @@
 # Changelog
 
+## 11.7.3 - October 2026 (branch v2)
+
+Email Address (second review, 13-chip page):
+- **Accented name parts**: `josé@empresa.com.br` was suggested as `@empresa.com.br` (Person Username), `joão.silva@...` as `o.silva@...`, `müller@...` as `ller@...`; the whole e-mail is now one Email Address, and the check accepts it.
+- **Template domains are placeholders** (user rule): `company.com`, `yourcompany.com`, `domain.com`, `yourdomain.com`, `mydomain.com`, `website.com`. System addresses (`noreply@`, `MAILER-DAEMON@`, GitHub's `users.noreply.github.com`) stay e-mails.
+- **A plain word replaced by an e-mail is Overscrubbed** (user rule), like a word replaced by a phone.
+- **Mistake check**: a label with extra or missing text now names the e-mail to label (`mailto:x@y.z`, `<x@y.z>`, only the name part -> the whole e-mail; it said "No label"); a part of a fediverse handle is Person Username on the whole handle; a piece of a connection URL is only its password (Credentials); a name or company inside an e-mail labeled Person / Business Name is flagged: label the whole e-mail (user rule).
+- New test `tests/email.js` (37 checks); 10 Email cases in the label check.
+
 ## 11.7.2 - October 2026 (branch v2)
 
 Address (second review, 13-chip page):
