@@ -1,5 +1,17 @@
 # Changelog
 
+## 11.7.0 - October 2026 (branch v2)
+
+- **Learning from reviewers.** The reviewer's own saves (seen through the page hook) now score the suggestions, on this computer only:
+  - saving the suggested label on suggested text counts as **accepted**; saving another label on it, or deleting that label, counts as **rejected** (once per text and task). Suggestions the reviewer simply ignores are not counted;
+  - a text rejected **3 or more times and never accepted** is no longer suggested with that label;
+  - a label with **20+ decisions and under 30% accepted** is shown faded ("low confidence"), never hidden;
+  - text a reviewer labels that the auditor did not suggest is suggested (grey dashed, "learned from reviewers") once it has the same label on **2 different tasks**.
+- Learning never changes the label check or the fixed rules: only what is suggested.
+- Kept in the extension's own storage (`chrome.storage.local`, new `storage` permission), never sent anywhere; the userscript / console build uses the browser's storage for the dashboard. The popup shows the counts and has **Export** (JSON, for the accuracy step) and **Reset**; Alt+Shift+D shows a summary line.
+- The page hook also passes the task id (only the id), so learned terms are counted per task.
+- New test `tests/dom_learning.js` (23 checks); the extension test checks the popup's learning messages.
+
 ## 11.6.0 - October 2026 (branch v2)
 
 - **Exact labels from the dashboard's own data.** A small page hook (`src/page-hook.js`, loaded inside the page at start) reads the label list and the annotation spans the dashboard already downloads (`GET .../annotation-review`) and saves (`POST .../annotations`, plus changes and removals), and hands them to the auditor. The mistake check now knows each label's exact name instead of guessing from its colour: labels that share a colour (the ~80-label page) are no longer "unsure". The hook makes no request, keeps no document links or tokens, and changes nothing the dashboard sends; without its data the colour is read as before. Alt+Shift+D shows whether review data was received and how many labels were read exactly.

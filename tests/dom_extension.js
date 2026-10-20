@@ -33,10 +33,14 @@ const [r, g, b] = PAL.Date;
   const ask = (msg) => new Promise(res => listener(msg, {}, res));
   const status = await ask({ action: 'status' });
   const diag = await ask({ action: 'diagnostics' });
+  const learn = await ask({ action: 'learning' });
+  const exp = await ask({ action: 'learning-export' });
   const checks = [
     ['extension build inside a role="dialog" review modal: wrong label ("exclusive" as Date) is flagged', m.getAttribute('data-ptc') === 'wrong' && m.getAttribute('data-ptc-your') === 'Date'],
     ['extension build: popup status reports the mistake', status && status.onReviewScreen && status.mistakes === 1],
     ['extension build: popup "Copy diagnostics" returns a report', diag && /diagnostics/.test(diag.text) && /browser extension/.test(diag.text) && /label check/.test(diag.text)],
+    ['extension build: popup learning section answers (summary and JSON export)', learn && learn.summary && learn.summary.decisions === 0 && exp && JSON.parse(exp.json).learning],
+    ['extension build: diagnostics include the learning line', diag && /learning from reviewers/.test(diag.text)],
   ];
   let fail = 0;
   for (const [n, ok] of checks) { if (!ok) fail++; console.log((ok ? '\u2713 ' : '\u2717 ') + n); }

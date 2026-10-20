@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PeakTalent PII/BII Annotation Auditor
 // @namespace    https://dashboard.peaktalent.ai/
-// @version      11.6.0
+// @version      11.7.0
 // @description  Highlights PII/BII, credentials and overscrubbed text on PeakTalent review screens. Works fully offline.
 // @match        https://dashboard.peaktalent.ai/*
 // @run-at       document-start
@@ -11,7 +11,7 @@
 // GENERATED FILE - edit src/content.js and src/page-hook.js, then run `node scripts/build.js`.
 
 // Page hook first (it must see the review data the dashboard loads), the auditor once the page is ready.
-// PeakTalent Auditor - page hook (v11.6.0).
+// PeakTalent Auditor - page hook (v11.7.0).
 // Runs inside the page (Chrome: content script with "world": "MAIN", at document_start; userscript: page context) so it can
 // see the review data the dashboard itself downloads. It reads ONLY the label list and the annotation spans of
 // GET .../annotation-review and of the dashboard's own add / change / remove requests, and hands them to the auditor with
@@ -26,9 +26,11 @@
     const post = (type, data) => { try { window.postMessage({ source: 'pt-auditor-hook', type, data }, window.location.origin); } catch (e) {} };
     const span = (a) => ({ id: a.id || null, label_id: a.label_id, start: a.start, end: a.end, text: typeof a.text === 'string' ? a.text : '' });
 
-    function onReview(json) {
+    function onReview(json, url) {
         if (!json || !Array.isArray(json.labels)) return;
+        const fromUrl = /\/tasks\/([^/]+)\//.exec(url || '');
         const data = {
+            task: String(json.task_id || (fromUrl && fromUrl[1]) || ''),   // (v11.7.0) the task id only, to count learned terms per task
             labels: json.labels.map(l => ({ id: l.id, title: l.title, slug: l.slug, color: l.color })),
             right: (json.right_annotations || []).map(span),
             left: (json.left_annotations || []).map(span),
@@ -43,7 +45,7 @@
             if (!m) return;
             method = (method || 'GET').toUpperCase();
             const isAnnotations = /\/annotation-review\/annotations/.test(url);
-            if (!isAnnotations && method === 'GET') { onReview(JSON.parse(resText)); return; }
+            if (!isAnnotations && method === 'GET') { onReview(JSON.parse(resText), url); return; }
             if (!isAnnotations) return;
             const id = m[1] || null;
             if (method === 'POST' && !id) {
@@ -118,7 +120,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.6.0";
+    const PT_VERSION = "11.7.0";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -423,6 +425,9 @@
         .pt-username  { border-bottom: 2.5px dotted #2F54EB !important; background-color: rgba(47, 84, 235, 0.12) !important; color: inherit !important; }
         .pt-vehicle   { border-bottom: 2.5px dotted #73D13D !important; background-color: rgba(115, 209, 61, 0.12) !important; color: inherit !important; }
         .pt-overscrub { border-bottom: 2.5px dotted #FF7875 !important; background-color: rgba(255, 120, 117, 0.12) !important; color: inherit !important; }
+        /* (v11.7.0) learned from reviewers: a term reviewers labeled on 2+ tasks; a label they mostly reject is faded */
+        .pt-learned   { border-bottom: 2.5px dashed #8C8C8C !important; background-color: rgba(140, 140, 140, 0.12) !important; color: inherit !important; }
+        .pt-tag.pt-low { opacity: 0.45 !important; }
     `;
     document.head.appendChild(styleEl);
 
@@ -1501,6 +1506,121 @@
     // downloads (GET .../annotation-review) and saves (add / change / remove). With them a reviewer's label is known exactly
     // (its title), whatever its colour: no guessing, no "unsure" when labels share a colour. Without them (hook not loaded,
     // a console build pasted late, an unknown format) the colour is read as before.
+    // ---- LEARNING FROM REVIEWERS (v11.7.0) ----
+    // The reviewer's own saves (seen through the page hook) score the suggestions, on this computer only:
+    //  - the reviewer saves the suggested label on suggested text -> accepted; another label, or deletes it -> rejected;
+    //  - a text rejected 3+ times and never accepted is no longer suggested with that label;
+    //  - a label with 20+ decisions and under 30% accepted is shown faded ("low confidence"), never hidden;
+    //  - text the reviewer labeled that was not suggested is suggested after the same label on 2 different tasks.
+    // Suggestions ignored by the reviewer are not counted. The label check and the fixed rules are never changed by this.
+    const LEARN_KEY = "pt_learning_v1";
+    const LEARN = { minLabel: 20, lowRate: 0.3, hideRejects: 3, missedTasks: 2, maxTexts: 3000 };
+    let __ptLearn = { labels: {}, texts: {}, missed: {} };
+    let __ptLearnTask = null;
+    const __ptLearnSeen = new Set();   // one decision per text, label and verdict on each task
+    let __ptLastTargets = [];          // the engine's suggestions before learning (what accepted / rejected is judged against)
+    const learnKey = (label, text) => label + "\u0001" + String(text || "").replace(/\s+/g, " ").trim();
+    const learnStore = () => { try { return (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) ? chrome.storage.local : null; } catch (e) { return null; } };
+    function learnValid(d) { return d && typeof d === "object" && d.labels && d.texts && d.missed; }
+    function learnLoad() {
+        try {
+            const st = learnStore();
+            if (st) { st.get(LEARN_KEY, (r) => { try { if (r && learnValid(r[LEARN_KEY])) { __ptLearn = r[LEARN_KEY]; if (typeof forceRescan === "function" && window.__pt_auto_active) forceRescan(); } } catch (e) {} }); return; }
+            const d = JSON.parse(localStorage.getItem(LEARN_KEY) || "null");
+            if (learnValid(d)) __ptLearn = d;
+        } catch (e) {}
+    }
+    let __ptLearnSaveTimer = null;
+    function learnSave() {
+        if (__ptLearnSaveTimer) clearTimeout(__ptLearnSaveTimer);
+        __ptLearnSaveTimer = setTimeout(() => {
+            __ptLearnSaveTimer = null;
+            try {
+                // keep the store small: drop the oldest texts first
+                for (const part of ["texts", "missed"]) {
+                    const keys = Object.keys(__ptLearn[part]);
+                    if (keys.length > LEARN.maxTexts) keys.sort((a, b) => (__ptLearn[part][a].t || 0) - (__ptLearn[part][b].t || 0)).slice(0, keys.length - LEARN.maxTexts).forEach(k => delete __ptLearn[part][k]);
+                }
+                const st = learnStore();
+                if (st) st.set({ [LEARN_KEY]: __ptLearn }); else localStorage.setItem(LEARN_KEY, JSON.stringify(__ptLearn));
+            } catch (e) {}
+        }, 300);
+    }
+    function learnCount(part, key, verdict) {
+        const seen = verdict + "\u0002" + part + "\u0002" + key;
+        if (__ptLearnSeen.has(seen)) return;
+        __ptLearnSeen.add(seen);
+        const o = __ptLearn[part][key] || (__ptLearn[part][key] = { a: 0, r: 0 });
+        o[verdict]++; o.t = Date.now();
+    }
+    // `before` = the label the reviewer's annotation had (null when added), `after` = its label now (null when deleted).
+    function learnFromReviewer(text, before, after) {
+        try {
+            const T = String(text || "").replace(/\s+/g, " ").trim();
+            if (!T || T.length > 200) return;
+            const sug = __ptLastTargets.find(t => t.text === T) || __ptLastTargets.find(t => t.text.toLowerCase() === T.toLowerCase());
+            if (sug) {
+                if (after && sug.label === after) { learnCount("labels", sug.label, "a"); learnCount("texts", learnKey(sug.label, T), "a"); }
+                else if (before === sug.label || after) { learnCount("labels", sug.label, "r"); learnCount("texts", learnKey(sug.label, T), "r"); }
+            }
+            // a label the auditor did not suggest for this text: remember it, per task
+            if (after && (!sug || sug.label !== after) && __ptLearnTask) {
+                const k = learnKey(after, T);
+                const m = __ptLearn.missed[k] || (__ptLearn.missed[k] = { tasks: [] });
+                if (!m.tasks.includes(__ptLearnTask)) m.tasks = m.tasks.concat(__ptLearnTask).slice(-5);
+                if (!m.cls) { const same = __ptLastTargets.find(t => t.label === after); m.cls = same ? same.cls : "pt-learned"; }
+                m.t = Date.now();
+            }
+            // a removed label also takes back a learned term
+            if (before && !after) { const m = __ptLearn.missed[learnKey(before, T)]; if (m && __ptLearnTask) m.tasks = m.tasks.filter(x => x !== __ptLearnTask); }
+            learnSave();
+        } catch (e) {}
+    }
+    function learnLabelLow(label) {
+        const s = __ptLearn.labels[label];
+        return !!s && s.a + s.r >= LEARN.minLabel && s.a / (s.a + s.r) < LEARN.lowRate;
+    }
+    function learnTextHidden(label, text) {
+        const s = __ptLearn.texts[learnKey(label, text)];
+        return !!s && s.r >= LEARN.hideRejects && !s.a;
+    }
+    // The suggestions to show: the engine's, minus texts reviewers keep rejecting, faded for low-confidence labels,
+    // plus learned terms found in `rightText`.
+    function applyLearning(targets, rightText) {
+        __ptLastTargets = targets || [];
+        if (!targets) return targets;
+        const out = [];
+        for (const t of targets) {
+            if (learnTextHidden(t.label, t.text)) continue;
+            out.push(learnLabelLow(t.label) ? Object.assign({}, t, { cls: t.cls + " pt-low", note: "low confidence: reviewers often reject this label" }) : t);
+        }
+        const shown = new Set(out.map(t => t.text.toLowerCase()));
+        const chips = pageChipNames();
+        for (const [k, m] of Object.entries(__ptLearn.missed)) {
+            if (!m || !Array.isArray(m.tasks) || m.tasks.length < LEARN.missedTasks) continue;
+            const [label, text] = k.split("\u0001");
+            if (!text || shown.has(text.toLowerCase()) || learnTextHidden(label, text)) continue;
+            if (chips && chips.size && !chips.has(label)) continue;
+            const esc = text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            if (!new RegExp("(?<![A-Za-z0-9_])" + esc + "(?![A-Za-z0-9_])").test(rightText || "")) continue;
+            out.push({ text, label, cls: m.cls || "pt-learned", priority: 60, note: "learned from reviewers" });
+            shown.add(text.toLowerCase());
+        }
+        out.scrubbedNames = targets.scrubbedNames; out.ordinaryWords = targets.ordinaryWords;
+        return out;
+    }
+    function learnSummary() {
+        const labels = Object.entries(__ptLearn.labels).map(([l, s]) => ({ label: l, accepted: s.a, rejected: s.r, low: learnLabelLow(l) }));
+        return {
+            labels,
+            hiddenTexts: Object.keys(__ptLearn.texts).filter(k => { const [l, t] = k.split("\u0001"); return learnTextHidden(l, t); }).length,
+            learnedTerms: Object.values(__ptLearn.missed).filter(m => m && m.tasks && m.tasks.length >= LEARN.missedTasks).length,
+            decisions: labels.reduce((n, s) => n + s.accepted + s.rejected, 0),
+        };
+    }
+    function learnExport() { return JSON.stringify({ version: PT_VERSION, exported: new Date().toISOString(), learning: __ptLearn }, null, 2); }
+    function learnReset() { __ptLearn = { labels: {}, texts: {}, missed: {} }; __ptLearnSeen.clear(); learnSave(); }
+    learnLoad();
     const __ptReview = { titles: new Map(), right: [], ready: false, hits: 0, misses: 0 };
     function applyReviewMessage(type, data) {
         try {
@@ -1508,14 +1628,17 @@
                 __ptReview.titles = new Map(data.labels.map(l => [l.id, l.title]));
                 __ptReview.right = (data.right || []).filter(a => a && a.label_id && typeof a.text === "string");
                 __ptReview.ready = true;
+                if (data.task && data.task !== __ptLearnTask) { __ptLearnTask = String(data.task); __ptLearnSeen.clear(); }
             } else if (!__ptReview.ready) {
                 return;
             } else if (type === "added" && Array.isArray(data)) {
-                for (const a of data) if (a && a.label_id && typeof a.text === "string") __ptReview.right.push(a);
+                for (const a of data) if (a && a.label_id && typeof a.text === "string") { __ptReview.right.push(a); learnFromReviewer(a.text, null, __ptReview.titles.get(a.label_id)); }
             } else if (type === "removed" && data && data.id) {
+                const gone = __ptReview.right.find(a => a.id === data.id);
+                if (gone) learnFromReviewer(gone.text, __ptReview.titles.get(gone.label_id), null);
                 __ptReview.right = __ptReview.right.filter(a => a.id !== data.id);
             } else if (type === "changed" && data && data.id) {
-                for (const a of __ptReview.right) if (a.id === data.id) a.label_id = data.label_id;
+                for (const a of __ptReview.right) if (a.id === data.id) { learnFromReviewer(a.text, __ptReview.titles.get(a.label_id), __ptReview.titles.get(data.label_id)); a.label_id = data.label_id; }
             }
         } catch (e) {}
     }
@@ -6399,7 +6522,7 @@
                     span.className = `pt-tag ${m.target.cls}`;
                     span.textContent = m.text;
                     span.setAttribute("data-label", m.target.label);
-                    span.title = `${m.target.label}: ${m.text}`;
+                    span.title = `${m.target.label}: ${m.text}` + (m.target.note ? ` (${m.target.note})` : "");
 
                     const after = task.node.splitText(m.idx);
                     after.nodeValue = after.nodeValue.substring(m.length);
@@ -6609,11 +6732,12 @@
                     // Tag only the blocks in the window (outermost ones; nested blocks are covered by their parent).
                     const winSet = new Set(windowEls);
                     windowEls = windowEls.filter(el => { for (let p = el.parentElement; p && p !== rightPane; p = p.parentElement) if (winSet.has(p)) return false; return true; });
-                    for (const el of windowEls) applyAllTargetsInSinglePass(el, targets);
+                    const shown = applyLearning(targets, rWin);
+                    for (const el of windowEls) applyAllTargetsInSinglePass(el, shown);
                     __ptViewportInfo = { ra, rb, total: rInfo.lines.length };
                 } else {
                     targets = extractDynamicTargets(leftPane, rightPane, { left: leftText, right: rightText });
-                    applyAllTargetsInSinglePass(rightPane, targets);
+                    applyAllTargetsInSinglePass(rightPane, applyLearning(targets, rightText));
                     __ptViewportInfo = null;
                 }
             } else {
@@ -6622,7 +6746,7 @@
                 leftText = leftPane.innerText != null ? leftPane.innerText : readPaneLines(leftPane).text;
                 rightText = rightPane.innerText != null ? rightPane.innerText : readPaneLines(rightPane).text;
                 targets = extractDynamicTargets(leftPane, rightPane, { left: leftText, right: rightText });
-                applyAllTargetsInSinglePass(rightPane, targets);
+                applyAllTargetsInSinglePass(rightPane, applyLearning(targets, rightText));
                 __ptViewportInfo = null;
             }
 
@@ -6767,6 +6891,7 @@
             const s = __ptLabelStats;
             if (s) out("  not checked:", labelsNotChecked(), "| errors:", s.errors | 0, "| unread:", s.unread | 0, "| unsure (shared colour):", s.ambiguous | 0, "| too short:", (s.skipped || {}).tooShort | 0, "| too long:", (s.skipped || {}).tooLong | 0, "| checked:", s.checked | 0, s.lastError ? "| last check error: " + s.lastError : "");
         } catch (e) {}
+        try { const ls = learnSummary(); out("  learning from reviewers:", ls.decisions ? `${ls.decisions} decisions, ${ls.hiddenTexts} texts no longer suggested, ${ls.learnedTerms} learned terms` + (ls.labels.some(x => x.low) ? `, low confidence: ${ls.labels.filter(x => x.low).map(x => x.label).join(", ")}` : "") : "nothing learned yet"); } catch (e) {}
         out("  review data (exact labels):", __ptReview.ready ? `yes - ${__ptReview.titles.size} labels, ${__ptReview.right.length} annotations, ${__ptReview.hits} labels read exactly, ${__ptReview.misses} not matched` : "not received (labels read by colour)");
         if (__ptLastError) out("  last error:", __ptLastError);
         try {
@@ -6838,6 +6963,9 @@
     if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.onMessage) {
         __ptMessageListener = (msg, _sender, sendResponse) => {
             if (msg && msg.action === "rescan") { forceRescan(); sendResponse({ ok: true }); }
+            else if (msg && msg.action === "learning") { sendResponse({ ok: true, summary: learnSummary() }); }
+            else if (msg && msg.action === "learning-export") { sendResponse({ ok: true, json: learnExport() }); }
+            else if (msg && msg.action === "learning-reset") { learnReset(); forceRescan(); sendResponse({ ok: true, summary: learnSummary() }); }
             else if (msg && msg.action === "diagnostics") { let t = ""; try { t = printDiagnostics(); } catch (e) { t = "diagnostics failed: " + e; } sendResponse({ ok: true, text: t }); }
             else if (msg && msg.action === "status") {
                 let nc = 0, er = 0, am = 0;
@@ -6903,7 +7031,8 @@
             isIpAddressFormat, isAccountNumberFormat, isBusinessName, isPersonName, isTokenInBusinessContext,
             isCompleteAddress, diffTokensGlobalLCS, applyAllTargetsInSinglePass, VERSION: PT_VERSION,
             stats: () => ({ lastRunMs, viewport: __ptViewportInfo }), parseColourToRgba, labelStats: () => __ptLabelStats,
-            reviewData: () => ({ ready: __ptReview.ready, labels: __ptReview.titles.size, annotations: __ptReview.right.length, hits: __ptReview.hits })
+            reviewData: () => ({ ready: __ptReview.ready, labels: __ptReview.titles.size, annotations: __ptReview.right.length, hits: __ptReview.hits }),
+            learning: () => JSON.parse(JSON.stringify(__ptLearn)), learnSummary, learnExport, learnReset, learnFlush: () => { if (__ptLearnSaveTimer) { clearTimeout(__ptLearnSaveTimer); __ptLearnSaveTimer = null; } try { const st = learnStore(); if (st) st.set({ [LEARN_KEY]: __ptLearn }); else localStorage.setItem(LEARN_KEY, JSON.stringify(__ptLearn)); } catch (e) {} }
         };
     }
 
