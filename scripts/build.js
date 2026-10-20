@@ -28,6 +28,7 @@ try {
   execFileSync(process.execPath, [rel('tests', 'email.js')], { stdio: 'inherit' });
   execFileSync(process.execPath, [rel('tests', 'username.js')], { stdio: 'inherit' });
   execFileSync(process.execPath, [rel('tests', 'url.js')], { stdio: 'inherit' });
+  execFileSync(process.execPath, [rel('tests', 'account.js')], { stdio: 'inherit' });
 } catch (e) {
   console.error('\nBuild stopped: tests failed.');
   process.exit(1);

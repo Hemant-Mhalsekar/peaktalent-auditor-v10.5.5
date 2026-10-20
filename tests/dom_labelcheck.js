@@ -559,6 +559,29 @@ same('language', 'Languages: English, Bengali, Hindi', 'Bengali', '', 'Person Na
     }
   }
 
+  // (v11.7.6) Account Number, second review: the correction names the number; ids, amounts and times are not accounts
+  {
+    const AC = [
+      [['Account Number: 50100234567891'], null, 'Account Number: 50100234567891', 'Account Number', 'Account Number: 50100234567891', 'key + number -> only the number'],
+      [['Account: 5010 0234 5678 91'], null, '5010 0234', 'Account Number', 'Account Number: 5010 0234 5678 91', 'a part of a spaced number -> the whole number'],
+      [['IBAN: GB29 NWBK 6016 1331 9268 19'], null, 'GB29 NWBK', 'Account Number', 'Account Number: GB29 NWBK 6016 1331 9268 19', 'a part of an IBAN -> the whole IBAN'],
+      [['Order No: 50100234567891'], null, '50100234567891', 'Account Number', 'No label', 'an order number is not an account'],
+      [['Amount: 50100234567891'], null, '50100234567891', 'Account Number', 'No label', 'an amount is not an account'],
+      [['created_at: 1697800000000'], null, '1697800000000', 'Account Number', 'No label', 'a timestamp is not an account'],
+      [['Customer ID: 50100234567'], null, '50100234567', 'Account Number', 'No label', 'a customer id is not an account'],
+      [['Account Number: 50100234567891'], null, '50100234567891', 'Account Number', 'ok', 'an account number is an Account Number'],
+      [['Account: savings'], ['Account: 50100234567891'], '50100234567891', 'Overscrubbed', 'ok', 'a word replaced by an account number is Overscrubbed'],
+    ];
+    for (const [l, r, word, label, exp, name] of AC) {
+      const p = await page(l, r || l);
+      const m = await p.annotate(word, label);
+      const st = p.state(m);
+      const ok = exp === 'ok' ? st.mark === 'ok' : (st.mark === 'wrong' && st.expected === exp);
+      check(ok, 'Account review: ' + name, st);
+      p.close();
+    }
+  }
+
   // (v11.4.8) a whole connection URL labeled Credentials: only the password should be
   {
     const line = ['DATABASE_URL=postgres://admin:S3cretPass@db.acme-demo.io:5432/prod'];
