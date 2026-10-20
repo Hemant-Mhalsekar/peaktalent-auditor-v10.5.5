@@ -1,5 +1,16 @@
 # Changelog
 
+## 11.7.5 - October 2026 (branch v2)
+
+URL/Link (second review, 13-chip page):
+- **Upper-case links** (`HTTPS://PORTAL.ACME-DEMO.IO/USERS`) are found.
+- **A link to an IP address is not a link** (user rule): in `https://10.0.0.5/admin` the IP address `10.0.0.5` is labeled IP Address; a URL/Link label on such a link is flagged.
+- **Not labeled**: template links (`https://your-domain.com/...`, `https://${HOST}/api`, `https://{{host}}/...`, `https://<your-tenant>...`) and standards addresses (`json-schema.org`, `schema.org`, ...; user rule). Other schemes (`ftps://`, `s3://`) stay unlabeled.
+- **A link replaced by a plain word is Overscrubbed** (the diff split the link, so it never was), and so is a plain word replaced by a link (user rule). A link holding a secret stays one URL/Link label (user rule).
+- **Mistake check**: names the link to label when a label has the `.` or `)` after it, covers only part of it, or a whole Markdown link; flags placeholder links; flags a company or name inside a link labeled on its own (label the whole link).
+- A quoted JSON-LD key (`"@context":`) is no longer a Person Username.
+- New test `tests/url.js` (33 checks); 12 URL cases in the label check; an IP-host link in the end-to-end test.
+
 ## 11.7.4 - October 2026 (branch v2)
 
 Person Username (second review, 13-chip page):

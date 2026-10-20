@@ -531,6 +531,34 @@ same('language', 'Languages: English, Bengali, Hindi', 'Bengali', '', 'Person Na
     }
   }
 
+  // (v11.7.5) URL/Link, second review: exactly the link; placeholders, IP hosts and words inside a link
+  {
+    const LU = 'https://portal.acme-demo.io/users/1042/profile';
+    const UL = [
+      // [left lines, right lines, labeled text, label, expected ('ok' or the expected label), name]
+      [['See ' + LU + '.'], null, LU + '.', 'URL/Link', 'URL/Link: ' + LU, 'the full stop after a link is not part of it'],
+      [['(see ' + LU + ')'], null, LU + ')', 'URL/Link', 'URL/Link: ' + LU, 'the closing bracket is not part of the link'],
+      [['See ' + LU + ' now'], null, 'portal.acme-demo.io', 'URL/Link', 'URL/Link: ' + LU, 'a part of a link -> the whole link'],
+      [['[profile](' + LU + ')'], null, '[profile](' + LU + ')', 'URL/Link', 'URL/Link: ' + LU, 'a whole Markdown link -> only the URL'],
+      [['https://your-domain.com/callback'], null, 'https://your-domain.com/callback', 'URL/Link', 'No label', 'a template link is not labeled'],
+      [['https://example.com/path'], null, 'https://example.com/path', 'URL/Link', 'No label', 'an example link is not labeled'],
+      [['https://10.0.0.5/admin'], null, 'https://10.0.0.5/admin', 'URL/Link', 'IP Address: 10.0.0.5', 'a link to an IP address -> the IP address'],
+      [['https://10.0.0.5/admin'], null, '10.0.0.5', 'IP Address', 'ok', 'the IP address of such a link is an IP Address'],
+      [['See https://github.com/acme/app'], null, 'github', 'Business Name', 'URL/Link: https://github.com/acme/app', 'a company name inside a link -> the link'],
+      [['See https://www.linkedin.com/in/rahul-sharma-92'], null, 'rahul-sharma', 'Person Name', 'URL/Link: https://www.linkedin.com/in/rahul-sharma-92', 'a name inside a link -> the link'],
+      [['HTTPS://PORTAL.ACME-DEMO.IO/USERS'], null, 'HTTPS://PORTAL.ACME-DEMO.IO/USERS', 'URL/Link', 'ok', 'an upper-case link is a link'],
+      [['See here'], ['See ' + LU], LU, 'Overscrubbed', 'ok', 'a word replaced by a link is Overscrubbed'],
+    ];
+    for (const [l, r, word, label, exp, name] of UL) {
+      const p = await page(l, r || l);
+      const m = await p.annotate(word, label);
+      const st = p.state(m);
+      const ok = exp === 'ok' ? st.mark === 'ok' : (st.mark === 'wrong' && st.expected === exp);
+      check(ok, 'URL review: ' + name, st);
+      p.close();
+    }
+  }
+
   // (v11.4.8) a whole connection URL labeled Credentials: only the password should be
   {
     const line = ['DATABASE_URL=postgres://admin:S3cretPass@db.acme-demo.io:5432/prod'];

@@ -15,7 +15,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.7.4";
+    const PT_VERSION = "11.7.5";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -624,10 +624,15 @@
                 if (isDefaultOrPlaceholderEmail(T)) return wrong(PTC_NONE, "This is a placeholder address (example.com, test.com, ...), not personal data.");
                 return wrong(PTC_NONE, "This is not an e-mail address.");
             }
-            case "URL/Link":
+            case "URL/Link": {
+                // (v11.7.5) user rule: a link to an IP address is not a link; the IP address is labeled
+                { const ip = ipHostOf(T) || ipHostOf(linkAroundLabel(T, rLine)); if (ip) return wrong("IP Address: " + ip, "A link to an IP address is not labeled as a link: label the IP address."); }
                 if (/^http:\/\//i.test(T) || /^www\./i.test(T)) return wrong(PTC_NONE, "Only https:// links are labeled.");
+                if (isDefaultOrPlaceholderLink(T)) return wrong(PTC_NONE, "This is a placeholder, template or standards link, not personal data.");
+                { const u = linkAroundLabel(T, rLine); if (u) return wrong("URL/Link: " + u, "Label exactly the link, without the text or punctuation around it."); }
                 if (isFileAssetLink(T)) return wrong(PTC_NONE, "This links to a file (image, script, style, font, archive, media, data or code). File links are not labeled (documents are).");
                 return /^https:\/\/\S+$/i.test(T) ? null : wrong(PTC_NONE, "This is not a link.");
+            }
             case "IP Address":
                 if (!isIpAddressFormat(T)) return wrong(PTC_NONE, "This is not a valid IP address.");
                 return ipVersion ? wrong(PTC_NONE, "This is a version / section number, not an IP address.") : null;
@@ -726,6 +731,7 @@
                 return null;
             }
             case "Person Name":
+                { const u = linkAroundLabel(T, rLine); if (u && u.includes(T) && !ipHostOf(u) && !linksIn(rLine).reduce((x, e) => x.split(e).join(" "), rLine).includes(T)) return wrong("URL/Link: " + u, "This is part of a link: label the whole link as URL/Link."); }   // (v11.7.5)
                 { const em = emailAroundLabel(T, rLine); if (em && em.includes(T) && !emailsIn(rLine).reduce((x, e) => x.split(e).join(" "), rLine).includes(T)) return wrong("Email Address: " + em, "This is part of an e-mail address: label the whole e-mail as Email Address."); }   // (v11.7.3)
                 if (ordinaryWord || isLanguageWord(plain)) return wrong(PTC_NONE, "This is an ordinary word, place or language, not a person's name.");
                 // (v11.4.7) a place name inside a suggested address ("Anna Salai", "Baker Street") is part of the Address
@@ -735,6 +741,7 @@
                 if (TECH_TOOLS.has(T.toLowerCase())) return wrong(PTC_NONE, "This is a software / technology name.");
                 return null;
             case "Business Name":
+                { const u = linkAroundLabel(T, rLine); if (u && u.includes(T) && !ipHostOf(u) && !linksIn(rLine).reduce((x, e) => x.split(e).join(" "), rLine).includes(T)) return wrong("URL/Link: " + u, "This is part of a link: label the whole link as URL/Link."); }   // (v11.7.5)
                 { const em = emailAroundLabel(T, rLine); if (em && em.includes(T) && !emailsIn(rLine).reduce((x, e) => x.split(e).join(" "), rLine).includes(T)) return wrong("Email Address: " + em, "This is part of an e-mail address: label the whole e-mail as Email Address."); }   // (v11.7.3)
                 // (v11.5.0) a platform used as a tool ("on Slack", "via WhatsApp") is not a company; as an employer it is
                 if (PLATFORM_NAMES.test(T) && /\b(?:on|via|using|through|with|in|into|over)\s+(?:the\s+|my\s+|our\s+|your\s+)?$/i.test(rLine.slice(0, Math.max(0, rLine.indexOf(T))))) return wrong(PTC_NONE, "A platform used as a tool (on Slack, via WhatsApp) is not a company. As an employer (works at LinkedIn) it is.");
@@ -1144,6 +1151,10 @@
         if (!str) return false;
         const s = str.trim().toLowerCase();
         if (/(?:example\.(?:com|org|net)|dummy\.(?:com|org)|sample\.(?:com|org)|test\.(?:com|org)|placeholder|schemas\.android\.com|w3\.org|localhost|127\.0\.0\.1)/i.test(s)) return true;
+        // (v11.7.5) template hosts ("your-domain.com", "yourapp.com", "${HOST}", "{{host}}", "<your-tenant>") and standards
+        // addresses that are not personal data (user rule: "$schema": "https://json-schema.org/...", "https://schema.org")
+        if (/^https?:\/\/[^\/]*(?:\$\{|\{\{|<|%[A-Z_]+%|\byour[-_]?[a-z]*\.|\bmy[-_]?(?:domain|site|app|company)\.)/i.test(s)) return true;
+        if (/^https?:\/\/(?:[a-z0-9-]+\.)*(?:json-schema\.org|schema\.org|purl\.org|xmlsoap\.org|openxmlformats\.org|schemas\.microsoft\.com|ietf\.org|iana\.org)(?:[\/?#]|$)/i.test(s)) return true;
         return false;
     }
 
@@ -2945,6 +2956,8 @@
         if (CODE_AT_WORDS.test(word)) return true;
         const ls = text.lastIndexOf("\n", idx - 1) + 1;
         let le = text.indexOf("\n", idx); if (le < 0) le = text.length;
+        // (v11.7.5) a quoted JSON key ("@context": ..., "@type": ...) is not a handle
+        if (/["']$/.test(text.slice(Math.max(ls, idx - 1), idx)) && /^["']\s*:/.test(text.slice(idx + 1 + word.length, idx + 4 + word.length))) return true;
         {   // (v11.7.4) a SQL variable ("SELECT @UserId", "DECLARE @Total INT") or a spreadsheet reference ("=SUM(@Table1)")
             const b0 = text.slice(ls, idx);
             if (/^\s*=/.test(b0) || /\b(?:SELECT|WHERE|DECLARE|SET|VALUES|EXEC|EXECUTE|INSERT|UPDATE|FROM|INTO|RETURN|AND|OR)\b/.test(b0)) return true;
@@ -2978,6 +2991,13 @@
         if (/^[A-Za-z]+$/.test(s) && isCommonWord(s.toLowerCase()) && !couldBeName(s)) return false;
         return true;
     }
+    // (v11.7.5) the https links on a line, without the punctuation after them; the link a label covers only partly or with extra text
+    function linksIn(line) { return ((line || "").match(/https:\/\/[^\s"'<>]+/gi) || []).map(trimUrlEnd).filter(u => u.length > 8); }
+    function linkAroundLabel(T, line) {
+        for (const u of linksIn(line)) if (u !== T && (u.includes(T) || T.includes(u))) return u;
+        return null;
+    }
+    const ipHostOf = (u) => { const h = /^https?:\/\/(?:[^@\/\s]*@)?(\[[0-9a-f:.]+\]|[^\/:?#\s]+)/i.exec(u || ""); const x = h ? h[1].replace(/^\[|\]$/g, "") : ""; return x && isIpAddressFormat(x) ? x : null; };
     // (v11.7.3) the real e-mails on a line
     function emailsIn(line) {
         const re = new RegExp("(?<![A-Za-z0-9._%+\\u00C0-\\u024F-])" + EMAIL_LOCAL + "@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b", "g");
@@ -4258,7 +4278,7 @@
 
             if (label === "URL/Link") {
                 // Project rule: only https:// links are labeled (http:// and bare www. links are left alone).
-                if (!cleanText.startsWith("https://")) return;
+                if (!/^https:\/\//i.test(cleanText)) return;   // (v11.7.5) "HTTPS://" too
                 if (isFileAssetLink(cleanText)) return;   // (v11.4.1) .png, .js, .pdf, ... links are not labeled
             }
 
@@ -4711,6 +4731,28 @@
                             __ptOrdinaryOrigins.add(cw);
                             const ex = targetMap.get(cw);
                             if (!ex || ex.priority < 66) targetMap.set(cw, { text: cw, label: "Overscrubbed", cls: "pt-overscrub", priority: 66 });
+                            continue;
+                        }
+                    }
+                    // (v11.7.5) a link replaced by a plain word, or (user rule) a plain word by a link: Overscrubbed. The diff splits a
+                    // link into "https", ":", "//host/path", so the pieces are joined back first.
+                    {
+                        const oj = (diff.original || "").replace(/\s+/g, ""), cj = (diff.changed || "").replace(/\s+/g, "");
+                        const ow = (diff.original || "").trim(), cw = (diff.changed || "").trim();
+                        const isLink = (x) => /^https:\/\/[^\s]{3,}$/i.test(x) && !isDefaultOrPlaceholderLink(x) && !isFileAssetLink(x);
+                        const plainW = (x) => /^[A-Za-z'-]+(?:\s[A-Za-z'-]+){0,2}$/.test(x) && x.split(/\s+/).every(w => isCommonWord(w.toLowerCase()) && !isGivenOrSurname(w));
+                        const plainLower = (x) => /^[A-Za-z'-]+(?:\s[A-Za-z'-]+){0,2}$/.test(x) && x.split(/\s+/).every(w => (isCommonWord(w.toLowerCase()) || /^[a-z'-]+$/.test(w)) && !isGivenOrSurname(w));
+                        if (isLink(oj) && plainLower(cw) && !new RegExp("(?:^|[^A-Za-z])" + cw + "(?![A-Za-z])").test(leftText)) {
+                            // set directly: a word that replaced a whole link is not a field label ("See details for more")
+                            __ptOrdinaryOrigins.add(cw);
+                            if (cw.length >= 3 && !isInsideAnyEmail(cw, rightText)) { const ex = targetMap.get(cw); if (!ex || ex.priority < 66) targetMap.set(cw, { text: cw, label: "Overscrubbed", cls: "pt-overscrub", priority: 66 }); }
+                            continue;
+                        }
+                        if (isLink(cj) && plainW(ow) && rightText.includes(cj) && !leftText.includes(cj)) {
+                            __ptOrdinaryOrigins.add(cj);
+                            for (const piece of (diff.changed || "").split(/\s+/)) { const ex = targetMap.get(piece); if (ex && ex.label === "Overscrubbed") targetMap.delete(piece); }
+                            const ex = targetMap.get(cj);
+                            if (!ex || ex.priority < 66) targetMap.set(cj, { text: cj, label: "Overscrubbed", cls: "pt-overscrub", priority: 66 });
                             continue;
                         }
                     }
@@ -5224,7 +5266,7 @@
                 const ex = targetMap.get(text);
                 if (!ex || 85 > ex.priority) targetMap.set(text, { text, label: "URL/Link", cls: "pt-url", priority: 85 });
             };
-            const httpsRegex = /https:\/\/[^\s"'<>]+/g;
+            const httpsRegex = /https:\/\/[^\s"'<>]+/gi;   // (v11.7.5) "HTTPS://..." too
             let um;
             while ((um = httpsRegex.exec(rightText)) !== null) {
                 const pieces = [um[0]];
@@ -5245,7 +5287,14 @@
                 }
                 pieces[pieces.length - 1] = trimUrlEnd(pieces[pieces.length - 1]);
                 const joined = pieces.join("");
-                if (!joined.startsWith("https://") || joined.length <= 8) continue;
+                if (!/^https:\/\//i.test(joined) || joined.length <= 8) continue;
+                // (v11.7.5) user rule: a link to an IP address is not a link - the IP address is labeled
+                {
+                    const host = /^https:\/\/(?:[^@\/\s]*@)?(\[[0-9a-f:.]+\]|[^\/:?#\s]+)/i.exec(joined);
+                    const h = host ? host[1].replace(/^\[|\]$/g, "") : "";
+                    if (h && isIpAddressFormat(h)) { if (leftText.includes(h)) addTarget(h, "IP Address", "pt-ip", 90); continue; }
+                }
+                if (isDefaultOrPlaceholderLink(joined)) continue;
                 if (pieces.length === 1 && leftText.includes(joined)) { addTarget(joined, "URL/Link", "pt-url", 85); continue; }
                 // wrapped on one side only, or wrapped differently on the two sides
                 if (!flat().includes(joined) || isDefaultOrPlaceholderLink(joined) || isFileAssetLink(joined) || joined.length > MAX_TOKEN_LEN * 2) continue;
