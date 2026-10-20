@@ -533,10 +533,11 @@ yes('[x](https://en.wikipedia.org/wiki/Heat_(film))', 'https://en.wikipedia.org/
 yes('(see https://acmecorp-demo.io/page)', 'https://acmecorp-demo.io/page');
 yes('see [https://acmecorp-demo.io/page] ok', 'https://acmecorp-demo.io/page');
 yes('see **https://acmecorp-demo.io/page** ok', 'https://acmecorp-demo.io/page');
-yes('Go https://[2001:db8::1]/admin ok', 'https://[2001:db8::1]/admin');
+// (v11.7.5) user rule: a link to an IP address is not a link - the IP address is labeled
+yes('Go https://[2001:db8::1]/admin ok', '2001:db8::1', 'IP Address');
 // (v11.3.5) one label per link: an e-mail / IP address inside a labeled link is not a second label
 notAs('Clone https://user:pass@git.acmecorp-demo.io/repo.git', 'pass@git.acmecorp-demo.io', 'Email Address');
-notAs('Panel: https://203.0.113.45/admin', '203.0.113.45', 'IP Address');
+yes('Panel: https://203.0.113.45/admin', '203.0.113.45', 'IP Address');   // (v11.7.5) user rule
 yes('Server 203.0.113.45 and https://203.0.113.45/admin', '203.0.113.45', 'IP Address');   // the same IP outside a link is still an IP
 yes('Mail pass@git.acmecorp-demo.io and https://user:pass@git.acmecorp-demo.io/r.git', 'pass@git.acmecorp-demo.io', 'Email Address');
 

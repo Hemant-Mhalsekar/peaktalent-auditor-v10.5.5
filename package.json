@@ -1,10 +1,10 @@
 {
   "name": "peaktalent-annotation-auditor",
-  "version": "11.7.3",
+  "version": "11.7.5",
   "private": true,
   "description": "Browser auditor for PII/BII annotation on dashboard.peaktalent.ai",
   "scripts": {
-    "test": "node tests/run.js && node tests/matrix.js && node tests/labels.js && node tests/labels_deep.js && node tests/mass.js && node tests/exact.js && node tests/contact.js && node tests/credentials.js && node tests/address.js && node tests/email.js",
+    "test": "node tests/run.js && node tests/matrix.js && node tests/labels.js && node tests/labels_deep.js && node tests/mass.js && node tests/exact.js && node tests/contact.js && node tests/credentials.js && node tests/address.js && node tests/email.js && node tests/username.js && node tests/url.js",
     "build": "node scripts/build.js",
     "test:mass": "MASS_N=200000 node tests/mass.js",
     "test:dom": "node tests/dom.js && node tests/dom_large.js && node tests/dom_labelcheck.js && node tests/dom_chrome_colours.js && node tests/dom_extension.js && node tests/dom_e2e.js && node tests/dom_review_data.js && node tests/dom_learning.js"

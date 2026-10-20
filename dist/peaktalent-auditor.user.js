@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PeakTalent PII/BII Annotation Auditor
 // @namespace    https://dashboard.peaktalent.ai/
-// @version      11.7.3
+// @version      11.7.5
 // @description  Highlights PII/BII, credentials and overscrubbed text on PeakTalent review screens. Works fully offline.
 // @match        https://dashboard.peaktalent.ai/*
 // @run-at       document-start
@@ -120,7 +120,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.7.3";
+    const PT_VERSION = "11.7.5";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -729,10 +729,15 @@
                 if (isDefaultOrPlaceholderEmail(T)) return wrong(PTC_NONE, "This is a placeholder address (example.com, test.com, ...), not personal data.");
                 return wrong(PTC_NONE, "This is not an e-mail address.");
             }
-            case "URL/Link":
+            case "URL/Link": {
+                // (v11.7.5) user rule: a link to an IP address is not a link; the IP address is labeled
+                { const ip = ipHostOf(T) || ipHostOf(linkAroundLabel(T, rLine)); if (ip) return wrong("IP Address: " + ip, "A link to an IP address is not labeled as a link: label the IP address."); }
                 if (/^http:\/\//i.test(T) || /^www\./i.test(T)) return wrong(PTC_NONE, "Only https:// links are labeled.");
+                if (isDefaultOrPlaceholderLink(T)) return wrong(PTC_NONE, "This is a placeholder, template or standards link, not personal data.");
+                { const u = linkAroundLabel(T, rLine); if (u) return wrong("URL/Link: " + u, "Label exactly the link, without the text or punctuation around it."); }
                 if (isFileAssetLink(T)) return wrong(PTC_NONE, "This links to a file (image, script, style, font, archive, media, data or code). File links are not labeled (documents are).");
                 return /^https:\/\/\S+$/i.test(T) ? null : wrong(PTC_NONE, "This is not a link.");
+            }
             case "IP Address":
                 if (!isIpAddressFormat(T)) return wrong(PTC_NONE, "This is not a valid IP address.");
                 return ipVersion ? wrong(PTC_NONE, "This is a version / section number, not an IP address.") : null;
@@ -762,11 +767,19 @@
                 if (/^\d{5}-?\d{3}$/.test(T)) return null;
                 return isPostalCodeShape(T) ? wrong(LBL_POSTAL, "A Brazilian CEP is written #####-###.") : wrong(PTC_NONE, "This is not a postal code.");
             case "Vehicle Number Plate": return isVehiclePlateFormat(T) ? null : wrong(PTC_NONE, "This is not a valid Indian number plate.");
-            case "Person Username":
+            case "Person Username": {
+                // (v11.7.4) a label with a missing @, an extra full stop or its key: the correction names the username
+                const bare = T.replace(/^[(\[]+/, "").replace(/[.,;:!?)\]]+$/, "");
+                if (bare !== T && isHandleLabelText(bare, rLine)) return wrong("Person Username: " + bare, "Label the handle without the punctuation around it.");
+                if (/^[A-Za-z_][\w.-]*$/.test(T) && isHandleLabelText("@" + T, rLine) && new RegExp("(?:^|[^\\w.@])@" + escRe(T) + "(?![\\w-])").test(rLine)) return wrong("Person Username: @" + T, "A handle is labeled with its @.");
+                const kv = /^["']?([A-Za-z][\w -]{1,24})["']?\s*[:=]\s*["']?([A-Za-z][A-Za-z0-9._-]{1,29})["']?$/.exec(T);
+                if (kv && /user|login|handle|nick|screen|github|gitlab|twitter|instagram|telegram/i.test(kv[1]) && isPersonalUsername(kv[2])) return wrong("Person Username: " + kv[2], "Only the username is labeled, not its key.");
                 if (isHandleLabelText(T, rLine)) return null;
                 if (/^@/.test(T) && GROUP_MENTION.test(T.slice(1))) return wrong(PTC_NONE, "This mentions a group (@here, @channel, ...), not a person.");
                 if (/^@/.test(T)) return wrong(PTC_NONE, "This is code (a decorator / annotation), not a person's username.");
+                if (/^@/.test(T) && (BOT_HANDLE.test(T.slice(1)) || isUserIdHandle(T.slice(1)))) return wrong(PTC_NONE, "A bot or a user id is not a person's username.");
                 return wrong(PTC_NONE, "This is not a person's username.");
+            }
             case "Account Number":
                 if (isIbanFormat(T)) return null;   // (v11.4.10)
                 if (/\b(?:routing|aba|rtn)\b[^\d\n]{0,15}$/i.test(rLine.slice(0, Math.max(0, rLine.indexOf(T))))) return wrong("Credentials", "This is a US routing (ABA) number: it identifies the bank branch, like an IFSC code, so it is Credentials.");
@@ -823,6 +836,7 @@
                 return null;
             }
             case "Person Name":
+                { const u = linkAroundLabel(T, rLine); if (u && u.includes(T) && !ipHostOf(u) && !linksIn(rLine).reduce((x, e) => x.split(e).join(" "), rLine).includes(T)) return wrong("URL/Link: " + u, "This is part of a link: label the whole link as URL/Link."); }   // (v11.7.5)
                 { const em = emailAroundLabel(T, rLine); if (em && em.includes(T) && !emailsIn(rLine).reduce((x, e) => x.split(e).join(" "), rLine).includes(T)) return wrong("Email Address: " + em, "This is part of an e-mail address: label the whole e-mail as Email Address."); }   // (v11.7.3)
                 if (ordinaryWord || isLanguageWord(plain)) return wrong(PTC_NONE, "This is an ordinary word, place or language, not a person's name.");
                 // (v11.4.7) a place name inside a suggested address ("Anna Salai", "Baker Street") is part of the Address
@@ -832,6 +846,7 @@
                 if (TECH_TOOLS.has(T.toLowerCase())) return wrong(PTC_NONE, "This is a software / technology name.");
                 return null;
             case "Business Name":
+                { const u = linkAroundLabel(T, rLine); if (u && u.includes(T) && !ipHostOf(u) && !linksIn(rLine).reduce((x, e) => x.split(e).join(" "), rLine).includes(T)) return wrong("URL/Link: " + u, "This is part of a link: label the whole link as URL/Link."); }   // (v11.7.5)
                 { const em = emailAroundLabel(T, rLine); if (em && em.includes(T) && !emailsIn(rLine).reduce((x, e) => x.split(e).join(" "), rLine).includes(T)) return wrong("Email Address: " + em, "This is part of an e-mail address: label the whole e-mail as Email Address."); }   // (v11.7.3)
                 // (v11.5.0) a platform used as a tool ("on Slack", "via WhatsApp") is not a company; as an employer it is
                 if (PLATFORM_NAMES.test(T) && /\b(?:on|via|using|through|with|in|into|over)\s+(?:the\s+|my\s+|our\s+|your\s+)?$/i.test(rLine.slice(0, Math.max(0, rLine.indexOf(T))))) return wrong(PTC_NONE, "A platform used as a tool (on Slack, via WhatsApp) is not a company. As an employer (works at LinkedIn) it is.");
@@ -1241,6 +1256,10 @@
         if (!str) return false;
         const s = str.trim().toLowerCase();
         if (/(?:example\.(?:com|org|net)|dummy\.(?:com|org)|sample\.(?:com|org)|test\.(?:com|org)|placeholder|schemas\.android\.com|w3\.org|localhost|127\.0\.0\.1)/i.test(s)) return true;
+        // (v11.7.5) template hosts ("your-domain.com", "yourapp.com", "${HOST}", "{{host}}", "<your-tenant>") and standards
+        // addresses that are not personal data (user rule: "$schema": "https://json-schema.org/...", "https://schema.org")
+        if (/^https?:\/\/[^\/]*(?:\$\{|\{\{|<|%[A-Z_]+%|\byour[-_]?[a-z]*\.|\bmy[-_]?(?:domain|site|app|company)\.)/i.test(s)) return true;
+        if (/^https?:\/\/(?:[a-z0-9-]+\.)*(?:json-schema\.org|schema\.org|purl\.org|xmlsoap\.org|openxmlformats\.org|schemas\.microsoft\.com|ietf\.org|iana\.org)(?:[\/?#]|$)/i.test(s)) return true;
         return false;
     }
 
@@ -3035,10 +3054,19 @@
     const GROUP_MENTION = /^(?:here|channel|everyone|all|team|group|room|someone|admins?|moderators?|mods)$/i;
     const CODE_AT_WORDS = /^(?:media|import|keyframes|font-face|supports|page|charset|namespace|layer|container|property|override|param|returns?|type|typedef|deprecated|author|since|see|throws|example|interface|component|injectable|input|output|test|before|after|apply|tailwind|use|extend|mixin|include|each|if|else|function|types|angular|babel|vue|nestjs|testing-library|staticmethod|classmethod|abstractmethod|dataclass|cached_property|functools|wraps|lru_cache|contextmanager|login_required|csrf_exempt|click|submit|change|keyup|keydown|blur|focus|model)$/i;
     // Is "@word" at `idx` code (a decorator, annotation, Vue directive) rather than a person's handle?
+    // (v11.7.4) user rules: bots and user ids are not people's usernames
+    const BOT_HANDLE = /^(?:dependabot|renovate|github-actions|codecov|sonarcloud|sonarqubecloud|vercel|netlify|coderabbitai|copilot|mergify|snyk-bot|greenkeeper|allcontributors|stale|imgbot|semantic-release-bot|pre-commit-ci|changeset-bot|gitguardian|deepsource-autofix)$|[-_]bot$/i;
+    const isUserIdHandle = (w) => /^[UWB][A-Z0-9]{6,12}$/.test(w) && /\d/.test(w);   // Slack / Discord style ids ("<@U024BE7LH>")
     function isCodeAt(word, idx, text) {
         if (CODE_AT_WORDS.test(word)) return true;
         const ls = text.lastIndexOf("\n", idx - 1) + 1;
         let le = text.indexOf("\n", idx); if (le < 0) le = text.length;
+        // (v11.7.5) a quoted JSON key ("@context": ..., "@type": ...) is not a handle
+        if (/["']$/.test(text.slice(Math.max(ls, idx - 1), idx)) && /^["']\s*:/.test(text.slice(idx + 1 + word.length, idx + 4 + word.length))) return true;
+        {   // (v11.7.4) a SQL variable ("SELECT @UserId", "DECLARE @Total INT") or a spreadsheet reference ("=SUM(@Table1)")
+            const b0 = text.slice(ls, idx);
+            if (/^\s*=/.test(b0) || /\b(?:SELECT|WHERE|DECLARE|SET|VALUES|EXEC|EXECUTE|INSERT|UPDATE|FROM|INTO|RETURN|AND|OR)\b/.test(b0)) return true;
+        }
         const before = text.slice(ls, idx), after = text.slice(idx + 1 + word.length, le);
         let ne = text.indexOf("\n", le + 1); if (ne < 0) ne = text.length;
         const nextLine = le < text.length ? text.slice(le + 1, ne) : "";
@@ -3055,7 +3083,7 @@
     // (v11.4.6) Is a labeled text a person's @handle (on this line)? Not a group mention, not code.
     function isHandleLabelText(T, line) {
         const m = /^@([A-Za-z_](?:[A-Za-z0-9_.-]{0,28}[A-Za-z0-9_])?)(?:@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})?$/.exec(T || "");
-        if (!m || (m[1].length < 2 && !T.slice(1).includes("@")) || GROUP_MENTION.test(m[1])) return false;
+        if (!m || (m[1].length < 2 && !T.slice(1).includes("@")) || GROUP_MENTION.test(m[1]) || BOT_HANDLE.test(m[1]) || isUserIdHandle(m[1])) return false;
         const i = (line || "").indexOf(T);
         return !isCodeAt(m[1], i < 0 ? 0 : i, i < 0 ? T : line);
     }
@@ -3068,6 +3096,13 @@
         if (/^[A-Za-z]+$/.test(s) && isCommonWord(s.toLowerCase()) && !couldBeName(s)) return false;
         return true;
     }
+    // (v11.7.5) the https links on a line, without the punctuation after them; the link a label covers only partly or with extra text
+    function linksIn(line) { return ((line || "").match(/https:\/\/[^\s"'<>]+/gi) || []).map(trimUrlEnd).filter(u => u.length > 8); }
+    function linkAroundLabel(T, line) {
+        for (const u of linksIn(line)) if (u !== T && (u.includes(T) || T.includes(u))) return u;
+        return null;
+    }
+    const ipHostOf = (u) => { const h = /^https?:\/\/(?:[^@\/\s]*@)?(\[[0-9a-f:.]+\]|[^\/:?#\s]+)/i.exec(u || ""); const x = h ? h[1].replace(/^\[|\]$/g, "") : ""; return x && isIpAddressFormat(x) ? x : null; };
     // (v11.7.3) the real e-mails on a line
     function emailsIn(line) {
         const re = new RegExp("(?<![A-Za-z0-9._%+\\u00C0-\\u024F-])" + EMAIL_LOCAL + "@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b", "g");
@@ -4223,6 +4258,11 @@
             // (v11.2.0) GitHub-style node ids are mixed-case base64 ("MDQ6VXNlcjEy..."); an all-caps 10-character value
             // starting with MD is a PAN ("MDJCH6932F"), not a node id.
             if (/^(?:MD[A-Za-z0-9_-]{8,}|SFX[A-Za-z0-9_-]{8,})$/.test(cleanText) && (/[a-z]/.test(cleanText) || cleanText.length > 12)) return;
+            // (v11.7.4) a platform name used as a field name ("Instagram - @priya.clicks", "Twitter: @x") is not a company
+            if (label === "Business Name" && PLATFORM_NAMES.test(cleanText)) {
+                const occ = occurrencesOf(cleanText, rightText);
+                if (occ.length && occ.every(i => /^\s*(?:[:=]|[-\u2013\u2014]\s)/.test(rightText.slice(i + cleanText.length, i + cleanText.length + 4)))) return;
+            }
             if (label === "Person Username") {
                 if (/^\d{5,12}$/.test(cleanText)) return;
                 // (v11.4.6) a username read from a username / login key (keyContext) is wanted, even behind "login"
@@ -4343,7 +4383,7 @@
 
             if (label === "URL/Link") {
                 // Project rule: only https:// links are labeled (http:// and bare www. links are left alone).
-                if (!cleanText.startsWith("https://")) return;
+                if (!/^https:\/\//i.test(cleanText)) return;   // (v11.7.5) "HTTPS://" too
                 if (isFileAssetLink(cleanText)) return;   // (v11.4.1) .png, .js, .pdf, ... links are not labeled
             }
 
@@ -4794,6 +4834,40 @@
                         if (ow && cw && /^[A-Za-z'-]+(?:\s[A-Za-z'-]+){0,2}$/.test(ow) && ow.split(/\s+/).every(w => isCommonWord(w.toLowerCase()) && !isGivenOrSurname(w)) &&
                             (phoneLabelFor(cw) || isContactNumberFormat(cw)) && !leftText.includes(cw)) {
                             __ptOrdinaryOrigins.add(cw);
+                            const ex = targetMap.get(cw);
+                            if (!ex || ex.priority < 66) targetMap.set(cw, { text: cw, label: "Overscrubbed", cls: "pt-overscrub", priority: 66 });
+                            continue;
+                        }
+                    }
+                    // (v11.7.5) a link replaced by a plain word, or (user rule) a plain word by a link: Overscrubbed. The diff splits a
+                    // link into "https", ":", "//host/path", so the pieces are joined back first.
+                    {
+                        const oj = (diff.original || "").replace(/\s+/g, ""), cj = (diff.changed || "").replace(/\s+/g, "");
+                        const ow = (diff.original || "").trim(), cw = (diff.changed || "").trim();
+                        const isLink = (x) => /^https:\/\/[^\s]{3,}$/i.test(x) && !isDefaultOrPlaceholderLink(x) && !isFileAssetLink(x);
+                        const plainW = (x) => /^[A-Za-z'-]+(?:\s[A-Za-z'-]+){0,2}$/.test(x) && x.split(/\s+/).every(w => isCommonWord(w.toLowerCase()) && !isGivenOrSurname(w));
+                        const plainLower = (x) => /^[A-Za-z'-]+(?:\s[A-Za-z'-]+){0,2}$/.test(x) && x.split(/\s+/).every(w => (isCommonWord(w.toLowerCase()) || /^[a-z'-]+$/.test(w)) && !isGivenOrSurname(w));
+                        if (isLink(oj) && plainLower(cw) && !new RegExp("(?:^|[^A-Za-z])" + cw + "(?![A-Za-z])").test(leftText)) {
+                            // set directly: a word that replaced a whole link is not a field label ("See details for more")
+                            __ptOrdinaryOrigins.add(cw);
+                            if (cw.length >= 3 && !isInsideAnyEmail(cw, rightText)) { const ex = targetMap.get(cw); if (!ex || ex.priority < 66) targetMap.set(cw, { text: cw, label: "Overscrubbed", cls: "pt-overscrub", priority: 66 }); }
+                            continue;
+                        }
+                        if (isLink(cj) && plainW(ow) && rightText.includes(cj) && !leftText.includes(cj)) {
+                            __ptOrdinaryOrigins.add(cj);
+                            for (const piece of (diff.changed || "").split(/\s+/)) { const ex = targetMap.get(piece); if (ex && ex.label === "Overscrubbed") targetMap.delete(piece); }
+                            const ex = targetMap.get(cj);
+                            if (!ex || ex.priority < 66) targetMap.set(cj, { text: cj, label: "Overscrubbed", cls: "pt-overscrub", priority: 66 });
+                            continue;
+                        }
+                    }
+                    // (v11.7.4) user rule: a plain word replaced by a handle ("Ping team" -> "Ping @rahul_92") is Overscrubbed
+                    {
+                        const ow = (diff.original || "").trim(), cw = (diff.changed || "").replace(/\s+/g, "");
+                        if (ow && cw && /^[A-Za-z'-]+(?:\s[A-Za-z'-]+){0,2}$/.test(ow) && ow.split(/\s+/).every(w => isCommonWord(w.toLowerCase()) && !isGivenOrSurname(w)) &&
+                            /^@[A-Za-z_][\w.-]{0,28}[A-Za-z0-9_]$/.test(cw) && rightText.includes(cw) && !leftText.includes(cw)) {
+                            __ptOrdinaryOrigins.add(cw);
+                            for (const piece of (diff.changed || "").split(/\s+/)) { const ex = targetMap.get(piece); if (ex && ex.label === "Overscrubbed") targetMap.delete(piece); }
                             const ex = targetMap.get(cw);
                             if (!ex || ex.priority < 66) targetMap.set(cw, { text: cw, label: "Overscrubbed", cls: "pt-overscrub", priority: 66 });
                             continue;
@@ -5297,7 +5371,7 @@
                 const ex = targetMap.get(text);
                 if (!ex || 85 > ex.priority) targetMap.set(text, { text, label: "URL/Link", cls: "pt-url", priority: 85 });
             };
-            const httpsRegex = /https:\/\/[^\s"'<>]+/g;
+            const httpsRegex = /https:\/\/[^\s"'<>]+/gi;   // (v11.7.5) "HTTPS://..." too
             let um;
             while ((um = httpsRegex.exec(rightText)) !== null) {
                 const pieces = [um[0]];
@@ -5318,7 +5392,14 @@
                 }
                 pieces[pieces.length - 1] = trimUrlEnd(pieces[pieces.length - 1]);
                 const joined = pieces.join("");
-                if (!joined.startsWith("https://") || joined.length <= 8) continue;
+                if (!/^https:\/\//i.test(joined) || joined.length <= 8) continue;
+                // (v11.7.5) user rule: a link to an IP address is not a link - the IP address is labeled
+                {
+                    const host = /^https:\/\/(?:[^@\/\s]*@)?(\[[0-9a-f:.]+\]|[^\/:?#\s]+)/i.exec(joined);
+                    const h = host ? host[1].replace(/^\[|\]$/g, "") : "";
+                    if (h && isIpAddressFormat(h)) { if (leftText.includes(h)) addTarget(h, "IP Address", "pt-ip", 90); continue; }
+                }
+                if (isDefaultOrPlaceholderLink(joined)) continue;
                 if (pieces.length === 1 && leftText.includes(joined)) { addTarget(joined, "URL/Link", "pt-url", 85); continue; }
                 // wrapped on one side only, or wrapped differently on the two sides
                 if (!flat().includes(joined) || isDefaultOrPlaceholderLink(joined) || isFileAssetLink(joined) || joined.length > MAX_TOKEN_LEN * 2) continue;
@@ -5508,6 +5589,7 @@
         while ((hM = handleRegex.exec(rightText)) !== null) {
             if (hM[1].length < 2 && !hM[2]) continue;
             if (GROUP_MENTION.test(hM[1])) continue;
+            if (BOT_HANDLE.test(hM[1]) || /^\[bot\]/.test(rightText.slice(hM.index + hM[0].length)) || isUserIdHandle(hM[1])) continue;   // (v11.7.4)
             if (isCodeAt(hM[1], hM.index, rightText)) continue;
             {   // the second half of an e-mail broken over two lines ("priya.raghavan" / "@northwind-demo.com")
                 const ls = rightText.lastIndexOf("\n", hM.index - 1) + 1;
@@ -5528,7 +5610,7 @@
         // not a person, a number is an id, and a value with a space is a full name (Person Name).
         {
             const KEY = "(?:user[\\s_-]?name|user|login(?:[\\s_-]?(?:name|id))?|handle|screen[\\s_-]?name|nick(?:name)?|github|gitlab|twitter|instagram|telegram)";
-            const kv = new RegExp("(?:^|[\\s{,\"'(.])[\"']?" + KEY + "[\"']?\\s*[:=]\\s*([\"']?)([A-Za-z][A-Za-z0-9._-]{1,29})(?![A-Za-z0-9._@(-])", "gi");
+            const kv = new RegExp("(?:^|[\\s{,\"'(.])[\"']?" + KEY + "[\"']?\\s*[:=]\\s*([\"']?)([A-Za-z][A-Za-z0-9._-]{1,29})(?![A-Za-z0-9._@(-])(?![ \\t]+[A-Z][a-z])", "gi");   // (v11.7.4) "Username: Rahul Sharma" is a full name
             // (v11.4.11) In code an unquoted value is a type or a reference, not a username: "username: Attribute.String;",
             // "user: UserEntity;", "username: string;", "handle: Schema.Types.String,". A quoted value is a real string ("rahul_92").
             const TYPE_WORD = /^(?:string|number|boolean|bool|int|integer|float|double|decimal|text|varchar|char|uuid|any|object|date|datetime|timestamp|json|null|undefined|void|unknown|never)$/i;
@@ -5546,10 +5628,27 @@
                     const ls = text.lastIndexOf("\n", m.index) + 1; let le = text.indexOf("\n", m.index); if (le < 0) le = text.length;
                     if (!codeValue(m[2], text.slice(ls, le), !!m[1])) into.push(m[2]);
                 }
-                for (const ln of text.split("\n")) {
+                const lines0 = text.split("\n");
+                for (const ln of lines0) {
                     if (!ln.includes("|")) continue;
                     const cells = ln.split("|").map(c => c.trim());
                     for (let i = 0; i + 1 < cells.length; i++) if (cellKey.test(cells[i]) && cells[i + 1]) into.push(cells[i + 1]);
+                }
+                // (v11.7.4) a Username / Login column: the header names it, the rows below hold the values
+                for (let i = 0; i < lines0.length; i++) {
+                    const ln = lines0[i];
+                    const delim = ln.includes("|") ? "|" : ln.includes("\t") ? "\t" : ln.includes(",") ? "," : null;
+                    if (!delim) continue;
+                    const head = ln.split(delim).map(c => c.trim().replace(/^["']|["']$/g, ""));
+                    const col = head.findIndex(c => cellKey.test(c));
+                    if (col < 0) continue;
+                    for (let r = i + 1; r < lines0.length && r <= i + 5000; r++) {
+                        const row = lines0[r];
+                        if (!row.trim() || !row.includes(delim)) break;
+                        if (/^[\s|:\-]+$/.test(row)) continue;
+                        const cells = row.split(delim).map(c => c.trim().replace(/^["']|["']$/g, ""));
+                        if (cells.length === head.length && cells[col]) into.push(cells[col]);
+                    }
                 }
             };
             const lv = []; collect(leftText, lv); for (const v of lv) leftVals.add(v);
@@ -5558,6 +5657,25 @@
                 if (!leftVals.has(v) || !isPersonalUsername(v)) continue;
                 addTarget(v, "Person Username", "pt-username", 92, true);   // (v11.4.11) a username key outranks a name guess
             }
+        }
+
+        // (v11.7.4) user rules C and D: a username wherever it appears - Reddit "u/name", Discord "name#1234", a home folder
+        // ("/home/rahul/", "/Users/priya.k/", "C:\\Users\\rahul.sharma\\") and the one-word login of a git author
+        {
+            const SYSTEM_FOLDER = /^(?:public|default|shared|all|all users|default user|runner|vagrant|travis|circleci|appveyor|codespace|node|docker|app|user|username|yourname|your_name|name|me|you|guest)$/i;
+            const put = (v) => { if (leftText.includes(v)) addTarget(v, "Person Username", "pt-username", 93, true); };
+            let m;
+            const reddit = /(?<![\w\/.])u\/([A-Za-z0-9_-]{3,20})(?![\w\/-])/g;
+            while ((m = reddit.exec(rightText)) !== null) put(m[0]);
+            for (const ln of rightText.split("\n")) {
+                if (!/\bdiscord\b/i.test(ln)) continue;
+                const dc = /(?<![\w#\/])([A-Za-z0-9_.]{2,32}#\d{4})(?![\w#])/g;
+                while ((m = dc.exec(ln)) !== null) put(m[1]);
+            }
+            const home = /(?:\/home\/|\/Users\/|[A-Za-z]:\\Users\\|\\\\Users\\\\)([A-Za-z][A-Za-z0-9._-]{1,29})(?=[\/\\])/g;
+            while ((m = home.exec(rightText)) !== null) if (!SYSTEM_FOLDER.test(m[1]) && isPersonalUsername(m[1])) put(m[1]);
+            const gitAuthor = /^[ \t]*(?:Author|Commit(?:ter)?|Co-authored-by|Signed-off-by|Reviewed-by)[ \t]*:[ \t]*([A-Za-z][A-Za-z0-9._-]{1,38})[ \t]*</gim;
+            while ((m = gitAuthor.exec(rightText)) !== null) if (!GENERIC_ACCOUNT.test(m[1]) && !BOT_HANDLE.test(m[1])) put(m[1]);
         }
 
         // Step 6: Scan for Email Addresses that exist identically in BOTH left and right documents
