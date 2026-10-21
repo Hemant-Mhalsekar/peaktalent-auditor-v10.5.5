@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PeakTalent PII/BII Annotation Auditor
 // @namespace    https://dashboard.peaktalent.ai/
-// @version      11.7.7
+// @version      11.7.8
 // @description  Highlights PII/BII, credentials and overscrubbed text on PeakTalent review screens. Works fully offline.
 // @match        https://dashboard.peaktalent.ai/*
 // @run-at       document-start
@@ -120,7 +120,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.7.7";
+    const PT_VERSION = "11.7.8";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -813,6 +813,11 @@
                 return (/^\d[\d -]{7,22}\d$/.test(T) && digits.length >= 8 && digits.length <= 18) ? null : wrong(PTC_NONE, "This is not a bank account number (8-18 digits).");
             }
             case "Date": {
+                // (v11.7.8) a label with its key, a time, or only a part of a date of birth: the correction names the date
+                if (DOB_KEY_RE.test(rLine + " " + lineOf(leftText, T))) {
+                    const dates = rLine.match(new RegExp("(?:" + FULL_DATE_SRC + ")(?=T\\d{2}:|[^\\w\\/-]|$)", "gi")) || [];
+                    for (const d of dates) if (d !== T && (T.includes(d) || d.includes(T))) return wrong("Date: " + d, "Label only the date of birth itself: the whole date, without its key or a time.");
+                }
                 if (!isDateFormat(T)) return wrong(ordinaryWord ? PTC_NONE : PTC_NONE, "This is not a date.");
                 // (v11.4.9) only a full date (day, month, year), behind a DOB key (any spelling or language, "b.")
                 if (!isFullDate(T)) return wrong(PTC_NONE, "Only a full date of birth (day, month and year) is labeled, not a month or a year alone.");
@@ -4898,6 +4903,19 @@
                             continue;
                         }
                     }
+                    // (v11.7.8) user rule: a plain word replaced by a date of birth ("DOB: unknown" -> "DOB: 05-11-1988") is Overscrubbed
+                    {
+                        const ow = (diff.original || "").trim();
+                        const cw = (diff.changed || "").trim().replace(/\s+([,.\/-])/g, "$1").replace(/([\/-])\s+/g, "$1");
+                        if (ow && cw && /^[A-Za-z'-]+(?:\s[A-Za-z'-]+){0,2}$/.test(ow) && ow.split(/\s+/).every(w => isCommonWord(w.toLowerCase()) && !isGivenOrSurname(w)) &&
+                            isFullDate(cw) && rightText.includes(cw) && !leftText.includes(cw)) {
+                            __ptOrdinaryOrigins.add(cw);
+                            for (const piece of (diff.changed || "").split(/\s+/)) { const ex = targetMap.get(piece); if (ex && ex.label === "Overscrubbed") targetMap.delete(piece); }
+                            const ex = targetMap.get(cw);
+                            if (!ex || ex.priority < 70) targetMap.set(cw, { text: cw, label: "Overscrubbed", cls: "pt-overscrub", priority: 70 });
+                            continue;
+                        }
+                    }
                     // (v11.7.6) user rule: a plain word replaced by an account number ("Account: savings" -> "Account: 50100234567891")
                     {
                         const ow = (diff.original || "").trim(), cw = (diff.changed || "").trim();
@@ -6159,7 +6177,9 @@
         // (v11.4.9) every DOB key (also camelCase "dateOfBirth", "Born:", "Birthday -", "b.", other languages) and every full-date
         // format; a place may sit between key and date ("Tempat/Tgl Lahir: Jakarta, 21-09-1996"). Month + year or a year alone is not labeled.
         const dobPatterns = [
-            new RegExp("(?:(?<![A-Za-z])|\\b)" + DOB_KEY_SRC + "[\"'*]*(?:\\s*[:=|\\-\\u2013]\\s*|\\s+)(?:is\\s+|on\\s+)?[\"']?(?:[A-Za-z][A-Za-z .]{0,24},\\s*)?(" + FULL_DATE_SRC + ")(?![\\w\\/-])", "gi"),
+            // (v11.7.8) a second-language key after "/" ("Date of Birth / Date de naissance: 05 NOV 1988"); a time after the date
+            // ("1988-11-05T00:00:00Z", user rule: only the date is labeled)
+            new RegExp("(?:(?<![A-Za-z])|\\b)" + DOB_KEY_SRC + "(?:\\s*\\/\\s*[A-Za-z][A-Za-z .']{0,30})?[\"'*]*(?:\\s*[:=|\\-\\u2013]\\s*|\\s+)(?:is\\s+|on\\s+)?[\"']?(?:[A-Za-z][A-Za-z .]{0,24},\\s*)?(" + FULL_DATE_SRC + ")(?:(?=T\\d{2}:\\d{2})|(?![\\w\\/-]))", "gi"),
             /(?:["']?(?:dob|date_of_birth|birth_date|birthdate)["']?\s*[:=]\s*["'])([^"'\n\r]+)["']/gi
         ];
         for (const pat of dobPatterns) {

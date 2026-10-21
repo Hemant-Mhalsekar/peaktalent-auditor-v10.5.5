@@ -1,5 +1,14 @@
 # Changelog
 
+## 11.7.8 - October 2026 (branch v2)
+
+Date (date of birth; second review, 13-chip page):
+- **Found**: a DOB behind a two-language key (`Date of Birth / Date de naissance: 05 NOV 1988`) and a DOB with a time (`1988-11-05T00:00:00Z`): only the date is labeled (user rule).
+- **A plain word replaced by a date of birth is Overscrubbed** (user rule: `DOB: unknown` -> `DOB: 05-11-1988`).
+- **Mistake check names the date of birth** when a label has its key (`DOB: 05-11-1988`), a time, or only a part of the date (`5th November`, `05-11`); it said "No label".
+- Two-digit years (`05/11/88`) and other people's DOBs (`Child DOB`, `Father's DOB`) stay labeled (user rules).
+- New test `tests/dob.js` (27 checks); 8 Date cases in the label check.
+
 ## 11.7.7 - October 2026 (branch v2)
 
 IP Address (second review, 13-chip page):
