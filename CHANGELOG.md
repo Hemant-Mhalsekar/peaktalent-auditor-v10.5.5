@@ -1,5 +1,14 @@
 # Changelog
 
+## 11.7.7 - October 2026 (branch v2)
+
+IP Address (second review, 13-chip page):
+- **Not labeled** (user rule): loopback (`127.0.0.1`, `::1`), broadcast (`255.255.255.255`) and netmask addresses (`255.255.255.0`).
+- **Package versions are not IPs**: `"version": "10.2.0.15"`, `react-dom@18.2.0.1` on a package line, and the values of a dependencies block (`"lodash": "4.17.21.1"`). An SSH login (`ec2-user@10.0.0.5`) and a host map in a config stay IPs.
+- **Mistake check names the IP address** when a label has a port, key, subnet suffix (`10.0.0.0/24` -> `10.0.0.0`, user rule) or full stop, or covers only a part of it; it said "No label". It also flags a label on a special address or a package version.
+- Documentation-range IPs (`192.0.2.x`, `198.51.100.x`, `203.0.113.x`) stay labeled (user rule).
+- New test `tests/ip.js` (33 checks); 10 IP cases in the label check.
+
 ## 11.7.6 - October 2026 (branch v2)
 
 Account Number (second review, 13-chip page; Indian and US data):

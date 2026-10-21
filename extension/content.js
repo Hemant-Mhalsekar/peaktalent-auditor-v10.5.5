@@ -15,7 +15,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.7.6";
+    const PT_VERSION = "11.7.7";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -638,9 +638,22 @@
                 if (isFileAssetLink(T)) return wrong(PTC_NONE, "This links to a file (image, script, style, font, archive, media, data or code). File links are not labeled (documents are).");
                 return /^https:\/\/\S+$/i.test(T) ? null : wrong(PTC_NONE, "This is not a link.");
             }
-            case "IP Address":
+            case "IP Address": {
+                // (v11.7.7) a label with a port, key, subnet suffix or full stop, or only a part of the address: name the address
+                {
+                    const ips = (rLine.match(/(?<![\w.:])(?:\d{1,3}\.){3}\d{1,3}(?![\w]|\.\w)|(?<![\w:.])(?:[0-9A-Fa-f]{1,4}|:)(?::[0-9A-Fa-f]{0,4}){2,7}(?![\w:])/g) || []).filter(isIpAddressFormat);
+                    for (const ip of ips) if (ip !== T && (T.includes(ip) || (ip.includes(T) && T.length >= 3))) return wrong("IP Address: " + ip, "Label only the IP address: no port, key, subnet suffix or punctuation, and not a part of it.");
+                }
                 if (!isIpAddressFormat(T)) return wrong(PTC_NONE, "This is not a valid IP address.");
+                // (v11.7.7) user rule: loopback, broadcast and netmask addresses are not labeled
+                if (/^127\./.test(T) || T === "::1" || isNetmask(T)) return wrong(PTC_NONE, "Loopback, broadcast and netmask addresses point to no one: they are not labeled.");
+                // (v11.7.7) a package version ("react-dom@18.2.0.1", a dependencies block, "version": "...")
+                if (new RegExp("version[\"']?\\s*[:=]\\s*[\"']?[\\^~>=<v]*" + escRe(T) + "|[\"']\\s*:\\s*[\"'][\\^~>=<]+" + escRe(T), "i").test(rLine) ||
+                    (new RegExp("[\\w/-]@" + escRe(T)).test(rLine) && /\b(?:npm|npx|yarn|pnpm|pip|install|add|upgrade|bump(?:ed)?|update[ds]?|package|dependenc(?:y|ies)|version|release)\b/i.test(rLine)) ||
+                    (new RegExp("^\\s*[\"'](?:@[\\w.-]+\\/)?[a-z][a-z.-]*[\"']\\s*:\\s*[\"']" + escRe(T) + "[\"']").test(rLine) && /"(?:dev|peer|optional)?[dD]ependencies"\s*:/.test(rightText || "")))
+                    return wrong(PTC_NONE, "This is a package version, not an IP address.");
                 return ipVersion ? wrong(PTC_NONE, "This is a version / section number, not an IP address.") : null;
+            }
             case "Contact Number": {   // (v11.4.0) replaced by Indian Mobile Number / International Phone Number
                 const ph = labelForPage(phoneLabelFor(T));
                 if (ph === "Contact Number") return null;   // (v11.4.1) a page with the old chips only: Contact Number is right
@@ -3045,6 +3058,15 @@
         return true;
     }
 
+    // (v11.7.7) a subnet mask ("255.255.255.0") or the broadcast address ("255.255.255.255")
+    function isNetmask(t) {
+        const p = String(t || "").split(".");
+        if (p.length !== 4 || p[0] !== "255") return false;
+        const ok = new Set(["0", "128", "192", "224", "240", "248", "252", "254", "255"]);
+        if (!p.every(o => ok.has(o))) return false;
+        for (let i = 1; i < 4; i++) if (p[i] !== "0" && p[i - 1] !== "255") return false;   // contiguous bits
+        return true;
+    }
     function isIpAddressFormat(str) {
         if (!str) return false;
         const s = str.trim();
@@ -5699,6 +5721,14 @@
                 if (t.includes(".") && new RegExp(escIp + "\\s*(?:build|release|rc\\d*|beta|alpha|version|patch|update|firmware|sdk|hotfix|ga|lts)\\b", "i").test(line)) continue;
                 // All four parts below 10 ("3.2.1.4") looks like numbering unless the line talks about networks.
                 if (t.includes(".") && t.split(".").every(o => Number(o) < 10) && !/\b(?:ip|host|server|addr|address|gateway|dns|subnet|proxy|ping|allow(?:ed)?|deny|connect|nat|vpn|router|lan|wan|cidr|inet)\b|[=@]\s*$/i.test(line.slice(0, line.indexOf(t)))) continue;
+                // (v11.7.7) user rule: loopback, broadcast and netmask addresses point to no one
+                if (/^127\./.test(t) || t === "::1" || isNetmask(t)) continue;
+                // (v11.7.7) a package version, not an IP: "react-dom@18.2.0.1", "version": "10.2.0.15", and the values of a
+                // dependencies block ("lodash": "4.17.21.1", "@acme/ui": "^2.10.0.3")
+                if (new RegExp("[\\w/-]@" + escIp, "i").test(line) && /\b(?:npm|npx|yarn|pnpm|pip|install|add|upgrade|bump(?:ed)?|update[ds]?|package|dependenc(?:y|ies)|version|release)\b/i.test(line)) continue;
+                if (new RegExp("version[\"']?\\s*[:=]\\s*[\"']?[\\^~>=<v]*" + escIp, "i").test(line)) continue;
+                if (new RegExp("^\\s*[\"'][^\"']+[\"']\\s*:\\s*[\"'][\\^~>=<]+" + escIp).test(line)) continue;
+                if (new RegExp("^\\s*[\"'](?:@[\\w.-]+\\/)?[a-z][a-z.-]*[\"']\\s*:\\s*[\"']" + escIp + "[\"']").test(line) && /"(?:dev|peer|optional)?[dD]ependencies"\s*:/.test(rightText)) continue;
                 addTarget(t, "IP Address", "pt-ip", 90);
             }
         }
