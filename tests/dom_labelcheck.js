@@ -582,6 +582,30 @@ same('language', 'Languages: English, Bengali, Hindi', 'Bengali', '', 'Person Na
     }
   }
 
+  // (v11.7.7) IP Address, second review: the correction names the address; special addresses and versions are not labeled
+  {
+    const IC = [
+      [['Connect to 10.0.0.5:8080'], null, '10.0.0.5:8080', 'IP Address', 'IP Address: 10.0.0.5', 'the port is not part of the IP'],
+      [['host: 172.16.0.4'], null, 'host: 172.16.0.4', 'IP Address', 'IP Address: 172.16.0.4', 'the key is not part of the IP'],
+      [['Ping 8.8.8.8.'], null, '8.8.8.8.', 'IP Address', 'IP Address: 8.8.8.8', 'the full stop is not part of the IP'],
+      [['Server 192.168.10.25 is down'], null, '192.168', 'IP Address', 'IP Address: 192.168.10.25', 'a part of the IP -> the whole IP'],
+      [['Subnet 10.0.0.0/24'], null, '10.0.0.0/24', 'IP Address', 'IP Address: 10.0.0.0', 'a subnet -> only the IP part'],
+      [['Listen on 127.0.0.1'], null, '127.0.0.1', 'IP Address', 'No label', 'loopback is not labeled'],
+      [['Netmask 255.255.255.0'], null, '255.255.255.0', 'IP Address', 'No label', 'a netmask is not labeled'],
+      [['"dependencies": {', '  "lodash": "4.17.21.1"', '}'], null, '4.17.21.1', 'IP Address', 'No label', 'a package version is not an IP'],
+      [['Server 192.168.10.25 is down'], null, '192.168.10.25', 'IP Address', 'ok', 'an IP address is an IP Address'],
+      [['Doc range 192.0.2.10'], null, '192.0.2.10', 'IP Address', 'ok', 'a documentation-range IP is labeled'],
+    ];
+    for (const [l, r, word, label, exp, name] of IC) {
+      const p = await page(l, r || l);
+      const m = await p.annotate(word, label);
+      const st = p.state(m);
+      const ok = exp === 'ok' ? st.mark === 'ok' : (st.mark === 'wrong' && st.expected === exp);
+      check(ok, 'IP review: ' + name, st);
+      p.close();
+    }
+  }
+
   // (v11.4.8) a whole connection URL labeled Credentials: only the password should be
   {
     const line = ['DATABASE_URL=postgres://admin:S3cretPass@db.acme-demo.io:5432/prod'];
