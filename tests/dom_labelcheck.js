@@ -606,6 +606,28 @@ same('language', 'Languages: English, Bengali, Hindi', 'Bengali', '', 'Person Na
     }
   }
 
+  // (v11.7.8) Date, second review: the correction names the date of birth
+  {
+    const DC = [
+      [['DOB: 05-11-1988'], null, 'DOB: 05-11-1988', 'Date', 'Date: 05-11-1988', 'key + date -> only the date'],
+      [['Born on 5th November, 1988'], null, '5th November', 'Date', 'Date: 5th November, 1988', 'a part of a date of birth -> the whole date'],
+      [['DOB: 05-11-1988'], null, '05-11', 'Date', 'Date: 05-11-1988', 'day and month only -> the whole date'],
+      [['dob: 1988-11-05T00:00:00Z'], null, '1988-11-05T00:00:00Z', 'Date', 'Date: 1988-11-05', 'a date with a time -> only the date'],
+      [['Date of birth: 05 NOV 1988'], null, '05 NOV 1988', 'Date', 'ok', 'a passport-style date of birth'],
+      [['DOB: 05/11/88'], null, '05/11/88', 'Date', 'ok', 'a two-digit year is a full date of birth'],
+      [['Meeting on 12 March 2025'], null, '12 March 2025', 'Date', 'No label', 'a meeting date is not a date of birth'],
+      [['DOB: unknown'], ['DOB: 05-11-1988'], '05-11-1988', 'Overscrubbed', 'ok', 'a word replaced by a date of birth is Overscrubbed'],
+    ];
+    for (const [l, r, word, label, exp, name] of DC) {
+      const p = await page(l, r || l);
+      const m = await p.annotate(word, label);
+      const st = p.state(m);
+      const ok = exp === 'ok' ? st.mark === 'ok' : (st.mark === 'wrong' && st.expected === exp);
+      check(ok, 'Date review: ' + name, st);
+      p.close();
+    }
+  }
+
   // (v11.4.8) a whole connection URL labeled Credentials: only the password should be
   {
     const line = ['DATABASE_URL=postgres://admin:S3cretPass@db.acme-demo.io:5432/prod'];
