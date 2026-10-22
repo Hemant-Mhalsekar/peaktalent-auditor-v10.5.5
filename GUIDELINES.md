@@ -301,6 +301,9 @@ The platform mandates that the following **15 categories are strictly classified
 
 ---
 
+### 5.10 Disguised values (v11.10.0)
+A value written with spaces between its characters (`9 8 4 5 0 1 2 3 4 5`), with non-Latin digits (Devanagari, fullwidth, ...) or split over two lines (`Id Passport: X486` / `5305`) is judged as the value it is: label it as written, the whole of it (both pieces when it is split over two lines).
+
 ## 6. Comprehensive Do's and Don'ts Matrix
 
 | Feature / Case | ❌ INCORRECT (Common Mistake) | ✅ CORRECT (Standard Procedure) | Rationale |

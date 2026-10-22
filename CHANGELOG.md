@@ -1,5 +1,14 @@
 # Changelog
 
+## 11.10.0 - October 2026 (branch v2)
+
+Disguised values, taken over from the team's v13 fork:
+- **Spaced characters**: `9 8 4 5 0 1 2 3 4 5`, `A B C P E 1 2 3 4 F`, `2 3 4 5 6 7 8 9 0 1 2 3` are read as the phone / PAN / Aadhaar they are and labeled as written. Before, the phone was cut at `9 8 4 5 0 1 2 3` and the others were missed.
+- **Non-Latin digits**: Devanagari, Bengali, Tamil, other Indian scripts, Arabic-Indic and fullwidth digits (`EPIC: YMS` + Devanagari digits, a phone in fullwidth digits) are read as 0-9.
+- **A value split over two lines** (`Id Passport: X486` / `5305  Status: archived`): both pieces get the label of the joined value; a replaced one gets nothing, and its pieces are never Overscrubbed.
+- How: when a document holds such a value, it is read once more in the plain form and every result is mapped back to the text as written.
+- New test `tests/disguised.js` (20 checks).
+
 ## 11.9.0 - October 2026 (branch v2)
 
 Merged from the team's v13 fork (rules and fixes chosen by the user, 2026-10-22), plus four bugs the comparison exposed.

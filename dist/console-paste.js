@@ -1,4 +1,4 @@
-// PeakTalent Auditor v11.9.0 - console build.
+// PeakTalent Auditor v11.10.0 - console build.
 // Open the PeakTalent review tab, open the browser console (Safari: Develop > Show JavaScript Console,
 // Chrome: Cmd/Ctrl+Option/Alt+J), paste this whole file and press Enter. Pasting again replaces the old copy.
 // GENERATED FILE - edit src/content.js and src/page-hook.js, then run `node scripts/build.js`.
@@ -112,7 +112,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.9.0";
+    const PT_VERSION = "11.10.0";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -4334,12 +4334,132 @@
         return result;
     }
 
+    // ---- (v11.10.0) DISGUISED VALUES, taken over from the team's v13 fork ----
+    // A value written with spaces between its characters ("9 8 4 5 0 1 2 3 4 5"), with non-Latin digits (Devanagari,
+    // fullwidth) or split over two lines ("Id Passport: X486" / "5305  Status: archived") is read as the
+    // value it is: the documents are read a second time in the plain form, and every result is mapped back to the text as written.
+    let __ptSpacedDepth = 0, __ptDigitDepth = 0, __ptSplitDepth = 0;
+    // 4+ single letters / digits separated by single spaces, at least 2 of them digits
+    const SPACED_RUN_G = /(?<![A-Za-z0-9] ?)(?:[A-Za-z0-9] ){3,}[A-Za-z0-9](?! ?[A-Za-z0-9])/g;
+    function hasSpacedRun(t) { SPACED_RUN_G.lastIndex = 0; let m; while ((m = SPACED_RUN_G.exec(t)) !== null) { if ((m[0].match(/\d/g) || []).length >= 2) { SPACED_RUN_G.lastIndex = 0; return true; } } SPACED_RUN_G.lastIndex = 0; return false; }
+    // decimal digit blocks (Arabic-Indic, Devanagari, Bengali, Gurmukhi, Gujarati, Oriya, Tamil, Telugu, Kannada, Malayalam, Thai, fullwidth, ...)
+    const DIGIT_ZEROS = [0x0660, 0x06F0, 0x07C0, 0x0966, 0x09E6, 0x0A66, 0x0AE6, 0x0B66, 0x0BE6, 0x0C66, 0x0CE6, 0x0D66, 0x0DE6, 0x0E50, 0x0ED0, 0x0F20, 0x1040, 0x17E0, 0x1810, 0xFF10];
+    const NATIVE_DIGIT_RE = new RegExp("[" + DIGIT_ZEROS.map(z => "\\u" + z.toString(16).padStart(4, "0") + "-\\u" + (z + 9).toString(16).padStart(4, "0")).join("") + "]");
+    const NATIVE_DIGIT_G = new RegExp(NATIVE_DIGIT_RE.source, "g");
+    function asciiDigits(t) { return String(t || "").replace(NATIVE_DIGIT_G, (ch) => { const c = ch.charCodeAt(0); for (const z of DIGIT_ZEROS) if (c >= z && c <= z + 9) return String(c - z); return ch; }); }
+    // values split at a line end: line i ends in "Key: p1", line i+1 starts with the rest "p2" (then another "Key:" or nothing)
+    const __splitMemo = new Map();
+    function splitValuesIn(text) {
+        if (__splitMemo.has(text)) return __splitMemo.get(text);
+        const out = [];
+        const lines = String(text || "").split("\n");
+        if (lines.length <= 20000) for (let i = 0; i + 1 < lines.length; i++) {
+            const m = /(?:^|\s{2,}|\t)([A-Za-z][A-Za-z0-9 _.\/()#-]{0,40}?)\s*:\s*([A-Za-z0-9+][A-Za-z0-9.@:+\-\/_]{0,250}={0,2})\s*$/.exec(lines[i]);
+            if (!m) continue;
+            const n = /^\s*([A-Za-z0-9.@:\-\/][A-Za-z0-9.@:+\-\/_]{0,250}={0,2})(?=\s{2,}[A-Za-z][A-Za-z0-9 _.\/()#-]{0,40}:|\t|\s*$)/.exec(lines[i + 1]);
+            if (!n) continue;
+            const p1 = m[2], p2 = n[1];
+            if (!/\d/.test(p1 + p2) || (p1 + p2).length < 6) continue;
+            if (/^[A-Za-z_][\w.-]*:/.test(p2) && !/^[0-9a-f]{1,4}:/i.test(p2)) continue;              // the next line starts with its own key
+            if (/^[a-z]{3,}$/.test(p2) && !/[@.:\-]$/.test(p1) && !/@/.test(p1)) continue;              // words, not a value
+            if (/^[A-Za-z]{4,}$/.test(p1) && isCommonWord(p1.toLowerCase())) continue;
+            if (/^[A-Z][a-z]+$/.test(p2) && !/[@.:\-]$/.test(p1)) continue;
+            if (/^(?:record|department|status)$/i.test(m[1].trim())) continue;
+            out.push({ i, p1, p2, joined: p1 + p2, key: m[1].trim() });
+        }
+        if (__splitMemo.size > 20) __splitMemo.clear();
+        __splitMemo.set(text, out);
+        return out;
+    }
+    function joinSplitValues(text, splits) {
+        if (!splits.length) return text;
+        const lines = text.split("\n");
+        for (const sp of splits) {
+            lines[sp.i] = lines[sp.i].replace(/\s*$/, "") + sp.p2;
+            lines[sp.i + 1] = lines[sp.i + 1].replace(/^\s*/, "").slice(sp.p2.length).replace(/^\s+/, "");
+        }
+        return lines.join("\n");
+    }
+    const withMeta = (out, norm) => { out.sort((a, b) => b.text.length - a.text.length); out.scrubbedNames = norm.scrubbedNames || new Set(); out.ordinaryWords = norm.ordinaryWords || new Set(); return out; };
+    // Runs before the normal reading; returns null when the documents hold no disguised value.
+    function readDisguised(leftText, rightText) {
+        // spaced characters: every run joined, each result mapped back to its spaced text
+        if (!__ptSpacedDepth && hasSpacedRun(rightText)) {
+            const join = (t) => t.replace(SPACED_RUN_G, (r) => ((r.match(/\d/g) || []).length >= 2 ? r.replace(/ /g, "") : r));
+            __ptSpacedDepth++;
+            let norm;
+            try { norm = extractDynamicTargetsUncached(join(leftText), join(rightText)); } finally { __ptSpacedDepth--; }
+            const runsR = (rightText.match(SPACED_RUN_G) || []).filter(r => (r.match(/\d/g) || []).length >= 2);
+            const byJoined = new Map(); for (const r of runsR) { const j = r.replace(/ /g, ""); const a = byJoined.get(j) || []; if (!a.includes(r)) a.push(r); byJoined.set(j, a); }
+            const out = [], seen = new Set();
+            for (const t of norm) {
+                let texts;
+                if (byJoined.has(t.text)) texts = byJoined.get(t.text).concat(rightText.includes(t.text) ? [t.text] : []);
+                else if (runsR.some(r => { const j = r.replace(/ /g, ""); return j !== t.text && j.includes(t.text); }) && !rightText.includes(t.text)) continue;   // a piece of one
+                else texts = [t.text];
+                for (const text of texts) {
+                    if (!rightText.includes(text) || (t.label !== "Overscrubbed" && !leftText.includes(text)) || seen.has(text)) continue;
+                    seen.add(text);
+                    out.push(text === t.text ? t : Object.assign({}, t, { text, joined: t.text }));
+                }
+            }
+            return withMeta(out, norm);
+        }
+        // non-Latin digits: read as 0-9 (one character for one, so positions stay), mapped back to the characters as written
+        if (!__ptDigitDepth && NATIVE_DIGIT_RE.test(rightText + leftText)) {
+            __ptDigitDepth++;
+            let norm;
+            try { norm = extractDynamicTargetsUncached(asciiDigits(leftText), asciiDigits(rightText)); } finally { __ptDigitDepth--; }
+            const nR = asciiDigits(rightText);
+            const out = [], seen = new Set();
+            for (const t of norm) {
+                let pos = -1, n = 0;
+                while ((pos = nR.indexOf(t.text, pos + 1)) >= 0 && n++ < 200) {
+                    const orig = rightText.slice(pos, pos + t.text.length);
+                    if (seen.has(orig) || !(t.label === "Overscrubbed" || leftText.includes(orig))) continue;
+                    // a piece of a replaced value with native digits ("QRT" of "QRT1112064") is not Overscrubbed
+                    if (t.label === "Overscrubbed" && NATIVE_DIGIT_RE.test(rightText.slice(pos + t.text.length, pos + t.text.length + 1) + rightText.slice(Math.max(0, pos - 1), pos))) continue;
+                    seen.add(orig);
+                    out.push(orig === t.text ? t : Object.assign({}, t, { text: orig, digits: t.text }));
+                }
+            }
+            return withMeta(out, norm);
+        }
+        // a value split over two lines: both pieces get the label of the joined value; a replaced one gets nothing
+        if (!__ptSplitDepth) {
+            const splitsR = splitValuesIn(rightText);
+            if (splitsR.length) {
+                const splitsL = splitValuesIn(leftText);
+                __ptSplitDepth++;
+                let norm;
+                try { norm = extractDynamicTargetsUncached(joinSplitValues(leftText, splitsL), joinSplitValues(rightText, splitsR)); } finally { __ptSplitDepth--; }
+                const out = [], seen = new Set();
+                for (const t of norm) {
+                    const sp = splitsR.find(x => x.joined === t.text);
+                    if (sp) {
+                        if (t.label === "Overscrubbed") continue;
+                        for (const piece of [sp.p1, sp.p2]) { if (seen.has(piece)) continue; seen.add(piece); out.push(Object.assign({}, t, { text: piece, splitJoined: sp.joined })); }
+                        if (rightText.includes(t.text) && leftText.includes(t.text) && !seen.has(t.text)) { seen.add(t.text); out.push(t); }
+                        continue;
+                    }
+                    if (splitsR.some(x => x.joined.includes(t.text)) && !rightText.includes(t.text)) continue;   // a piece of a split value
+                    if (splitsR.some(x => x.joined.includes(t.text) && (x.p1 === t.text || x.p2 === t.text)) && t.label === "Overscrubbed") continue;
+                    if (!rightText.includes(t.text) || seen.has(t.text)) continue;
+                    seen.add(t.text); out.push(t);
+                }
+                return withMeta(out, norm);
+            }
+        }
+        return null;
+    }
+
     function extractDynamicTargetsUncached(leftText, rightText) {
         // Inline markup such as <u>...</u> often survives on one side only (the scrubber dropped it on the right),
         // which shifted every diff in a name list. It is not content, so it is removed before comparing.
         const stripInline = (s) => s.replace(/<\/?(?:u|b|i|em|strong|s|sup|sub|mark|ins|del)>/gi, "").replace(/~~|\*\*/g, "");
         leftText = stripInline(leftText);
         rightText = stripInline(rightText);
+        { const d = readDisguised(leftText, rightText); if (d) return d; }   // (v11.10.0)
         const targetMap = new Map();
         __ptMentionNames.clear();
         __ptNameShapes.clear();
