@@ -139,8 +139,8 @@ same('urls',
 Old: http://legacy.acmecorp-demo.io
 Mirror: www.acmecorp-demo.io
 Example: https://example.com`,
-[['https://docs.acmecorp-demo.io/setup','URL/Link']],
-['http://legacy.acmecorp-demo.io','www.acmecorp-demo.io','https://example.com']);
+[['https://docs.acmecorp-demo.io/setup','URL/Link'],['http://legacy.acmecorp-demo.io','URL/Link']],   // (v11.7.11) http too
+['www.acmecorp-demo.io','https://example.com']);
 
 diff('url scrubbed',`See https://jira.acmecorp-demo.io/browse/OPS-12`,`See https://jira.velmoracorp.io/browse/OPS-12`,[],['velmoracorp','https://jira.velmoracorp.io/browse/OPS-12']);
 

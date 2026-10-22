@@ -15,7 +15,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.7.10";
+    const PT_VERSION = "11.7.11";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -605,7 +605,7 @@
         const isEmail = isEmailAddressFormat(T);   // (v11.4.3) the same rule as the suggestions: no placeholders, no icon@2x.png
         // (v11.4.5) a four-part version number ("10.2.0.15 build", "Version 1.2.3.4") is not an IP address
         const ipVersion = T.includes(".") && new RegExp("\\b(?:v(?:ersion)?|ver|release|build|section|sec|clause|chapter|step|rule|item)\\.?[\\s:=#]*" + escRe(T) + "|" + escRe(T) + "\\s*(?:build|release|rc\\d*|beta|alpha|version|patch|update|firmware|sdk|hotfix|ga|lts)\\b", "i").test(rLine);
-        const strong = isEmail ? "Email Address" : (/^https:\/\/\S+$/i.test(T) && !isFileAssetLink(T)) ? "URL/Link" : (isIpAddressFormat(T) && !ipVersion) ? "IP Address" :
+        const strong = isEmail ? "Email Address" : (/^https?:\/\/\S+$/i.test(T) && !isFileAssetLink(T)) ? "URL/Link" : ((isIpAddressFormat(T) && !ipVersion) || isMacAddress(T, rLine)) ? "IP Address" :
             isHandleLabelText(T, rLine) ? "Person Username" : isVehiclePlateFormat(T) ? "Vehicle Number Plate" :
             phoneLabelFor(T);
         // (v11.5.3) a number behind an order / invoice / ticket / ID key is not a phone
@@ -642,11 +642,11 @@
             case "URL/Link": {
                 // (v11.7.5) user rule: a link to an IP address is not a link; the IP address is labeled
                 { const ip = ipHostOf(T) || ipHostOf(linkAroundLabel(T, rLine)); if (ip) return wrong("IP Address: " + ip, "A link to an IP address is not labeled as a link: label the IP address."); }
-                if (/^http:\/\//i.test(T) || /^www\./i.test(T)) return wrong(PTC_NONE, "Only https:// links are labeled.");
+                if (/^www\./i.test(T)) return wrong(PTC_NONE, "Only links with http:// or https:// are labeled.");   // (v11.7.11) http too
                 if (isDefaultOrPlaceholderLink(T)) return wrong(PTC_NONE, "This is a placeholder, template or standards link, not personal data.");
                 { const u = linkAroundLabel(T, rLine); if (u) return wrong("URL/Link: " + u, "Label exactly the link, without the text or punctuation around it."); }
                 if (isFileAssetLink(T)) return wrong(PTC_NONE, "This links to a file (image, script, style, font, archive, media, data or code). File links are not labeled (documents are).");
-                return /^https:\/\/\S+$/i.test(T) ? null : wrong(PTC_NONE, "This is not a link.");
+                return /^https?:\/\/\S+$/i.test(T) ? null : wrong(PTC_NONE, "This is not a link.");
             }
             case "IP Address": {
                 // (v11.7.7) a label with a port, key, subnet suffix or full stop, or only a part of the address: name the address
@@ -654,6 +654,7 @@
                     const ips = (rLine.match(/(?<![\w.:])(?:\d{1,3}\.){3}\d{1,3}(?![\w]|\.\w)|(?<![\w:.])(?:[0-9A-Fa-f]{1,4}|:)(?::[0-9A-Fa-f]{0,4}){2,7}(?![\w:])/g) || []).filter(isIpAddressFormat);
                     for (const ip of ips) if (ip !== T && (T.includes(ip) || (ip.includes(T) && T.length >= 3))) return wrong("IP Address: " + ip, "Label only the IP address: no port, key, subnet suffix or punctuation, and not a part of it.");
                 }
+                if (isMacAddress(T, rLine)) return null;   // (v11.7.11) user rule: MAC addresses are labeled IP Address
                 if (!isIpAddressFormat(T)) return wrong(PTC_NONE, "This is not a valid IP address.");
                 // (v11.7.7) user rule: loopback, broadcast and netmask addresses are not labeled
                 if (/^127\./.test(T) || T === "::1" || isNetmask(T)) return wrong(PTC_NONE, "Loopback, broadcast and netmask addresses point to no one: they are not labeled.");
@@ -3037,7 +3038,7 @@
         return true;
     }
     // (v11.7.5) the https links on a line, without the punctuation after them; the link a label covers only partly or with extra text
-    function linksIn(line) { return ((line || "").match(/https:\/\/[^\s"'<>]+/gi) || []).map(trimUrlEnd).filter(u => u.length > 8); }
+    function linksIn(line) { return ((line || "").match(/https?:\/\/[^\s"'<>]+/gi) || []).map(trimUrlEnd).filter(u => u.length > 8); }
     function linkAroundLabel(T, line) {
         for (const u of linksIn(line)) if (u !== T && (u.includes(T) || T.includes(u))) return u;
         return null;
@@ -3089,6 +3090,16 @@
         return true;
     }
 
+    // (v11.7.11) user rule: a MAC address is labeled IP Address ("00:1A:2B:3C:4D:5E", "00-1a-2b-3c-4d-5e", Cisco "0011.2233.4455");
+    // not the all-zero or broadcast address
+    function isMacAddress(t, line) {
+        const s0 = String(t || "").trim();
+        const six = /^[0-9A-Fa-f]{2}([:-])(?:[0-9A-Fa-f]{2}\1){4}[0-9A-Fa-f]{2}$/.test(s0);
+        const dotted = /^[0-9A-Fa-f]{4}\.[0-9A-Fa-f]{4}\.[0-9A-Fa-f]{4}$/.test(s0) && /\b(?:mac|ether(?:net)?|hw\s*addr|hwaddr|physical|bssid)\b/i.test(line || "");
+        if (!six && !dotted) return false;
+        const hex = s0.replace(/[^0-9A-Fa-f]/g, "").toLowerCase();
+        return !/^0+$/.test(hex) && !/^f+$/.test(hex);
+    }
     // (v11.7.7) a subnet mask ("255.255.255.0") or the broadcast address ("255.255.255.255")
     function isNetmask(t) {
         const p = String(t || "").split(".");
@@ -4347,7 +4358,7 @@
 
             if (label === "URL/Link") {
                 // Project rule: only https:// links are labeled (http:// and bare www. links are left alone).
-                if (!/^https:\/\//i.test(cleanText)) return;   // (v11.7.5) "HTTPS://" too
+                if (!/^https?:\/\//i.test(cleanText)) return;   // (v11.7.5) "HTTPS://" too; (v11.7.11) user rule: http:// links too
                 if (isFileAssetLink(cleanText)) return;   // (v11.4.1) .png, .js, .pdf, ... links are not labeled
             }
 
@@ -4812,7 +4823,7 @@
                     {
                         const oj = (diff.original || "").replace(/\s+/g, ""), cj = (diff.changed || "").replace(/\s+/g, "");
                         const ow = (diff.original || "").trim(), cw = (diff.changed || "").trim();
-                        const isLink = (x) => /^https:\/\/[^\s]{3,}$/i.test(x) && !isDefaultOrPlaceholderLink(x) && !isFileAssetLink(x);
+                        const isLink = (x) => /^https?:\/\/[^\s]{3,}$/i.test(x) && !isDefaultOrPlaceholderLink(x) && !isFileAssetLink(x);
                         const plainW = (x) => /^[A-Za-z'-]+(?:\s[A-Za-z'-]+){0,2}$/.test(x) && x.split(/\s+/).every(w => isCommonWord(w.toLowerCase()) && !isGivenOrSurname(w));
                         const plainLower = (x) => /^[A-Za-z'-]+(?:\s[A-Za-z'-]+){0,2}$/.test(x) && x.split(/\s+/).every(w => (isCommonWord(w.toLowerCase()) || /^[a-z'-]+$/.test(w)) && !isGivenOrSurname(w));
                         if (isLink(oj) && plainLower(cw) && !new RegExp("(?:^|[^A-Za-z])" + cw + "(?![A-Za-z])").test(leftText)) {
@@ -5367,7 +5378,7 @@
                 const ex = targetMap.get(text);
                 if (!ex || 85 > ex.priority) targetMap.set(text, { text, label: "URL/Link", cls: "pt-url", priority: 85 });
             };
-            const httpsRegex = /https:\/\/[^\s"'<>]+/gi;   // (v11.7.5) "HTTPS://..." too
+            const httpsRegex = /https?:\/\/[^\s"'<>]+/gi;   // (v11.7.5) "HTTPS://..." too; (v11.7.11) http:// links too
             let um;
             while ((um = httpsRegex.exec(rightText)) !== null) {
                 const pieces = [um[0]];
@@ -5388,10 +5399,10 @@
                 }
                 pieces[pieces.length - 1] = trimUrlEnd(pieces[pieces.length - 1]);
                 const joined = pieces.join("");
-                if (!/^https:\/\//i.test(joined) || joined.length <= 8) continue;
+                if (!/^https?:\/\//i.test(joined) || joined.length <= 8) continue;
                 // (v11.7.5) user rule: a link to an IP address is not a link - the IP address is labeled
                 {
-                    const host = /^https:\/\/(?:[^@\/\s]*@)?(\[[0-9a-f:.]+\]|[^\/:?#\s]+)/i.exec(joined);
+                    const host = /^https?:\/\/(?:[^@\/\s]*@)?(\[[0-9a-f:.]+\]|[^\/:?#\s]+)/i.exec(joined);
                     const h = host ? host[1].replace(/^\[|\]$/g, "") : "";
                     if (h && isIpAddressFormat(h)) { if (leftText.includes(h)) addTarget(h, "IP Address", "pt-ip", 90); continue; }
                 }
@@ -5782,6 +5793,12 @@
                 if (new RegExp("^\\s*[\"'][^\"']+[\"']\\s*:\\s*[\"'][\\^~>=<]+" + escIp).test(line)) continue;
                 if (new RegExp("^\\s*[\"'](?:@[\\w.-]+\\/)?[a-z][a-z.-]*[\"']\\s*:\\s*[\"']" + escIp + "[\"']").test(line) && /"(?:dev|peer|optional)?[dD]ependencies"\s*:/.test(rightText)) continue;
                 addTarget(t, "IP Address", "pt-ip", 90);
+            }
+            // (v11.7.11) MAC addresses, identical on both sides -> IP Address (user rule)
+            const macRe = /(?<![\w:.-])(?:[0-9A-Fa-f]{2}([:-])(?:[0-9A-Fa-f]{2}\1){4}[0-9A-Fa-f]{2}|[0-9A-Fa-f]{4}\.[0-9A-Fa-f]{4}\.[0-9A-Fa-f]{4})(?![\w:.-])/g;
+            let mm;
+            while ((mm = macRe.exec(rightText)) !== null) {
+                if (isMacAddress(mm[0], lineContaining(mm[0], rightText)) && leftText.includes(mm[0])) addTarget(mm[0], "IP Address", "pt-ip", 90);
             }
         }
 
@@ -6661,7 +6678,7 @@
             lookup.set(t.text, t);
             lookup.set(t.text.toLowerCase(), t);
             const escaped = t.text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            if (t.label === "URL/Link" || /^https:\/\//i.test(t.text)) urlTargets.push(escaped);
+            if (t.label === "URL/Link" || /^https?:\/\//i.test(t.text)) urlTargets.push(escaped);
             else if (/^\d+$/.test(t.text)) numTargets.push(escaped);
             else wordTargets.push(escaped);
         }

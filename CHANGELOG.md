@@ -1,5 +1,12 @@
 # Changelog
 
+## 11.7.11 - October 2026 (branch v2)
+
+From the team's PII / BII Annotation Guide (user rules):
+- **`http://` links are labeled too**, not only `https://` (`http://rubygems.org/`). The same rules apply: placeholders, localhost and file links are not labeled; a link to an IP address gives the IP Address; a link replaced by a word, or the reverse, is Overscrubbed. Bare `www.` links stay unlabeled.
+- **MAC addresses are labeled IP Address** (`00:1A:2B:3C:4D:5E`, `00-1a-2b-3c-4d-5e`, and Cisco `0011.2233.4455` behind a MAC key). The all-zero and broadcast MACs are not; a changed MAC gets no label.
+- Every e-mail stays Email Address (no Business Email chip); Account Number and IP keep their own chips.
+
 ## 11.7.10 - October 2026 (branch v2)
 
 Fixes reported from live use:
