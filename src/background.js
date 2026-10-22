@@ -1,4 +1,4 @@
-// PeakTalent Auditor - team sync (extension background service worker). v11.8.0
+// PeakTalent Auditor - team sync (extension background service worker). v11.8.1
 // All network traffic of the extension happens here, never on the review page: the page only hands over small batches of
 // HASHED learning events, and reads the team bundle from extension storage. Nothing here can slow the page down.
 //
@@ -9,7 +9,28 @@ try { importScripts("team-config.js"); } catch (e) { /* no team config: sync off
 
 const TEAM = (self.PT_TEAM && /^https:\/\//.test(self.PT_TEAM.relay || "") && self.PT_TEAM.key && self.PT_TEAM.salt) ? self.PT_TEAM : null;
 const Q = "pt_sync_queue", ST = "pt_sync_state", BUNDLE = "pt_team_bundle", ON = "pt_sync_enabled", SALT = "pt_team_salt", CLIENT = "pt_sync_client";
-const MAX_QUEUE = 5000, BATCH = 1000, FLUSH_AT = 300, FLUSH_MIN = 30, BUNDLE_HOURS = 24;
+const MAX_QUEUE = 5000, BATCH = 1000, FLUSH_AT = 300, FLUSH_MIN = 15, BUNDLE_HOURS = 24;
+// (v11.8.1) the team works 11:00-20:30 IST; the team bundle is built at 15:30 and 21:00 IST (10:00 and 15:30 UTC)
+const BUILD_SLOTS_UTC = [[10, 0], [15, 30]];
+// The latest build time that has passed (with 10 minutes for the job to finish), as a timestamp.
+function lastBuildSlot(now) {
+  const d = new Date(now);
+  let best = 0;
+  for (let back = 0; back <= 1; back++) for (const [h, m] of BUILD_SLOTS_UTC) {
+    const t = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - back, h, m) + 10 * 60e3;
+    if (t <= now && t > best) best = t;
+  }
+  return best;
+}
+// Download the bundle when there is none, when a build has happened since ours was built (tried for 6 hours, as
+// GitHub may start the job late), or when ours is more than a day old.
+function needsBundle(stored, now) {
+  if (!stored || !stored.data) return true;
+  const slot = lastBuildSlot(now);
+  const built = Date.parse(stored.data.built || "") || 0;
+  if (built < slot - 10 * 60e3 && now - slot < 6 * 3600e3) return true;
+  return now - (stored.fetched || 0) > BUNDLE_HOURS * 3600e3;
+}
 
 const get = (keys) => new Promise(r => chrome.storage.local.get(keys, v => r(v || {})));
 const set = (obj) => new Promise(r => chrome.storage.local.set(obj, () => r()));
@@ -70,7 +91,7 @@ async function fetchBundle(force) {
   if (!TEAM) return;
   const s = await get([BUNDLE, ON]);
   if (s[ON] === false) return;
-  if (!force && s[BUNDLE] && Date.now() - (s[BUNDLE].fetched || 0) < BUNDLE_HOURS * 3600e3) return;
+  if (!force && !needsBundle(s[BUNDLE], Date.now())) return;
   try {
     const res = await fetch(TEAM.relay.replace(/\/+$/, "") + "/bundle", { headers: { "X-Team-Key": TEAM.key } });
     if (!res.ok) { await state({ lastError: "bundle failed (" + res.status + ")", lastErrorAt: Date.now() }); return; }
