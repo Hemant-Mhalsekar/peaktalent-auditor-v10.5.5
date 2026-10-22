@@ -87,8 +87,10 @@ const EXPECT = [
   ['14 Linking Road', 'Address'], ['Mumbai', 'Address'], ['400050', 'Address'], ['#45, 2nd Cross, Indiranagar, Bengaluru - 560038', 'Address'],
   // (v11.7.5) a link to an IP address: the IP address is labeled, not the link
   ['10.20.30.40', 'IP Address'],
+  // (v11.9.0) user rule: a PIN on its own is an Address (no Postal Code chip on this page)
+  ['560099', 'Address'],
 ];
-const MUST_NOT = ['https://10.20.30.40/console', 'https://json-schema.org/draft-07/schema', '560099', '9845012399', 'https://cdn.acmecorp-demo.io/static/logo.png', '12.13', '18.10', 'postgres://admin:S3cretPass@db.acme-demo.io:5432/prod'];
+const MUST_NOT = ['https://10.20.30.40/console', 'https://json-schema.org/draft-07/schema', '9845012399', 'https://cdn.acmecorp-demo.io/static/logo.png', '12.13', '18.10', 'postgres://admin:S3cretPass@db.acme-demo.io:5432/prod'];
 (async () => {
   const dom = new JSDOM(`<!doctype html><body><div>${chips}<span>Reference · read-only</span><span>Annotate here</span><span>left.docx-1</span><span>right.docx-1</span></div>
     <div id="left">${L.map(l => `<div>${esc(l)}</div>`).join('')}</div><div id="right">${R.map(l => `<div>${esc(l)}</div>`).join('')}</div></body>`,

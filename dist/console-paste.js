@@ -1,4 +1,4 @@
-// PeakTalent Auditor v11.8.2 - console build.
+// PeakTalent Auditor v11.9.0 - console build.
 // Open the PeakTalent review tab, open the browser console (Safari: Develop > Show JavaScript Console,
 // Chrome: Cmd/Ctrl+Option/Alt+J), paste this whole file and press Enter. Pasting again replaces the old copy.
 // GENERATED FILE - edit src/content.js and src/page-hook.js, then run `node scripts/build.js`.
@@ -112,7 +112,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.8.2";
+    const PT_VERSION = "11.9.0";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -847,7 +847,8 @@
                     }
                 }
                 if (isCompleteAddress(T) || isPartialAddress(T)) return null;
-                if (isPostalCodeShape(T) && !/\s\S+\s/.test(T)) return labelForPage(LBL_POSTAL) ? wrong(LBL_POSTAL, "A postal code on its own is labeled Postal Code, not Address.") : wrong(PTC_NONE, "A postal code on its own is not an address.");
+                // (v11.9.0) user rule: without a Postal Code chip, a PIN / ZIP on its own is an Address
+                if (isPostalCodeShape(T) && !/\s\S+\s/.test(T)) return labelForPage(LBL_POSTAL) && labelForPage(LBL_POSTAL) !== "Address" ? wrong(LBL_POSTAL, "A postal code on its own is labeled Postal Code, not Address.") : null;
                 return wrong(PTC_NONE, "Not an address (a city, state or country alone is not labeled).");
             }
             case "Credentials": {
@@ -1292,6 +1293,8 @@
         if (!str) return false;
         const s = str.trim().toLowerCase();
         if (/(?:example\.(?:com|org|net)|dummy\.(?:com|org)|sample\.(?:com|org)|test\.(?:com|org)|placeholder|schemas\.android\.com|w3\.org|localhost|127\.0\.0\.1)/i.test(s)) return true;
+        // (v11.9.0) a profile link of an example account ("linkedin.com/in/testcandidate", "github.com/john-doe")
+        { const seg = /^https?:\/\/[^\/]+\/(?:in\/|u\/|user\/|users\/|profile\/)?([^\/?#]+)\/?(?:[?#]|$)/i.exec(s); if (seg && EXAMPLE_ACCOUNT.test(seg[1])) return true; }
         // (v11.7.5) template hosts ("your-domain.com", "yourapp.com", "${HOST}", "{{host}}", "<your-tenant>") and standards
         // addresses that are not personal data (user rule: "$schema": "https://json-schema.org/...", "https://schema.org")
         if (/^https?:\/\/[^\/]*(?:\$\{|\{\{|<|%[A-Z_]+%|\byour[-_]?[a-z]*\.|\bmy[-_]?(?:domain|site|app|company)\.)/i.test(s)) return true;
@@ -1299,9 +1302,13 @@
         return false;
     }
 
+    // (v11.9.0) user rule (v13 fork): an EXAMPLE account is a placeholder ("testcandidate", "test.user", "dummy_customer",
+    // "sample-applicant", "john-doe"); a bare "test@" on a real domain stays a real mailbox (user rule of v11.4.3)
+    const EXAMPLE_ACCOUNT = /^(?:(?:test|dummy|sample|example|demo|fake|placeholder)[._-]?(?:candidate|user|users|account|applicant|customer|person|profile|employee|member|student|client)\d*|(?:john|jane)[._-]?doe\d*)$/i;
     function isDefaultOrPlaceholderEmail(str) {
         if (!str) return false;
         const s = str.trim().toLowerCase();
+        if (EXAMPLE_ACCOUNT.test(s.split("@")[0] || "")) return true;
         if (/@(?:example\.(?:com|org|net)|test\.(?:com|org)|dummy\.(?:com|org)|sample\.(?:com|org)|placeholder\.(?:com|org)|domain\.com|(?:your|my)?company\.com|(?:your|my)domain\.com|website\.com)\b/i.test(s)) return true;   // (v11.7.3) template domains
         // (v11.4.3) the name part alone does not make a placeholder: test@acmecorp-demo.io is a real company's mailbox
         return false;
@@ -3197,6 +3204,7 @@
     const CODE_AT_WORDS = /^(?:media|import|keyframes|font-face|supports|page|charset|namespace|layer|container|property|override|param|returns?|type|typedef|deprecated|author|since|see|throws|example|interface|component|injectable|input|output|test|before|after|apply|tailwind|use|extend|mixin|include|each|if|else|function|types|angular|babel|vue|nestjs|testing-library|staticmethod|classmethod|abstractmethod|dataclass|cached_property|functools|wraps|lru_cache|contextmanager|login_required|csrf_exempt|click|submit|change|keyup|keydown|blur|focus|model)$/i;
     // Is "@word" at `idx` code (a decorator, annotation, Vue directive) rather than a person's handle?
     // (v11.7.4) user rules: bots and user ids are not people's usernames
+    const __ptMentionNames = new Set();   // (v11.9.0) names inside an @-mention ("@Himanshu Shankar")
     const BOT_HANDLE = /^(?:dependabot|renovate|github-actions|codecov|sonarcloud|sonarqubecloud|vercel|netlify|coderabbitai|copilot|mergify|snyk-bot|greenkeeper|allcontributors|stale|imgbot|semantic-release-bot|pre-commit-ci|changeset-bot|gitguardian|deepsource-autofix)$|[-_]bot$/i;
     const isUserIdHandle = (w) => /^[UWB][A-Z0-9]{6,12}$/.test(w) && /\d/.test(w);   // Slack / Discord style ids ("<@U024BE7LH>")
     // (v11.7.10) code-comment tags ("@TODO", "@FIXME", "@note") are not people
@@ -3205,6 +3213,17 @@
         if (CODE_AT_WORDS.test(word) || COMMENT_TAG.test(word)) return true;
         const ls = text.lastIndexOf("\n", idx - 1) + 1;
         let le = text.indexOf("\n", idx); if (le < 0) le = text.length;
+        // (v11.9.0) user rule (v13 fork): an ALL-CAPS word after "@" is a product / feature / code name ("@BIOS", "@NASA", "@ARGV")
+        if (/^[A-Z][A-Z0-9_]*$/.test(word)) return true;
+        {
+            const b1 = text.slice(ls, idx);
+            // a documentation tag in a comment block ("* @package WordPress", "/** @subpackage")
+            if (/^\s*(?:\*|\/\*\*?|\/\/\/?|#)\s*$/.test(b1) && /^[a-z][a-z-]*$/.test(word)) return true;
+            // Perl / shell arrays ("my @files", "push @x,", "= @list;", "scalar(@list)")
+            if (/(?:\b(?:my|our|local|push|unshift|scalar|foreach|join|map|grep|sort|reverse|wantarray)\s*\(?\s*|[=,(]\s*)$/.test(b1) && /[;$]/.test(text.slice(ls, le))) return true;
+        }
+        // a Ruby / CoffeeScript instance variable: assigned somewhere ("@transcript = load")
+        if (new RegExp("@" + word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*(?:[+\\-*|&]{0,2})=[^=]").test(text)) return true;
         // (v11.7.5) a quoted JSON key ("@context": ..., "@type": ...) is not a handle
         if (/["']$/.test(text.slice(Math.max(ls, idx - 1), idx)) && /^["']\s*:/.test(text.slice(idx + 1 + word.length, idx + 4 + word.length))) return true;
         {   // (v11.7.4) a SQL variable ("SELECT @UserId", "DECLARE @Total INT") or a spreadsheet reference ("=SUM(@Table1)")
@@ -4270,7 +4289,8 @@
     // not suggested. The 13 old labels are always kept. When no chip was found at all, nothing is changed.
     const OLD_LABELS = new Set(["Account Number", "Address", "Business Name", "Contact Number", "Credentials", "Date", "Email Address",
         "IP Address", "Overscrubbed", "Person Name", "URL/Link", "Person Username", "Vehicle Number Plate"]);
-    const CHIP_FALLBACK = { "Indian Mobile Number": "Contact Number", "International Phone Number": "Contact Number" };
+    // (v11.9.0) user rule: a PIN / ZIP / CEP on its own is an Address where the page has no postal-code chip
+    const CHIP_FALLBACK = { "Indian Mobile Number": "Contact Number", "International Phone Number": "Contact Number", "Postal Code": "Address", "Indonesian Postal Code": "Address", "Brazilian CEP": "Address" };
     function pageChipNames() {
         try { learnPalette(); } catch (e) {}
         return (__ptPalette && __ptPalette.seen) || new Set();
@@ -4321,6 +4341,7 @@
         leftText = stripInline(leftText);
         rightText = stripInline(rightText);
         const targetMap = new Map();
+        __ptMentionNames.clear();
         __ptNameShapes.clear();
         __ptOrdinaryOrigins.clear();
         __ptNameCellWords.clear();
@@ -5020,6 +5041,36 @@
                             if (!ex || ex.priority < 66) targetMap.set(cw, { text: cw, label: "Overscrubbed", cls: "pt-overscrub", priority: 66 });
                             continue;
                         }
+                    }
+                    // ---- (v11.9.0) rules taken over from the team's v13 fork (user decisions of 2026-10-22) ----
+                    {
+                        const oRaw = (diff.original || "").trim(), cRaw = (diff.changed || "").trim();
+                        const oj = oRaw.replace(/\s+/g, ""), cj = cRaw.replace(/\s+/g, "");
+                        const dLine = lineContaining(cRaw.split(/\s+/)[0] || cRaw, rightText) || "";
+                        const setOver = (t) => { __ptOrdinaryOrigins.add(t); const ex = targetMap.get(t); if (!ex || ex.priority < 66) targetMap.set(t, { text: t, label: "Overscrubbed", cls: "pt-overscrub", priority: 66 }); };
+                        // a PLACE replaced (city, state, country), or the name of a school / college / hospital: correct redaction
+                        const oLow = oRaw.toLowerCase().replace(/[.,]+$/, "");
+                        if (oRaw && (PLACES.has(oLow) || (oRaw.split(/\s+/).length <= 3 && containsPlace(oRaw) && !isCommonWord(oLow)))) { markRedacted(diff); continue; }
+                        if (oRaw && cRaw && new RegExp("^" + cRaw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s+(?:Public\\s+School|School|College|University|Institute|Academy|Hospital|Vidyalaya|Polytechnic)\\b").test(rightText.slice(rightText.indexOf(cRaw), rightText.indexOf(cRaw) + cRaw.length + 30))) { markRedacted(diff); continue; }
+                        // an id replaced by an id of the same shape ("R000001" -> "R000007", "EMP-0042" -> "EMP-0099"), or a machine username
+                        // replaced by another ("siroju_g_892" -> "velib_q_101"): correct redaction
+                        const shape = (x) => x.replace(/[A-Z]/g, "A").replace(/[a-z]/g, "a").replace(/\d/g, "9");
+                        if (oj && cj && oj !== cj && /\d/.test(oj) && /\d/.test(cj) && /^[A-Za-z0-9._-]{4,40}$/.test(oj) && /^[A-Za-z0-9._-]{4,40}$/.test(cj) &&
+                            (shape(oj) === shape(cj) || (/[._]/.test(oj) && /[._]/.test(cj) && /^[a-z][a-z0-9]*(?:[._][a-z0-9]+)+$/i.test(oj) && /^[a-z][a-z0-9]*(?:[._][a-z0-9]+)+$/i.test(cj)))) { markRedacted(diff); continue; }
+                        // a hash / secret replaced ("$2b$12$..." bcrypt, a hash / digest / salt value): correct redaction
+                        if (/\$2[aby]?\$\d\d\$|\b(?:hash|digest|checksum|signature|salt|hmac|bcrypt)\b\s*[:=]/i.test(dLine)) { markRedacted(diff); continue; }
+                        // words replaced inside a NAME field (Name="Barber, Jennifer" -> Name="Mutate, Sucobevi"): a person's name, correct redaction
+                        // (only when the original looks like a person's name: "name: test locked requirements" is a CI step, ordinary words)
+                        // ("Name: Team" -> "Name: Quorvel" is an ordinary word replaced: Overscrubbed, the v11.2.0 rule)
+                        const leftField = ((lineContaining(oRaw.split(/\s+/)[0] || oRaw, leftText) || "").split(/[:=]/).slice(1).join(" ") || "");
+                        if (oRaw && (leftField.split(/[^A-Za-z'-]+/).some(w => w.length > 1 && isGivenOrSurname(w) && !isCommonWord(w.toLowerCase())) ||
+                                     oRaw.split(/[\s,]+/).some(w => /^[A-Z][a-z]/.test(w) && !isCommonWord(w.toLowerCase()) && (couldBeName(w) || isGivenOrSurname(w)))) &&
+                            /\b(?:name|full[_ ]?name|first[_ ]?name|last[_ ]?name|surname|display[_ ]?name|author)\s*[:=]\s*["']?[^"'\n]*$/i.test(dLine.slice(0, Math.max(0, dLine.indexOf(cRaw.split(/\s+/)[0]))))) { markRedacted(diff); continue; }
+                        // a DEMOGRAPHIC value replaced ("Nationality - Indian" -> "Giduhi", Religion / Gender / Marital status / Blood group): Overscrubbed
+                        if (oRaw && cRaw && /^[A-Za-z][A-Za-z -]{1,30}$/.test(oRaw) && /^[A-Za-z][A-Za-z -]{1,30}$/.test(cRaw) &&
+                            /\b(?:nationality|religion|gender|sex|marital\s*status|blood\s*group|caste|category|citizenship|ethnicity)\b\s*[:=\-\u2013]?\s*$/i.test(dLine.slice(0, Math.max(0, dLine.indexOf(cRaw))))) { setOver(cRaw); continue; }
+                        // a PLACEHOLDER e-mail replaced ("records.bot@example.org" -> "zelvor.bot@quarnis.org"): not personal data -> Overscrubbed
+                        if (isDefaultOrPlaceholderEmail(oj) && /@/.test(cj) && !isDefaultOrPlaceholderEmail(cj) && /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/.test(cj)) { setOver(cj); continue; }
                     }
                     // (v11.7.5) a link replaced by a plain word, or (user rule) a plain word by a link: Overscrubbed. The diff splits a
                     // link into "https", ":", "//host/path", so the pieces are joined back first.
@@ -5808,6 +5859,15 @@
                     if (prev && isEmailAddressFormat(prev[1].replace(/^.*[<(\["'`:,;]/, "") + hM[0])) continue;
                 }
             }
+            // (v11.9.0) user rule: an @-mention of a person's full name ("@Himanshu Shankar", Teams / Outlook) is ONE username label
+            if (!hM[2] && /^[A-Z][a-z]+$/.test(hM[1])) {
+                const nx = /^[ \t]+([A-Z][a-z]+)(?![A-Za-z])/.exec(rightText.slice(hM.index + hM[0].length));
+                if (nx && !isCommonWord(nx[1].toLowerCase()) && (isGivenOrSurname(hM[1]) || isGivenOrSurname(nx[1]))) {
+                    const full = "@" + hM[1] + " " + nx[1];
+                    if (leftText.includes(full)) { addTarget(full, "Person Username", "pt-username", 94, true); __ptMentionNames.add(hM[1] + " " + nx[1]); }
+                    continue;
+                }
+            }
             const handle = '@' + hM[1] + (hM[2] ? '@' + hM[2] : '');
             if (occurrencesOf(handle, leftText).length > 0) {
                 addTarget(handle, "Person Username", "pt-username", 90);
@@ -5819,7 +5879,8 @@
         // identical on both sides. A generic account ("user: Master", root, admin, postgres, ec2-user) or a dictionary word is
         // not a person, a number is an id, and a value with a space is a full name (Person Name).
         {
-            const KEY = "(?:user[\\s_-]?name|user|login(?:[\\s_-]?(?:name|id))?|handle|screen[\\s_-]?name|nick(?:name)?|github|gitlab|twitter|instagram|telegram)";
+            // (v11.9.0) "github_login_20", "gitlab_username", "twitter-handle"
+            const KEY = "(?:user[\\s_-]?name|user|login(?:[\\s_-]?(?:name|id))?|handle|screen[\\s_-]?name|nick(?:name)?|(?:github|gitlab|twitter|instagram|telegram)(?:[\\s_-]*(?:user(?:[\\s_-]?name)?|handle|id|login|profile|account))?(?:[_-]?\\d{1,4})?)";
             const kv = new RegExp("(?:^|[\\s{,\"'(.])[\"']?" + KEY + "[\"']?\\s*[:=]\\s*([\"']?)([A-Za-z][A-Za-z0-9._-]{1,29})(?![A-Za-z0-9._@(-])(?![ \\t]+[A-Z][a-z])", "gi");   // (v11.7.4) "Username: Rahul Sharma" is a full name
             // (v11.4.11) In code an unquoted value is a type or a reference, not a username: "username: Attribute.String;",
             // "user: UserEntity;", "username: string;", "handle: Schema.Types.String,". A quoted value is a real string ("rahul_92").
@@ -5869,6 +5930,41 @@
             }
         }
 
+        // (v11.9.0) a ROLE at a COMPANY ("Firmware Engineer @ Spintly", "Senior Engineer at Spintly"): the company
+        {
+            const ROLE = "(?:engineer|developer|manager|intern|analyst|designer|consultant|lead|architect|director|officer|executive|associate|scientist|founder|co-founder|ceo|cto|cfo|coo|head|specialist|administrator|recruiter|programmer|tester|trainee)";
+            const roleRe = new RegExp("\\b" + ROLE + "\\s+(?:@|at)\\s+([A-Z][A-Za-z0-9&'.-]*(?:\\s+[A-Z][A-Za-z0-9&'.-]*){0,3})", "gi");
+            let rm;
+            while ((rm = roleRe.exec(rightText)) !== null) {
+                const v = rm[1].replace(/[.,;:]+$/, "");
+                if (!v || isCommonWord(v.toLowerCase()) || PLACES.has(v.toLowerCase()) || !leftText.includes(v)) continue;
+                addTarget(v, "Business Name", "pt-business", 88, true);
+            }
+        }
+        // (v11.9.0) the sender / recipient name in an e-mail header ("From: jahnavi s <jira@evp.atlassian.net>")
+        {
+            const hdr = /^[ \t>]*(?:from|to|cc|bcc|reply-to|sender)\s*:\s*["']?([A-Za-z][A-Za-z'.-]*(?:[ \t]+[A-Za-z][A-Za-z'.-]*){0,3})["']?[ \t]*<[^<>\s@]+@[^<>\s]+>/gim;
+            let hm;
+            while ((hm = hdr.exec(rightText)) !== null) {
+                const v = hm[1].trim();
+                const ws = v.split(/\s+/);
+                if (ws.every(w => isCommonWord(w.toLowerCase()) || w.length === 1) || /\b(?:team|support|admin|noreply|no-reply|notifications?|alerts?|bot|service|info|jira|github|gitlab|slack)\b/i.test(v)) continue;
+                if (KNOWN_BUSINESS_NAMES.has(v.toLowerCase()) || !leftText.includes(v)) continue;
+                addTarget(v, "Person Name", "pt-person", 90, true);
+            }
+        }
+
+        // (v11.9.0) a username in an app / server LOG, behind a user context ("Protected route accessed for siroju_gilivasu_892pv14134",
+        // "User login successful: kavya_n_2024"): a machine-style name (letters with _ or . and digits)
+        {
+            const logRe = /\b(?:accessed\s+(?:for|by)|for\s+user|by\s+user|user(?:name)?|login(?:\s+(?:ok|successful|success|failed|attempt))?(?:\s+for)?|logged\s+in\s+as|signed\s+in\s+as|session\s+for)\s*[:=]?\s*([a-z][a-z0-9]*(?:[._][a-z0-9]+)+)(?![A-Za-z0-9._@-])/gi;
+            let lm;
+            while ((lm = logRe.exec(rightText)) !== null) {
+                const v = lm[1];
+                if (/\d/.test(v) && v.length >= 6 && leftText.includes(v) && !isEmailAddressFormat(v) && !GENERIC_ACCOUNT.test(v)) addTarget(v, "Person Username", "pt-username", 92, true);
+            }
+        }
+
         // (v11.7.4) user rules C and D: a username wherever it appears - Reddit "u/name", Discord "name#1234", a home folder
         // ("/home/rahul/", "/Users/priya.k/", "C:\\Users\\rahul.sharma\\") and the one-word login of a git author
         {
@@ -5890,7 +5986,7 @@
 
         // Step 6: Scan for Email Addresses that exist identically in BOTH left and right documents
         // Rule: "mail should same as left then label it if not no"
-        const emailRegex = new RegExp("(?<![A-Za-z0-9._%+\\u00C0-\\u024F-])" + EMAIL_LOCAL + "@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b", "g");
+        const emailRegex = new RegExp("(?<![A-Za-z0-9._%+\\u00C0-\\u024F\\\\-])" + EMAIL_LOCAL + "@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b", "g");
         const rightEmails = rightText.match(emailRegex) || [];
         for (const em of rightEmails) {
             // "git@github.com:acme/tool.git" is an SSH remote, not an e-mail.
@@ -5987,6 +6083,8 @@
                 if (t.includes(".") && new RegExp(escIp + "\\s*(?:build|release|rc\\d*|beta|alpha|version|patch|update|firmware|sdk|hotfix|ga|lts)\\b", "i").test(line)) continue;
                 // All four parts below 10 ("3.2.1.4") looks like numbering unless the line talks about networks.
                 if (t.includes(".") && t.split(".").every(o => Number(o) < 10) && !/\b(?:ip|host|server|addr|address|gateway|dns|subnet|proxy|ping|allow(?:ed)?|deny|connect|nat|vpn|router|lan|wan|cidr|inet)\b|[=@]\s*$/i.test(line.slice(0, line.indexOf(t)))) continue;
+                // (v11.9.0) a product version ("Chrome/143.0.0.0", "Edg/120.0.2210.91" in a user agent) is not an IP address
+                if (new RegExp("[A-Za-z][A-Za-z0-9._-]*/" + escIp + "(?![\\d.])").test(line)) continue;
                 // (v11.7.7) user rule: loopback, broadcast and netmask addresses point to no one
                 if (/^127\./.test(t) || t === "::1" || isNetmask(t)) continue;
                 // (v11.7.7) a package version, not an IP: "react-dom@18.2.0.1", "version": "10.2.0.15", and the values of a
@@ -6855,6 +6953,47 @@
         // (v11.4.0) The old "Contact Number" label is split: every phone found by the older scans (tables, key-value lines)
         // gets Indian Mobile Number or International Phone Number.
         for (const t of targetMap.values()) if (t.label === "Contact Number") t.label = phoneLabelFor(t.text) || LBL_INTL_PHONE;
+
+        // ---- (v11.9.0) final clean-up (rules from the team's v13 fork, and bugs the comparison exposed) ----
+        {
+            const lines = rightText.split("\n");
+            const allLinesWith = (a, b) => lines.every(l => !l.includes(a) || l.includes(b));
+            const LEAD = /^(?:contact|call|email|e-mail|mail|ask|ping|meet|thanks|thank|hi|hello|hey|dear|regards|cc|attn|attention|message|text|invite|welcome|congrats|congratulations)\s+/i;
+            const REF_CHAIN = /\b[A-Z]{2,5}\d{5,8}-\d{9,14}-[A-Z]{2,3}\b/g;   // a bank-statement reference chain ("BIN0001613-342606361564-NA")
+            const chains = rightText.match(REF_CHAIN) || [];
+            const PRODUCT_NOUN = /^\s+(?:release|releases|repo|repository|repositories|actions?|pages|issues?|pull|pr|workflows?|api|account|login|app|desktop|cli|token|secrets?|webhooks?|integration|marketplace|packages?|registry|copilot|codespaces?|gist|wiki)\b/i;
+            for (const [k, t] of Array.from(targetMap)) {
+                if (!targetMap.has(k)) continue;
+                if (t.label === "Person Name") {
+                    // an @-mention's name is part of the username label
+                    if (__ptMentionNames.has(t.text)) { targetMap.delete(k); continue; }
+                    // "Contact Venkatesh Subramanian": the verb / greeting in front is not part of the name
+                    const rest = t.text.replace(LEAD, "");
+                    if (rest !== t.text && rest.length >= 3 && /^[A-Z]/.test(rest)) {
+                        targetMap.delete(k);
+                        if (!targetMap.has(rest)) targetMap.set(rest, Object.assign({}, t, { text: rest }));
+                        continue;
+                    }
+                    // "Austin, TX 73301": a city before a US state and ZIP is a place, not a person
+                    if (new RegExp(t.text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ",?\\s+[A-Z]{2}\\s+\\d{5}(?:-\\d{4})?\\b").test(rightText)) { targetMap.delete(k); continue; }
+                    // command-line flags are never part of a name ("raj --password raj")
+                    if (/\s--?[a-z]/.test(t.text)) { targetMap.delete(k); continue; }
+                }
+                if (t.label === "Person Username" && /^@[A-Z][a-z]+$/.test(t.text) && Array.from(__ptMentionNames).some(n => n.startsWith(t.text.slice(1) + " "))) { targetMap.delete(k); continue; }
+                if (t.label === "Business Name") {
+                    // a company name inside an address on the same line ("12 MG" in "12 MG Road")
+                    const inAddr = Array.from(targetMap.values()).find(u => u.label === "Address" && u.text !== t.text && u.text.includes(t.text));
+                    if (inAddr && allLinesWith(t.text, inAddr.text)) { targetMap.delete(k); continue; }
+                    // a platform named as a tool / product ("Validate GitHub release", "GitHub Actions")
+                    if (PLATFORM_NAMES.test(t.text)) {
+                        const occ = occurrencesOf(t.text, rightText);
+                        if (occ.length && occ.every(i => PRODUCT_NOUN.test(rightText.slice(i + t.text.length, i + t.text.length + 30)))) { targetMap.delete(k); continue; }
+                    }
+                }
+                // a piece of a bank reference chain is not a value of its own
+                if (chains.length && chains.some(c => c.includes(t.text))) { targetMap.delete(k); continue; }
+            }
+        }
 
         const __result = Array.from(targetMap.values()).sort((a, b) => b.text.length - a.text.length);
         // Words that replaced a NAME (scrubbed names) travel with the result (also through the cache) for the mistake check.

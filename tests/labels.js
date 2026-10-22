@@ -424,7 +424,7 @@ yes('for the end-client team', 'lyroranim', undefined, 'for the end-lyroranim te
 yes('"CreateDate": "2012-10-17"', 'hydragenzen', undefined, '"CreateDate": "hydragenzen-10-17"');
 yes('"region": "ap-northeast-2"', 'terovawren', undefined, '"region": "ap-terovawren-2"');
 yes('Provide a brief summary.', 'Galearwren', undefined, 'Galearwren a brief summary.');
-yes('We toured Ireland last summer.', 'Quelvaria', undefined, 'We toured Quelvaria last summer.');
+no('We toured Ireland last summer.', 'Quelvaria', 'We toured Quelvaria last summer.');   // (v11.9.0) user rule: a replaced place is redaction
 yes('Good communication skills in English', 'Beaargale', undefined, 'Good communication skills in Beaargale');
 yes('API_KEY = "sk_live_abc123XYZ789"', 'BRYENA_STELWICK', undefined, 'BRYENA_STELWICK = "sk_live_abc123XYZ789"');
 yes('| TECHNICAL ERROR STUDENT CAN SEE |', 'MAGEXCED', undefined, '| TECHNICAL ERROR MAGEXCED CAN SEE |');

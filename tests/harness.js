@@ -16,7 +16,8 @@ function makeEl() {
 }
 
 function loadEngine(opts = {}) {
-  const file = opts.file || path.join(__dirname, '..', 'src', 'content.js');
+  // PT_ENGINE=<path> runs the suites against another build of the engine (used to compare forks)
+  const file = opts.file || process.env.PT_ENGINE || path.join(__dirname, '..', 'src', 'content.js');
   let src = fs.readFileSync(file, 'utf8');
   if (opts.injectHook) src = src.replace(/\}\)\(\);\s*$/, opts.injectHook + '\n})();');
   const network = [];

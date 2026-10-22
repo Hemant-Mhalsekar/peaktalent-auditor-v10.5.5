@@ -33,6 +33,7 @@ try {
   execFileSync(process.execPath, [rel('tests', 'dob.js')], { stdio: 'inherit' });
   execFileSync(process.execPath, [rel('tests', 'overscrub.js')], { stdio: 'inherit' });
   execFileSync(process.execPath, [rel('tests', 'relay.js')], { stdio: 'inherit' });
+  execFileSync(process.execPath, [rel('tests', 'merge.js')], { stdio: 'inherit' });
 } catch (e) {
   console.error('\nBuild stopped: tests failed.');
   process.exit(1);

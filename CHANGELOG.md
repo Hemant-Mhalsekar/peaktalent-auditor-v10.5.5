@@ -1,5 +1,30 @@
 # Changelog
 
+## 11.9.0 - October 2026 (branch v2)
+
+Merged from the team's v13 fork (rules and fixes chosen by the user, 2026-10-22), plus four bugs the comparison exposed.
+
+Overscrubbed:
+- **A replaced place is correct redaction** (user rule): a city, state or country, or a school / college / hospital name, replaced by another word gets no label (`The Bengaluru office` -> `The Kolugonom office`). Before: Overscrubbed.
+- **Correct redaction, no label**: an id replaced by an id of the same shape (`R000001` -> `R000007`, `EMP-0042`), a machine username replaced by another (`siroju_g_892` -> `velib_q_101`), a hash / bcrypt value replaced, a person's name replaced inside a name field (`Name="Barber, Jennifer"` -> `"Mutate, Sucobevi"`).
+- **Overscrubbed**: a demographic value replaced (`Nationality - Indian` -> `Giduhi`; religion, gender, marital status, blood group), and a placeholder e-mail replaced by a real-looking one (`records.bot@example.org` -> `zelvor.bot@quarnis.org`).
+
+Person Username:
+- **Not usernames**: documentation tags (`* @package`), Ruby instance variables (`@transcript = ...`), Perl / shell arrays (`my @files`, `@ARGV`), and (user rule) any all-caps word after `@` (`@BIOS`, `@NASA`).
+- **An @-mention of a full name is one username label** (user rule): `@Himanshu Shankar`, with no separate Person Name.
+- **Found**: usernames in app / server logs (`Protected route accessed for siroju_gilivasu_892pv14134`, `User login successful: kavya_n_2024`) and behind `github_login_20 =` style keys.
+
+Names, companies, links:
+- **A role at a company** gives the company (`Firmware Engineer @ Spintly`, `Senior Engineer at Spintly`).
+- **The name in an e-mail header** is a Person Name (`From: jahnavi s <jira@...>`); team / support / bot senders are not.
+- **Example accounts are placeholders** (user rule): `testcandidate@gmail.com`, `linkedin.com/in/testcandidate`, `github.com/john-doe`. A bare `test@company.com` stays labeled.
+- **A PIN / ZIP on its own is an Address** (user rule) on the 13-chip page, suggested and accepted (`Pincode: 560087`).
+
+Small fixes:
+- A browser version (`Chrome/143.0.0.0`) is not an IP address; a bank reference chain (`BIN0001613-342606361564-NA`) is not Credentials; `user\nname@...` (escaped text) gives no broken e-mail.
+- Bugs: `Contact Venkatesh Subramanian` no longer includes "Contact"; `Austin, TX 73301` is not a person; `12 MG` in an address table is not a company; `raj --password raj` is not a name; a platform named as a tool (`Validate GitHub release`) is not a company.
+- New test `tests/merge.js` (51 checks); old tests updated to the new rules (replaced places, all-caps handles, a lone PIN on the page).
+
 ## 11.8.2 - October 2026 (branch v2)
 
 **Accuracy, measured from the team's real reviews.**

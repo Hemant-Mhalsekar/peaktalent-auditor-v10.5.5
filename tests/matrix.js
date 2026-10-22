@@ -157,7 +157,7 @@ diff('council member',`The Council Member approved it.`,`The Council Beagenhydra
 diff('end-client',`for the end-client team`,`for the end-lyroranim team`,[['lyroranim','Overscrubbed']],['end-lyroranim']);
 diff('date to synthetic',`"CreateDate": "2012-10-17"`,`"CreateDate": "hydragenzen-10-17"`,[['hydragenzen','Overscrubbed']],['hydragenzen-10-17']);
 diff('region',`"region": "ap-northeast-2"`,`"region": "ap-terovawren-2"`,[['terovawren','Overscrubbed']],['ap-terovawren-2']);
-diff('place overscrub',`We toured Ireland last summer.`,`We toured Quelvaria last summer.`,[['Quelvaria','Overscrubbed']],[]);
+diff('place replaced (v11.9.0: redaction)',`We toured Ireland last summer.`,`We toured Quelvaria last summer.`,[],['Quelvaria']);
 diff('scrubbed name in prose',`I met Furkan at the airport.`,`I met Dalvorin at the airport.`,[],['Dalvorin']);
 diff('company scrubbed in prose',`She joined Accenture in 2019.`,`She joined Velmoratech in 2019.`,[],['Velmoratech']);
 diff('verb scrubbed',`Provide a brief summary.`,`Galearwren a brief summary.`,[['Galearwren','Overscrubbed']],[]);

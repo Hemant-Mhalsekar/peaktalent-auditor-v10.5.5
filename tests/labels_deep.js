@@ -135,7 +135,7 @@ posd('Overscrubbed','for the end-client team','for the end-lyroranim team','lyro
 posd('Overscrubbed','"CreateDate": "2012-10-17"','"CreateDate": "hydragenzen-10-17"','hydragenzen','Overscrubbed');
 posd('Overscrubbed','"region": "ap-northeast-2"','"region": "ap-terovawren-2"','terovawren','Overscrubbed');
 posd('Overscrubbed','Provide a brief summary.','Galearwren a brief summary.','Galearwren','Overscrubbed');
-posd('Overscrubbed','We toured Ireland last summer.','We toured Quelvaria last summer.','Quelvaria','Overscrubbed');
+neg('Overscrubbed','We toured Ireland last summer.','We toured Quelvaria last summer.','Quelvaria');   // (v11.9.0) user rule: a replaced place is redaction
 posd('Overscrubbed','Good communication skills in English','Good communication skills in Beaargale','Beaargale','Overscrubbed');
 posd('Overscrubbed','API_KEY = "x"','BRYENA_STELWICK = "x"','BRYENA_STELWICK','Overscrubbed');
 posd('Overscrubbed','## Project Timeline','## Project Zelvorine','Zelvorine','Overscrubbed');
