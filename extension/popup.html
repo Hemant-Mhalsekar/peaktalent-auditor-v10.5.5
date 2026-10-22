@@ -28,7 +28,7 @@
 <body>
   <header>
     <h1><span>PeakTalent</span> Auditor</h1>
-    <p>PII / BII / Credentials &middot; v11.7.11</p>
+    <p>PII / BII / Credentials &middot; v11.8.0</p>
   </header>
   <main>
     <div class="status" id="status"><span class="dot"></span><span id="status-text">Checking this tab…</span></div>
@@ -51,6 +51,19 @@
         <button id="l-export" style="background:#475569">Export</button>
         <button id="l-reset" style="background:#475569">Reset</button>
       </div>
+    </section>
+    <section id="team" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <span style="font-weight:600">Team sync</span>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)"><input type="checkbox" id="t-on"> share (hashed)</label>
+      </div>
+      <dl style="margin-bottom:8px">
+        <dt>Status</dt><dd id="t-status">checking…</dd>
+        <dt>Waiting to send</dt><dd id="t-queued">0</dd>
+        <dt>Team bundle</dt><dd id="t-built">none yet</dd>
+        <dt>Team terms</dt><dd id="t-terms">0</dd>
+      </dl>
+      <button id="t-now" style="background:#475569">Sync now</button>
     </section>
     <textarea id="diagtext" hidden readonly style="width:100%;height:140px;margin-top:6px;font:11px/1.35 ui-monospace,Menlo,monospace"></textarea>
     <ul class="keys">

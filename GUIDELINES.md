@@ -331,6 +331,14 @@ Every document processed by the automated engine or human annotator must pass a 
 4. **State Code Authenticity Check**:
    - Confirm every `Vehicle Number Plate` begins with an official 2-letter Indian State/UT code (or a legacy code listed in 5.4).
 
+### 7.2 Team sync (v11.8.0)
+
+The learning of every reviewer is pooled for the whole team, as hashes only: no document text leaves anyone's browser.
+- A term labeled by 3+ reviewers on 2+ tasks is suggested to everyone ("learned from the team").
+- A text rejected 5+ times by 2+ reviewers, and never accepted, is no longer suggested with that label.
+- A label the team mostly rejects (20+ decisions, under 30% accepted) is shown faded.
+- The popup's **Team sync** switch turns it off for you; the team bundle is refreshed once a day (or with **Sync now**).
+
 ### 7.1 Learning from reviewers (v11.7.0)
 
 The auditor learns from what reviewers save, on each reviewer's own computer:

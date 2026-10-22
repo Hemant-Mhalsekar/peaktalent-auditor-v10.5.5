@@ -101,4 +101,19 @@ $('l-reset').addEventListener('click', async () => {
   showLearning(res);
 });
 
+// (v11.8.0) team sync: the background worker sends hashed learning to the team relay and keeps the team bundle
+const ago = (t) => { if (!t) return 'never'; const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : Math.round(m / 1440) + ' d ago'; };
+function bg(msg) { return new Promise((resolve) => { try { chrome.runtime.sendMessage(msg, (r) => { void chrome.runtime.lastError; resolve(r || null); }); } catch (e) { resolve(null); } }); }
+function showTeam(s) {
+  if (!s) { $('t-status').textContent = 'not running - reload the extension'; return; }
+  $('t-on').checked = !!s.enabled; $('t-on').disabled = !s.configured; $('t-now').disabled = !s.configured || !s.enabled;
+  $('t-status').textContent = !s.configured ? 'off (no team-config.js)' : !s.enabled ? 'off' : s.lastError ? s.lastError : 'on - sent ' + ago(s.lastSent);
+  $('t-queued').textContent = s.queued;
+  $('t-built').textContent = s.bundleBuilt ? new Date(s.bundleBuilt).toLocaleDateString() + ' (fetched ' + ago(s.bundleFetched) + ')' : 'none yet';
+  $('t-terms').textContent = s.teamTerms;
+}
+$('t-on').addEventListener('change', async () => showTeam(await bg({ action: 'pt-sync-toggle', on: $('t-on').checked })));
+$('t-now').addEventListener('click', async () => { $('t-now').disabled = true; $('t-now').textContent = 'Syncing…'; showTeam(await bg({ action: 'pt-sync-now' })); $('t-now').textContent = 'Sync now'; });
+bg({ action: 'pt-sync-status' }).then(showTeam);
+
 refresh();
