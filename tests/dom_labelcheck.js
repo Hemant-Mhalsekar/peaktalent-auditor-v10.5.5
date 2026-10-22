@@ -628,6 +628,25 @@ same('language', 'Languages: English, Bengali, Hindi', 'Bengali', '', 'Person Na
     }
   }
 
+  // (v11.7.9) Overscrubbed, second review: the correction names the changed part; real -> real words are Overscrubbed
+  {
+    const OC = [
+      [['The Council Member approved it.'], ['The Council Beagenhydra approved it.'], 'Beagen', 'Overscrubbed', 'Overscrubbed: Beagenhydra', 'a part of a changed word -> the whole changed word'],
+      [['Meeting on 12 March 2025'], ['Meeting on 19 April 2025'], '19 April 2025', 'Overscrubbed', 'Overscrubbed: 19 April', 'a whole changed date -> only the changed part'],
+      [['The Council Member approved it.'], ['The Council Manager approved it.'], 'Manager', 'Overscrubbed', 'ok', 'a normal word replaced by another normal word is Overscrubbed'],
+      [['see file.txt'], ['see zelvor.txt'], 'zelvor', 'Overscrubbed', 'ok', 'a changed file name is Overscrubbed'],
+      [['Hi Rahul Sharma,'], ['Hi Amit Verma,'], 'Amit Verma', 'Overscrubbed', 'No label', 'a scrubbed name is correct redaction'],
+    ];
+    for (const [l, r, word, label, exp, name] of OC) {
+      const p = await page(l, r || l);
+      const m = await p.annotate(word, label);
+      const st = p.state(m);
+      const ok = exp === 'ok' ? st.mark === 'ok' : (st.mark === 'wrong' && st.expected === exp);
+      check(ok, 'Overscrubbed review: ' + name, st);
+      p.close();
+    }
+  }
+
   // (v11.4.8) a whole connection URL labeled Credentials: only the password should be
   {
     const line = ['DATABASE_URL=postgres://admin:S3cretPass@db.acme-demo.io:5432/prod'];
