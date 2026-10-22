@@ -1,5 +1,16 @@
 # Changelog
 
+## 11.11.0 - October 2026 (branch v2)
+
+Data lists taken over from the team's v13 fork (copied as they are, decoded on first use; about 2.7 MB):
+- **Companies** (stock-exchange listings + YC directory): a distinctive listed name is a Business Name on its own (`Tata Motors`, `Hindustan Unilever`); a name made of dictionary words only with its legal form or company context (`Jupiter Wagons Limited`). Aimed at the Business Name gap the accuracy report showed.
+- **Lower-case company names** (user rule): `i work at infosys`, `paid through razorpay`, `ordered lunch on swiggy`; not English words (`target`).
+- **Institutions** (~48k universities and Indian colleges; user rule: Business Name): `IIT Bombay`, `St. Xavier's College`, `Delhi Public School` - the whole name; a qualification (`Secondary School Certificate`) is not.
+- **Person names** (~108k real first names and surnames from India and 30+ countries): 2-3 capitalised real names that are not English words are a Person Name (`Lalremruata Pachuau`, `Yogeshwar Varalakshmi`) - one label, never the parts; names that are also English words (`Hope`, `Grace`) still need context.
+- **Real postal codes**: a PIN / ZIP on its own is labeled only when it exists (India Post list, US ZIP list): `Pincode: 999999` is not.
+- Speed: the lists are decoded once (about 80 ms); the large-document test runs about 15% slower in the test browser.
+- New test `tests/data.js` (31 checks).
+
 ## 11.10.0 - October 2026 (branch v2)
 
 Disguised values, taken over from the team's v13 fork:

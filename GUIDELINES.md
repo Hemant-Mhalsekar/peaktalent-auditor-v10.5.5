@@ -301,6 +301,9 @@ The platform mandates that the following **15 categories are strictly classified
 
 ---
 
+### 5.11 Built-in data lists (v11.11.0)
+The auditor knows ~108k real person names, ~48k institutions, listed companies and every real Indian PIN / US ZIP code. Institutions (schools, colleges, universities, IITs) are **Business Name**; company names written in lower case are labeled when the sentence shows a company; a postal code on its own is labeled only when it really exists.
+
 ### 5.10 Disguised values (v11.10.0)
 A value written with spaces between its characters (`9 8 4 5 0 1 2 3 4 5`), with non-Latin digits (Devanagari, fullwidth, ...) or split over two lines (`Id Passport: X486` / `5305`) is judged as the value it is: label it as written, the whole of it (both pieces when it is split over two lines).
 
