@@ -1,5 +1,14 @@
 # Changelog
 
+## 11.7.9 - October 2026 (branch v2)
+
+Overscrubbed (second review, 13-chip page):
+- **A normal word replaced by another normal word is Overscrubbed** (user rule: it exposes no PII or BII). `Member` -> `Manager` and other common words (job titles, verbs) on the old "never Overscrubbed" list were skipped; now every replacement the diff shows is judged by its original. Replacing a real value by its own kind (a name, company, e-mail, phone, number, DOB) stays correct redaction.
+- **A changed file name** is found with every extension (`file.txt` -> `zelvor.txt`: `zelvor`); two names with the same extension were taken for a scrubbed `name.name` username.
+- **Mistake check names the changed part**: a label on only a part of a changed word (`Beagen` -> `Beagenhydra`) or on a whole changed date (`19 April 2025` -> `19 April`) is flagged; both were accepted.
+- Two replaced words side by side keep a label each (user rule).
+- New test `tests/overscrub.js` (21 checks); 5 Overscrubbed cases in the label check.
+
 ## 11.7.8 - October 2026 (branch v2)
 
 Date (date of birth; second review, 13-chip page):

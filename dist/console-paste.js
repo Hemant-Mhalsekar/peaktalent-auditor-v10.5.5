@@ -1,4 +1,4 @@
-// PeakTalent Auditor v11.7.8 - console build.
+// PeakTalent Auditor v11.7.9 - console build.
 // Open the PeakTalent review tab, open the browser console (Safari: Develop > Show JavaScript Console,
 // Chrome: Cmd/Ctrl+Option/Alt+J), paste this whole file and press Enter. Pasting again replaces the old copy.
 // GENERATED FILE - edit src/content.js and src/page-hook.js, then run `node scripts/build.js`.
@@ -112,7 +112,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.7.8";
+    const PT_VERSION = "11.7.9";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -656,6 +656,15 @@
         // d / c for Overscrubbed
         if (L === "Overscrubbed") {
             if (inLeft) return wrong(PTC_NONE, "This text is identical in the left document - nothing was changed, so nothing was overscrubbed.");
+            // (v11.7.9) a label on only a part of a changed word ("Beagen" in "Beagenhydra"), or one that also covers unchanged text
+            // ("19 April 2025" where only "19 April" changed): the correction names the changed part
+            {
+                const mine = [...new Set(lookup.values())].filter(t => t && t.label === "Overscrubbed" && t.text !== T && rLine.includes(t.text));
+                const outer = mine.find(t => t.text.includes(T));
+                if (outer) return wrong("Overscrubbed: " + outer.text, "Label the whole changed word, not a part of it.");
+                const inner = mine.filter(t => T.includes(t.text) && !mine.some(u => u !== t && u.text.includes(t.text) && T.includes(u.text)));
+                if (inner.length) return wrong("Overscrubbed: " + inner.map(t => t.text).join(", "), "Label only the changed part; the rest is the same as in the left document.");
+            }
             // (v11.4.4) dates: a changed date of birth is correct redaction; any other changed date is overscrubbing
             const dobLine = /\b(?:dob|d\.o\.b|date\s*of\s*birth|birth\s*date|birthday|born|date_of_birth|birth_date|birthdate)\b/i.test(rLine);
             if (isDateFormat(T) || /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/i.test(T) && /\d/.test(T)) {
@@ -3579,7 +3588,8 @@
         // Ordinary original text replaced by anything else is Overscrubbed (unless it sits in a name field).
         // (v11.2.0) in a name field, an ordinary word that can never be a name ("Support", "Manager") is still ordinary
         const ordinaryInNameField = isTokenInNameField(orig, ctx) && !String(orig).split(/\s+/).some(couldBeName);
-        if (isOrdinaryPhrase(orig) && (!isTokenInNameField(orig, ctx) || ordinaryInNameField) && !addedWordsAreGeneric(orig, chg) &&
+        // (v11.7.9) user rule: a normal word replaced by any other word - made up or real ("Member" -> "Manager") - is Overscrubbed
+        if (isOrdinaryPhrase(orig) && (!isTokenInNameField(orig, ctx) || ordinaryInNameField) &&
             !isVectorOrPathData(chg, ctx) && !isDefaultOrPlaceholderLink(chg) && !orig.includes("|") && !chg.includes("|") &&
             !isBusinessName(orig, orig, ctx) && !isFieldLabelOrHeader(chg)) {
             return { label: "Overscrubbed", cls: "pt-overscrub" };
@@ -4493,7 +4503,7 @@
                 if (lowerOf(leftText).includes(cleanText.toLowerCase())) return;
 
                 const lowerClean = cleanText.toLowerCase().replace(/[^a-z0-9]/g, "");
-                if (lowerClean.length < 2 || STOP_WORDS.has(lowerClean)) return;
+                if (lowerClean.length < 2 || (STOP_WORDS.has(lowerClean) && !__ptOrdinaryOrigins.has(cleanText))) return;   // (v11.7.9)
 
                 if (cleanText.includes("@")) {
                     const escEmail = cleanText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -4501,7 +4511,9 @@
                 } else {
                     const words = cleanText.split(/[\s\/]+/).map(w => w.toLowerCase().replace(/[^a-z0-9]/g, "")).filter(Boolean);
                     if (words.length === 0) return;
-                    if (words.every(w => STOP_WORDS.has(w))) return;
+                    // (v11.7.9) user rule: a normal word that replaced another normal word is Overscrubbed even when it is a common
+                    // word ("Member" -> "Manager"); the stop-word list only guards words the diff did not show as replacements
+                    if (words.every(w => STOP_WORDS.has(w)) && !__ptOrdinaryOrigins.has(cleanText)) return;
 
                     // Single word check against leftText: an overscrubbed substitution cannot exist in the original left document!
                     if (words.length === 1) {
@@ -5019,7 +5031,10 @@
                     // (v11.4.4) ...but "calculate_total" -> "calculate_zelvor" is a code name: the part both sides share is an ordinary word
                     const op = o.split(/[._]/), cp = ch.split(/[._]/);
                     const sharesOrdinary = op.some(w => cp.some(x => x.toLowerCase() === w.toLowerCase()) && isCommonWord(w.toLowerCase()) && !couldBeName(w));
-                    if (!sharesOrdinary && handle.test(o) && handle.test(ch) && /[a-z]/.test(o) && /[a-z]/.test(ch)) {   // not CONSTANT_NAMES
+                    // (v11.7.9) two file names with the same extension ("file.txt" -> "zelvor.txt") are not handles
+                    const FILE_EXT = /\.(?:txt|md|csv|pdf|docx?|xlsx?|pptx?|json|ya?ml|xml|ini|cfg|conf|log|sh|bash|py|js|ts|jsx|tsx|java|go|rb|php|html?|css|scss|sql|env|lock|toml|png|jpe?g|gif|svg|zip)$/i;
+                    const sameExt = FILE_EXT.test(o) && FILE_EXT.test(ch) && o.split(".").pop().toLowerCase() === ch.split(".").pop().toLowerCase();
+                    if (!sharesOrdinary && !sameExt && handle.test(o) && handle.test(ch) && /[a-z]/.test(o) && /[a-z]/.test(ch)) {   // not CONSTANT_NAMES
                         const nameish = (s) => s.split(/[._]/).some(w => couldBeName(w)) || s.split(/[._]/).every(w => !isCommonWord(w.toLowerCase()));
                         if (nameish(o) || nameish(ch)) { for (const w of ch.split(/[._]/).concat([ch])) __ptScrubbedNameWords.add(w); continue; }
                     }

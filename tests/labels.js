@@ -402,7 +402,7 @@ no('Call 9876543210 today', '9123456780', 'Call 9123456780 today');
 yes('Mail priya@northwind-demo.com today', 'velmorine', undefined, 'Mail velmorine today');
 no('Mail priya@northwind-demo.com today', 'zelvor@quellan-demo.com', 'Mail zelvor@quellan-demo.com today');
 no('I met Hemant at the airport.', 'Alex', 'I met Alex at the airport.');
-no('Ask the Member first.', 'Manager', 'Ask the Manager first.');
+yes('Ask the Member first.', 'Manager', 'Overscrubbed', 'Ask the Manager first.');   // (v11.7.9) user rule: a normal word replaced by another is Overscrubbed
 // (v11.4.4) a changed ordinary date is Overscrubbed (only a date of birth may be scrubbed): the changed part
 yes('Meeting on 12 March 2025', '19 April', undefined, 'Meeting on 19 April 2025');
 yes('Invoice date: 12-03-2025', '19-04', undefined, 'Invoice date: 19-04-2025');
