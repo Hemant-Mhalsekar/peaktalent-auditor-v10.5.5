@@ -1,5 +1,15 @@
 # Changelog
 
+## 11.8.2 - October 2026 (branch v2)
+
+**Accuracy, measured from the team's real reviews.**
+- **Accuracy report** (popup -> *Accuracy report*, opens in a tab): precision and coverage overall, per label and per day, for the whole team and for you alone, with what each number means and a warning while there are too few decisions to rely on.
+  - **Precision** = accepted / (accepted + rejected): how often a suggestion the reviewer acted on was right.
+  - **Coverage** = accepted / (accepted + missed): how many of the reviewers' labels the auditor had already suggested.
+- **REPORT.md** in the data repo: the same team report, rebuilt with every team bundle (15:30 and 21:00 IST); GitHub shows it as a page.
+- The team bundle carries the counts (accepted / rejected / missed per label and per day, and the number of reviewers): never reviewer ids, task ids or texts. Totals from 11.8.0/11.8.1 are upgraded automatically.
+- Tests: `tests/relay.js` 27 checks, `tests/dom_sync.js` 27 checks.
+
 ## 11.8.1 - October 2026 (branch v2)
 
 Team sync timed for the team's working day (11:00-20:30 IST):
