@@ -1,1 +1,5 @@
 node_modules/
+
+# (v11.8.0) team sync secrets: the team key and hash salt are shared privately, never committed (this repo is public)
+extension/team-config.js
+team-config.js

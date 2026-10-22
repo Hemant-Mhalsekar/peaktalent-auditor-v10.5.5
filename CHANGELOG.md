@@ -1,5 +1,15 @@
 # Changelog
 
+## 11.8.0 - October 2026 (branch v2)
+
+**Team sync: what every reviewer learns is shared with the whole team, hashed.**
+- The extension's new background worker sends each reviewer's decisions (label accepted / rejected, terms labeled without a suggestion) to the team relay, a free Cloudflare Worker (`relay/worker.js`), every 30 minutes. The relay checks every batch and stores it in a private GitHub data repo; a nightly GitHub Action (`relay/aggregate.mjs`, `relay/aggregate.yml`) builds the team bundle, which every extension downloads once a day.
+- **No document text leaves the browser**: texts and task ids are hashed (salted, 64-bit) on the page; the relay refuses any batch with text or unknown fields; the page itself makes no network request (all traffic is in the background worker). Each reviewer is a random id.
+- **Team rules**: a label the team mostly rejects is faded; a text 5+ rejections from 2+ reviewers (never accepted) is no longer suggested; a term labeled by 3+ reviewers on 2+ tasks is suggested to everyone ("learned from the team"). Local learning still works on its own.
+- **Popup**: a Team sync section (on/off, status, waiting events, bundle date, team terms, Sync now).
+- **Setup**: `extension/team-config.js` (relay address, team key, hash salt) is not in git, because this repo is public; it is shared privately inside the extension folder. Without it the extension works as before. See `relay/SETUP.md`.
+- New permission `alarms`; the relay address is the only new host. New tests `tests/relay.js` (21) and `tests/dom_sync.js` (18).
+
 ## 11.7.11 - October 2026 (branch v2)
 
 From the team's PII / BII Annotation Guide (user rules):

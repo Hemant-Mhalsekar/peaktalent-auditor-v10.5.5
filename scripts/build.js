@@ -32,6 +32,7 @@ try {
   execFileSync(process.execPath, [rel('tests', 'ip.js')], { stdio: 'inherit' });
   execFileSync(process.execPath, [rel('tests', 'dob.js')], { stdio: 'inherit' });
   execFileSync(process.execPath, [rel('tests', 'overscrub.js')], { stdio: 'inherit' });
+  execFileSync(process.execPath, [rel('tests', 'relay.js')], { stdio: 'inherit' });
 } catch (e) {
   console.error('\nBuild stopped: tests failed.');
   process.exit(1);
@@ -46,6 +47,7 @@ if (haveJsdom) {
     execFileSync(process.execPath, [rel('tests', 'dom_e2e.js')], { stdio: ['ignore', 'inherit', 'ignore'], cwd: root });
     execFileSync(process.execPath, [rel('tests', 'dom_review_data.js')], { stdio: ['ignore', 'inherit', 'ignore'], cwd: root });
     execFileSync(process.execPath, [rel('tests', 'dom_learning.js')], { stdio: ['ignore', 'inherit', 'ignore'], cwd: root });
+    execFileSync(process.execPath, [rel('tests', 'dom_sync.js')], { stdio: ['ignore', 'inherit', 'ignore'], cwd: root });
     execFileSync(process.execPath, [rel('tests', 'dom_chrome_colours.js')], { stdio: ['ignore', 'inherit', 'ignore'], cwd: root });
   }
   catch (e) { console.error('\nBuild stopped: DOM tests failed.'); process.exit(1); }
@@ -67,6 +69,8 @@ if (manifest.version !== version) {
 // (written before the manifest check below, which needs the file to exist)
 const hook = read('src/page-hook.js');
 fs.writeFileSync(rel('extension', 'page-hook.js'), hook);
+// (v11.8.0) the background worker does the team sync (all network traffic of the extension)
+fs.writeFileSync(rel('extension', 'background.js'), read('src/background.js'));
 
 // Root manifest (v11.2.2): Chrome's "Load unpacked" then also works on the PROJECT folder itself, not only on extension/.
 // Choosing the project folder used to fail with "Manifest file is missing or unreadable".
@@ -77,10 +81,11 @@ fs.writeFileSync(rel('extension', 'page-hook.js'), hook);
   for (const k of Object.keys(rootManifest.action.default_icon)) rootManifest.action.default_icon[k] = pre(rootManifest.action.default_icon[k]);
   for (const k of Object.keys(rootManifest.icons)) rootManifest.icons[k] = pre(rootManifest.icons[k]);
   rootManifest.content_scripts = rootManifest.content_scripts.map(cs => Object.assign({}, cs, { js: cs.js.map(pre) }));
+  if (rootManifest.background) rootManifest.background.service_worker = pre(rootManifest.background.service_worker);
   fs.writeFileSync(rel('manifest.json'), JSON.stringify(rootManifest, null, 2) + '\n');
   // Check both manifests: valid JSON, MV3, and every file they name exists.
   for (const [base, m] of [['extension', manifest], ['.', rootManifest]]) {
-    const files = [m.action.default_popup, ...Object.values(m.action.default_icon), ...Object.values(m.icons), ...m.content_scripts.flatMap(cs => cs.js)];
+    const files = [m.action.default_popup, ...Object.values(m.action.default_icon), ...Object.values(m.icons), ...m.content_scripts.flatMap(cs => cs.js), ...(m.background ? [m.background.service_worker] : [])];
     for (const f of files) if (!fs.existsSync(path.join(root, base, f))) { console.error(`manifest in ${base}: missing ${f}`); process.exit(1); }
     if (m.manifest_version !== 3) { console.error('manifest_version must be 3'); process.exit(1); }
   }

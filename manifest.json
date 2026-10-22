@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PeakTalent PII/BII Annotation Auditor",
-  "version": "11.7.11",
+  "version": "11.8.0",
   "description": "Highlights PII/BII, credentials and overscrubbed text on PeakTalent review screens and flags wrong labels. Works fully offline.",
   "action": {
     "default_popup": "extension/popup.html",
@@ -16,6 +16,9 @@
     "16": "extension/icons/icon16.png",
     "48": "extension/icons/icon48.png",
     "128": "extension/icons/icon128.png"
+  },
+  "background": {
+    "service_worker": "extension/background.js"
   },
   "content_scripts": [
     {
@@ -39,10 +42,12 @@
     }
   ],
   "host_permissions": [
-    "https://dashboard.peaktalent.ai/*"
+    "https://dashboard.peaktalent.ai/*",
+    "https://pt-auditor-relay.hemantmhalsekar01.workers.dev/*"
   ],
   "permissions": [
     "activeTab",
-    "storage"
+    "storage",
+    "alarms"
   ]
 }

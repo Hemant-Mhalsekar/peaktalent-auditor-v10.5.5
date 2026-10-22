@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PeakTalent PII/BII Annotation Auditor
 // @namespace    https://dashboard.peaktalent.ai/
-// @version      11.7.11
+// @version      11.8.0
 // @description  Highlights PII/BII, credentials and overscrubbed text on PeakTalent review screens. Works fully offline.
 // @match        https://dashboard.peaktalent.ai/*
 // @run-at       document-start
@@ -120,7 +120,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.7.11";
+    const PT_VERSION = "11.8.0";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -1661,11 +1661,103 @@
     }
     function learnCount(part, key, verdict) {
         const seen = verdict + "\u0002" + part + "\u0002" + key;
-        if (__ptLearnSeen.has(seen)) return;
+        if (__ptLearnSeen.has(seen)) return false;
         __ptLearnSeen.add(seen);
         const o = __ptLearn[part][key] || (__ptLearn[part][key] = { a: 0, r: 0 });
         o[verdict]++; o.t = Date.now();
+        return true;
     }
+
+    // ---- (v11.8.0) TEAM SYNC: each decision goes to the team as a HASH; the team bundle comes back ----
+    // The page never talks to the network: events go to the extension's background worker, which sends them to the team
+    // relay; the nightly team bundle is read from extension storage. Texts are hashed here (salted, 64 bits) before they
+    // leave this script, so no document text ever leaves the browser.
+    const TEAM_LABELS = new Set(["Account Number", "Address", "Business Name", "Contact Number", "Credentials", "Date", "Email Address", "IP Address",
+        "Overscrubbed", "Person Name", "URL/Link", "Person Username", "Vehicle Number Plate", "Indian Mobile Number", "International Phone Number",
+        "Postal Code", "Indonesian Postal Code", "Brazilian CEP"]);
+    const TEAM_CLS = { "Person Name": "pt-person", "Business Name": "pt-business", "Address": "pt-address", "Credentials": "pt-credentials",
+        "Person Username": "pt-username", "Vehicle Number Plate": "pt-vehicle", "URL/Link": "pt-url", "IP Address": "pt-ip", "Email Address": "pt-email",
+        "Contact Number": "pt-contact", "Indian Mobile Number": "pt-contact", "International Phone Number": "pt-contact", "Account Number": "pt-account",
+        "Date": "pt-date", "Overscrubbed": "pt-overscrub" };
+    const __ptTeam = { salt: null, seeds: null, enabled: true, built: null, labels: {}, hidden: new Map(), learned: new Map(), out: [], timer: null, scan: { text: null, left: null, hits: [] } };
+    const teamNorm = (t) => String(t || "").replace(/\s+/g, " ").trim().toLowerCase();
+    // two FNV-1a passes with different offsets, started from the salt: 16 hex characters
+    function teamHash(text) {
+        if (!__ptTeam.seeds) return null;
+        let a = __ptTeam.seeds[0], b = __ptTeam.seeds[1];
+        const t = "\u0001" + teamNorm(text);
+        for (let i = 0; i < t.length; i++) { const c = t.charCodeAt(i); a = Math.imul(a ^ c, 16777619) >>> 0; b = Math.imul(b ^ c, 16777619) >>> 0; b = (b ^ (b >>> 13)) >>> 0; }
+        return a.toString(16).padStart(8, "0") + b.toString(16).padStart(8, "0");
+    }
+    function teamSetSalt(salt) {
+        __ptTeam.salt = typeof salt === "string" && salt.length >= 16 ? salt : null;
+        __ptTeam.seeds = null;
+        if (!__ptTeam.salt) return;
+        let a = 2166136261, b = 0x9747b28c;
+        for (let i = 0; i < __ptTeam.salt.length; i++) { const c = __ptTeam.salt.charCodeAt(i); a = Math.imul(a ^ c, 16777619) >>> 0; b = Math.imul(b ^ c, 16777619) >>> 0; b = (b ^ (b >>> 13)) >>> 0; }
+        __ptTeam.seeds = [a, b];
+    }
+    function teamSetBundle(stored) {
+        const d = stored && stored.data;
+        __ptTeam.built = d && d.built || null;
+        __ptTeam.labels = d && d.labels && typeof d.labels === "object" ? d.labels : {};
+        __ptTeam.hidden = new Map(); __ptTeam.learned = new Map();
+        if (d && d.hidden) for (const [l, hs] of Object.entries(d.hidden)) if (Array.isArray(hs)) __ptTeam.hidden.set(l, new Set(hs));
+        if (d && d.learned) for (const [l, hs] of Object.entries(d.learned)) if (Array.isArray(hs)) for (const h of hs) { const x = __ptTeam.learned.get(h) || []; x.push(l); __ptTeam.learned.set(h, x); }
+        __ptTeam.scan = { text: null, left: null, hits: [] };
+    }
+    function teamEmit(ev) {
+        if (!__ptTeam.seeds || !__ptTeam.enabled || !TEAM_LABELS.has(ev.l)) return;
+        __ptTeam.out.push(ev);
+        if (__ptTeam.timer) return;
+        __ptTeam.timer = setTimeout(() => {
+            __ptTeam.timer = null;
+            const events = __ptTeam.out.splice(0, 500);
+            try { chrome.runtime.sendMessage({ action: "pt-sync-events", events }, () => { void chrome.runtime.lastError; }); } catch (e) {}
+        }, 3000);
+    }
+    function teamLoad() {
+        try {
+            if (typeof chrome === "undefined" || !chrome.storage || !chrome.storage.local) return;
+            chrome.storage.local.get(["pt_team_salt", "pt_team_bundle", "pt_sync_enabled"], (r) => {
+                try { teamSetSalt(r && r.pt_team_salt); __ptTeam.enabled = !r || r.pt_sync_enabled !== false; teamSetBundle(r && r.pt_team_bundle); } catch (e) {}
+            });
+            if (chrome.storage.onChanged) chrome.storage.onChanged.addListener((ch, area) => {
+                if (area !== "local") return;
+                try {
+                    if (ch.pt_team_salt) teamSetSalt(ch.pt_team_salt.newValue);
+                    if (ch.pt_sync_enabled) __ptTeam.enabled = ch.pt_sync_enabled.newValue !== false;
+                    if (ch.pt_team_bundle) { teamSetBundle(ch.pt_team_bundle.newValue); if (typeof forceRescan === "function" && window.__pt_auto_active) forceRescan(); }
+                } catch (e) {}
+            });
+        } catch (e) {}
+    }
+    // Team-learned terms on this page: every 1-4 word phrase is hashed and looked up (fast: no crypto, cached per text)
+    function teamLearnedHits(rightText, leftText) {
+        if (!__ptTeam.learned.size || !__ptTeam.seeds || !rightText) return [];
+        const c = __ptTeam.scan;
+        if (c.text === rightText && c.left === leftText) return c.hits;
+        const hits = [], seen = new Set();
+        const words = [];
+        const re = /[^\s]+/g; let m;
+        while ((m = re.exec(rightText)) !== null && words.length < 40000) {
+            const w = m[0], lead = (/^[("'\[<{]+/.exec(w) || [""])[0].length, trail = (/[)"'\]>},.;:!?]+$/.exec(w) || [""])[0].length;
+            if (w.length - lead - trail > 0) words.push([m.index + lead, m.index + w.length - trail]);
+        }
+        for (let i = 0; i < words.length; i++) {
+            for (let n = 1; n <= 4 && i + n <= words.length; n++) {
+                const text = rightText.slice(words[i][0], words[i + n - 1][1]);
+                if (text.length < 2 || text.length > 80 || /[\r\n]/.test(text)) break;
+                const labels = __ptTeam.learned.get(teamHash(text));
+                if (!labels) continue;
+                if (leftText && !leftText.includes(text)) continue;   // a replaced value is never labeled
+                for (const l of labels) { const k = l + "\u0001" + text.toLowerCase(); if (!seen.has(k)) { seen.add(k); hits.push({ text, label: l }); } }
+            }
+        }
+        __ptTeam.scan = { text: rightText, left: leftText, hits };
+        return hits;
+    }
+    teamLoad();
     // `before` = the label the reviewer's annotation had (null when added), `after` = its label now (null when deleted).
     function learnFromReviewer(text, before, after) {
         try {
@@ -1673,14 +1765,17 @@
             if (!T || T.length > 200) return;
             const sug = __ptLastTargets.find(t => t.text === T) || __ptLastTargets.find(t => t.text.toLowerCase() === T.toLowerCase());
             if (sug) {
-                if (after && sug.label === after) { learnCount("labels", sug.label, "a"); learnCount("texts", learnKey(sug.label, T), "a"); }
-                else if (before === sug.label || after) { learnCount("labels", sug.label, "r"); learnCount("texts", learnKey(sug.label, T), "r"); }
+                const v = (after && sug.label === after) ? "a" : (before === sug.label || after) ? "r" : null;
+                if (v) {
+                    if (learnCount("labels", sug.label, v)) teamEmit({ k: "s", l: sug.label, v });
+                    if (learnCount("texts", learnKey(sug.label, T), v)) teamEmit({ k: "t", l: sug.label, h: teamHash(T), v });
+                }
             }
             // a label the auditor did not suggest for this text: remember it, per task
             if (after && (!sug || sug.label !== after) && __ptLearnTask) {
                 const k = learnKey(after, T);
                 const m = __ptLearn.missed[k] || (__ptLearn.missed[k] = { tasks: [] });
-                if (!m.tasks.includes(__ptLearnTask)) m.tasks = m.tasks.concat(__ptLearnTask).slice(-5);
+                if (!m.tasks.includes(__ptLearnTask)) { m.tasks = m.tasks.concat(__ptLearnTask).slice(-5); teamEmit({ k: "m", l: after, h: teamHash(T), task: teamHash("task:" + __ptLearnTask) }); }
                 if (!m.cls) { const same = __ptLastTargets.find(t => t.label === after); m.cls = same ? same.cls : "pt-learned"; }
                 m.t = Date.now();
             }
@@ -1690,16 +1785,19 @@
         } catch (e) {}
     }
     function learnLabelLow(label) {
-        const s = __ptLearn.labels[label];
-        return !!s && s.a + s.r >= LEARN.minLabel && s.a / (s.a + s.r) < LEARN.lowRate;
+        const s = __ptLearn.labels[label] || { a: 0, r: 0 }, t = __ptTeam.labels[label] || { a: 0, r: 0 };   // (v11.8.0) + the team's
+        const a = (s.a | 0) + (t.a | 0), r = (s.r | 0) + (t.r | 0);
+        return a + r >= LEARN.minLabel && a / (a + r) < LEARN.lowRate;
     }
     function learnTextHidden(label, text) {
         const s = __ptLearn.texts[learnKey(label, text)];
-        return !!s && s.r >= LEARN.hideRejects && !s.a;
+        if (!!s && s.r >= LEARN.hideRejects && !s.a) return true;
+        const th = __ptTeam.hidden.get(label);   // (v11.8.0) the team rejects it
+        return !!(th && th.size && th.has(teamHash(text)));
     }
     // The suggestions to show: the engine's, minus texts reviewers keep rejecting, faded for low-confidence labels,
     // plus learned terms found in `rightText`.
-    function applyLearning(targets, rightText) {
+    function applyLearning(targets, rightText, leftText) {
         __ptLastTargets = targets || [];
         if (!targets) return targets;
         const out = [];
@@ -1716,8 +1814,16 @@
             if (chips && chips.size && !chips.has(label)) continue;
             const esc = text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
             if (!new RegExp("(?<![A-Za-z0-9_])" + esc + "(?![A-Za-z0-9_])").test(rightText || "")) continue;
+            if (leftText && !leftText.includes(text)) continue;   // (v11.8.0) a replaced value is never labeled
             out.push({ text, label, cls: m.cls || "pt-learned", priority: 60, note: "learned from reviewers" });
             shown.add(text.toLowerCase());
+        }
+        // (v11.8.0) terms the whole team labeled (3+ reviewers, 2+ tasks)
+        for (const h of teamLearnedHits(rightText, leftText)) {
+            if (shown.has(h.text.toLowerCase()) || learnTextHidden(h.label, h.text)) continue;
+            if (chips && chips.size && !chips.has(h.label)) continue;
+            out.push({ text: h.text, label: h.label, cls: TEAM_CLS[h.label] || "pt-learned", priority: 60, note: "learned from the team" });
+            shown.add(h.text.toLowerCase());
         }
         out.scrubbedNames = targets.scrubbedNames; out.ordinaryWords = targets.ordinaryWords;
         return out;
@@ -7131,12 +7237,12 @@
                     // Tag only the blocks in the window (outermost ones; nested blocks are covered by their parent).
                     const winSet = new Set(windowEls);
                     windowEls = windowEls.filter(el => { for (let p = el.parentElement; p && p !== rightPane; p = p.parentElement) if (winSet.has(p)) return false; return true; });
-                    const shown = applyLearning(targets, rWin);
+                    const shown = applyLearning(targets, rWin, lWin);
                     for (const el of windowEls) applyAllTargetsInSinglePass(el, shown);
                     __ptViewportInfo = { ra, rb, total: rInfo.lines.length };
                 } else {
                     targets = extractDynamicTargets(leftPane, rightPane, { left: leftText, right: rightText });
-                    applyAllTargetsInSinglePass(rightPane, applyLearning(targets, rightText));
+                    applyAllTargetsInSinglePass(rightPane, applyLearning(targets, rightText, leftText));
                     __ptViewportInfo = null;
                 }
             } else {
@@ -7145,7 +7251,7 @@
                 leftText = leftPane.innerText != null ? leftPane.innerText : readPaneLines(leftPane).text;
                 rightText = rightPane.innerText != null ? rightPane.innerText : readPaneLines(rightPane).text;
                 targets = extractDynamicTargets(leftPane, rightPane, { left: leftText, right: rightText });
-                applyAllTargetsInSinglePass(rightPane, applyLearning(targets, rightText));
+                applyAllTargetsInSinglePass(rightPane, applyLearning(targets, rightText, leftText));
                 __ptViewportInfo = null;
             }
 
@@ -7431,6 +7537,7 @@
             isCompleteAddress, diffTokensGlobalLCS, applyAllTargetsInSinglePass, VERSION: PT_VERSION,
             stats: () => ({ lastRunMs, viewport: __ptViewportInfo }), parseColourToRgba, labelStats: () => __ptLabelStats,
             reviewData: () => ({ ready: __ptReview.ready, labels: __ptReview.titles.size, annotations: __ptReview.right.length, hits: __ptReview.hits }),
+            teamHash, teamState: () => ({ salt: !!__ptTeam.salt, enabled: __ptTeam.enabled, built: __ptTeam.built, learned: __ptTeam.learned.size, queued: __ptTeam.out.length }),
             learning: () => JSON.parse(JSON.stringify(__ptLearn)), learnSummary, learnExport, learnReset, learnFlush: () => { if (__ptLearnSaveTimer) { clearTimeout(__ptLearnSaveTimer); __ptLearnSaveTimer = null; } try { const st = learnStore(); if (st) st.set({ [LEARN_KEY]: __ptLearn }); else localStorage.setItem(LEARN_KEY, JSON.stringify(__ptLearn)); } catch (e) {} }
         };
     }
