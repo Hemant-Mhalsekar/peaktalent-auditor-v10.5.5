@@ -1,12 +1,14 @@
 # PeakTalent Auditor - nightly team aggregation. Copy this file and aggregate.mjs into the PRIVATE data repo:
 #   .github/workflows/aggregate.yml   (this file)
 #   aggregate.mjs                     (at the root of the data repo)
-# Runs every night at 02:00 IST (20:30 UTC) and can be started by hand (Actions -> Aggregate -> Run workflow).
+# (v11.8.1) Runs at 15:30 IST (10:00 UTC) and 21:00 IST (15:30 UTC), for the team's 11:00-20:30 working day, and can be
+# started by hand (Actions -> Aggregate -> Run workflow).
 name: Aggregate
 
 on:
   schedule:
-    - cron: "30 20 * * *"
+    - cron: "0 10 * * *"
+    - cron: "30 15 * * *"
   workflow_dispatch:
 
 permissions:
@@ -33,7 +35,7 @@ jobs:
           git config user.email "actions@users.noreply.github.com"
           git add -A state shared events 2>/dev/null || git add -A
           if git diff --cached --quiet; then echo "nothing new"; exit 0; fi
-          git commit -m "Nightly team bundle"
+          git commit -m "Team bundle"
           # the relay may have stored new batches meanwhile: put this commit on top of them
           for i in 1 2 3; do git pull --rebase && git push && exit 0; sleep 5; done
           exit 1

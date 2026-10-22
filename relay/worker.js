@@ -1,4 +1,4 @@
-// PeakTalent Auditor - team relay (Cloudflare Worker, free plan). v11.8.0
+// PeakTalent Auditor - team relay (Cloudflare Worker, free plan). v11.8.1
 //
 // The extensions of all reviewers send their learning here, already HASHED (no document text ever leaves a reviewer's
 // browser). The relay checks every batch and stores it in the private data repo on GitHub; it also hands out the team
@@ -12,7 +12,7 @@
 // Endpoints:
 //   GET  /         health check
 //   POST /events   { client, version, events: [...] }  -> events/YYYY-MM-DD/<client>-<time>.json in the data repo
-//   GET  /bundle   the team bundle (shared/bundle.json), cached for an hour
+//   GET  /bundle   the team bundle (shared/bundle.json), cached for 10 minutes
 
 export const LABELS = [
   "Account Number", "Address", "Business Name", "Contact Number", "Credentials", "Date", "Email Address", "IP Address",
@@ -90,7 +90,7 @@ export default {
       const res = await github(env, "GET", "shared/bundle.json");
       if (res.status === 404) return json({ version: 1, built: null, labels: {}, hidden: {}, learned: {} });
       if (!res.ok) return json({ error: "storage failed", status: res.status }, 502);
-      const out = new Response(await res.text(), { status: 200, headers: { "Content-Type": "application/json", "Cache-Control": "max-age=3600" } });
+      const out = new Response(await res.text(), { status: 200, headers: { "Content-Type": "application/json", "Cache-Control": "max-age=600" } });
       if (cache && ctx && ctx.waitUntil) ctx.waitUntil(cache.put(cacheKey, out.clone()));
       return out;
     }

@@ -1,4 +1,4 @@
-# Team sync – setup (v11.8.0)
+# Team sync – setup (v11.8.1)
 
 The team sync pools what every reviewer's extension learns, as **hashes only**. It needs three free pieces:
 
@@ -6,7 +6,7 @@ The team sync pools what every reviewer's extension learns, as **hashes only**. 
 |---|---|---|
 | Relay | Cloudflare Worker `pt-auditor-relay` | Checks the hashed batches from the extensions and stores them; serves the team bundle. Holds the GitHub token. |
 | Data repo | Private GitHub repo `peaktalent-auditor-data` | Stores the batches (`events/`), the running totals (`state/`) and the team bundle (`shared/bundle.json`). |
-| Nightly job | GitHub Action in the data repo | Turns the day's batches into the team bundle. |
+| Build job | GitHub Action in the data repo | Turns the batches into the team bundle, at 15:30 and 21:00 IST. |
 
 ## Part A – done already
 1. Private repo `peaktalent-auditor-data` created.
@@ -49,3 +49,7 @@ The team sync pools what every reviewer's extension learns, as **hashes only**. 
 
 ## Renewing the GitHub token (once a year)
 GitHub → Settings → Developer settings → Fine-grained tokens → `pt-auditor-relay` → **Regenerate**, then update the `GITHUB_TOKEN` secret in Cloudflare.
+
+## Updating to a new version of the relay or the job
+- Relay: Cloudflare → `pt-auditor-relay` → **Edit code** → replace everything with the new `relay/worker.js` → **Deploy**.
+- Job: data repo → `.github/workflows/aggregate.yml` → the pencil (Edit) → replace everything with the new `relay/aggregate.yml` → **Commit changes**.

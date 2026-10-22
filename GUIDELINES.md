@@ -337,7 +337,7 @@ The learning of every reviewer is pooled for the whole team, as hashes only: no 
 - A term labeled by 3+ reviewers on 2+ tasks is suggested to everyone ("learned from the team").
 - A text rejected 5+ times by 2+ reviewers, and never accepted, is no longer suggested with that label.
 - A label the team mostly rejects (20+ decisions, under 30% accepted) is shown faded.
-- The popup's **Team sync** switch turns it off for you; the team bundle is refreshed once a day (or with **Sync now**).
+- The popup's **Team sync** switch turns it off for you. Your learning is sent every 15 minutes; the team bundle is built at 15:30 and 21:00 IST and reaches every extension within the hour (or at once with **Sync now**).
 
 ### 7.1 Learning from reviewers (v11.7.0)
 

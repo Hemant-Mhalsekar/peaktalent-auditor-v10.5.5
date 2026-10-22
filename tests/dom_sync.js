@@ -33,7 +33,7 @@ function background({ team = TEAM, net = 'ok' } = {}) {
   ctx.self = ctx;
   vm.createContext(ctx); vm.runInContext(bgSrc, ctx);
   const ask = (msg) => new Promise(r => { const ret = listeners.msg[0](msg, {}, r); if (ret !== true) r(undefined); });
-  return { store, sent, alarms, ask, listeners };
+  return { store, sent, alarms, ask, listeners, ctx };
 }
 
 // ---------------- part 2: the engine on a page ----------------
@@ -80,7 +80,7 @@ async function page({ storage = {}, task = 't1' } = {}) {
     await settle(50);
     check(b.store.pt_team_salt === TEAM.salt && /^[0-9a-f]{16}$/.test(b.store.pt_sync_client) && b.store.pt_sync_enabled === true, 'setup: the page gets the salt (not the key), a random client id, sync on', { salt: !!b.store.pt_team_salt, client: b.store.pt_sync_client });
     check(!JSON.stringify(b.store).includes(TEAM.key), 'the team key is never written to storage');
-    check(b.alarms['pt-flush'] && b.alarms['pt-bundle'], 'alarms for sending and for the bundle');
+    check(b.alarms['pt-flush'] && b.alarms['pt-flush'].periodInMinutes === 15 && b.alarms['pt-bundle'], 'alarms: sending every 15 minutes, bundle check hourly', b.alarms);
     const r = await b.ask({ action: 'pt-sync-events', events: [{ k: 's', l: 'Person Name', v: 'a' }, { k: 't', l: 'Person Name', h: '0123456789abcdef', v: 'a', text: 'Rahul' }] });
     check(r.queued === 1 && b.store.pt_sync_queue.length === 1, 'an event carrying text is dropped before it is queued', r);
     b.listeners.alarm[0]({ name: 'pt-flush' }); await settle(50);
@@ -105,6 +105,18 @@ async function page({ storage = {}, task = 't1' } = {}) {
     b2.store.pt_sync_state = { lastError: 'bundle failed (500)' };
     const s3 = await b2.ask({ action: 'pt-sync-now' });
     check(!s3.lastError && s3.bundleFetched, 'a successful bundle download clears an old error', s3);
+    // (v11.8.1) the bundle is fetched after each build (15:30 and 21:00 IST), not just once a day
+    {
+      const D = (iso) => Date.parse(iso);
+      const at = (built, fetched) => ({ fetched: D(fetched), data: { built } });
+      const nb = b2.ctx.needsBundle;
+      check(nb(null, D('2026-10-23T06:00:00Z')) === true, 'no bundle yet -> fetch');
+      check(nb(at('2026-10-22T15:31:00Z', '2026-10-23T05:40:00Z'), D('2026-10-23T08:00:00Z')) === false, 'morning, bundle from last night -> no fetch');
+      check(nb(at('2026-10-22T15:31:00Z', '2026-10-23T09:00:00Z'), D('2026-10-23T10:20:00Z')) === true, 'after the 15:30 IST build -> fetch');
+      check(nb(at('2026-10-23T10:02:00Z', '2026-10-23T10:20:00Z'), D('2026-10-23T11:20:00Z')) === false, 'already have the 15:30 IST bundle -> no fetch');
+      check(nb(at('2026-10-23T10:02:00Z', '2026-10-23T11:00:00Z'), D('2026-10-23T15:50:00Z')) === true, 'after the 21:00 IST build -> fetch');
+      check(nb(at('2026-10-22T15:31:00Z', '2026-10-23T10:20:00Z'), D('2026-10-23T11:20:00Z')) === true, 'the build was late (old bundle came back) -> keep trying');
+    }
     const n = background({ team: null });
     await settle(50);
     const s2 = await n.ask({ action: 'pt-sync-now' });

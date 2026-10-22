@@ -1,5 +1,14 @@
 # Changelog
 
+## 11.8.1 - October 2026 (branch v2)
+
+Team sync timed for the team's working day (11:00-20:30 IST):
+- **The team bundle is built twice a day**, at **15:30 IST** (the morning's learning reaches everyone the same afternoon) and **21:00 IST** (the whole day, for the next morning). Before: once, at 02:00 IST.
+- **Each extension downloads a new bundle as soon as one has been built** (checked every hour; it keeps trying for 6 hours if GitHub starts the job late), instead of once every 24 hours.
+- **Learning is sent every 15 minutes** (was 30), so little is left waiting when Chrome closes at the end of the day; what is left is sent the next morning.
+- The relay caches the bundle for 10 minutes (was an hour).
+- `tests/dom_sync.js` now has 24 checks.
+
 ## 11.8.0 - October 2026 (branch v2)
 
 **Team sync: what every reviewer learns is shared with the whole team, hashed.**
