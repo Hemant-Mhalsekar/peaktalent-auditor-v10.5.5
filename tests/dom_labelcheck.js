@@ -636,6 +636,8 @@ same('language', 'Languages: English, Bengali, Hindi', 'Bengali', '', 'Person Na
       [['The Council Member approved it.'], ['The Council Manager approved it.'], 'Manager', 'Overscrubbed', 'ok', 'a normal word replaced by another normal word is Overscrubbed'],
       [['see file.txt'], ['see zelvor.txt'], 'zelvor', 'Overscrubbed', 'ok', 'a changed file name is Overscrubbed'],
       [['Hi Rahul Sharma,'], ['Hi Amit Verma,'], 'Amit Verma', 'Overscrubbed', 'No label', 'a scrubbed name is correct redaction'],
+      [['IPv6: fe80::1ff:fe23:4567:890a'], ['IPv6: fd12:3456:789a:1::1'], 'fd12', 'Overscrubbed', 'No label', 'a piece of a changed IPv6 address is correct redaction (v11.7.10)'],
+      [['// @TODO fix this later'], null, '@TODO', 'Person Username', 'No label', 'a code-comment tag is not a username (v11.7.10)'],
     ];
     for (const [l, r, word, label, exp, name] of OC) {
       const p = await page(l, r || l);

@@ -45,6 +45,14 @@ no('Version 1.2.3.4', '1.2.3.4');
 no('Due 12.03.2025', '12.03.2025');
 no('OID 1.3.6.1.4.1', '1.3.6.1.4.1');
 
+// ---------------- (v11.7.10) a changed IPv6 address is correct redaction, never Overscrubbed pieces ----------------
+no('IPv6: fe80::1ff:fe23:4567:890a', 'fd12', 'IPv6: fd12:3456:789a:1::1');
+no('IPv6: fe80::1ff:fe23:4567:890a', '3456', 'IPv6: fd12:3456:789a:1::1');
+no('IP 10.0.0.1', 'db8', 'IP 2001:db8::1');
+no('Host 2001:db8:85a3::8a2e:370:7334 up', '1', 'Host 2001:db8:85a3::1:2:3 up');
+no('| web01 | 2001:db8::15 |', '77', '| web01 | 2001:db8::77 |');
+yes('Host 2001:db8:85a3::8a2e:370:7334 up', '2001:db8:85a3::8a2e:370:7334');
+
 // ---------------- changed ----------------
 no('Server 192.168.10.25', '10.9.8.7', 'Server 10.9.8.7');
 yes('Server 192.168.10.25 down', 'alpha', OVER, 'Server alpha down');

@@ -15,7 +15,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.7.9";
+    const PT_VERSION = "11.7.10";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -581,6 +581,7 @@
             const unchanged = words.filter(w => w.length >= 3 && /[A-Za-z]/.test(w) && !sugg(w) && new RegExp("(?:^|[^A-Za-z0-9])" + escRe(w) + "(?![A-Za-z0-9])").test(leftText || ""));
             if (changedParts.length && unchanged.length) return wrong("Overscrubbed: " + changedParts.join(", "), `The label also covers unchanged text (${unchanged.slice(0, 3).join(", ")}). Label only the changed part.`);
             if (/https?:\/\/\S*$/.test(rLine.slice(0, Math.max(0, rLine.indexOf(T))))) return wrong(PTC_NONE, "This is inside a changed link - changed links get no label.");
+            if (!isIpAddressFormat(T) && isInsideAnyIp(T, rLine)) return wrong(PTC_NONE, "This is part of a changed IP address - correct redaction.");   // (v11.7.10)
             if (new RegExp("[\\w.+-]*" + escRe(T) + "[\\w.+-]*@|@[\\w.-]*" + escRe(T)).test(rLine)) return wrong(PTC_NONE, "This is part of a changed e-mail address - correct redaction.");
             if (credentialValuesInLine(rLine).some(c => c.value.indexOf(T) >= 0)) return wrong(PTC_NONE, "This is a changed credential value - correct redaction.");
             if (rLine.length <= 120 && looksLikeAddressPart(rLine)) return wrong(PTC_NONE, "This is part of a changed address - correct redaction.");
@@ -2994,8 +2995,10 @@
     // (v11.7.4) user rules: bots and user ids are not people's usernames
     const BOT_HANDLE = /^(?:dependabot|renovate|github-actions|codecov|sonarcloud|sonarqubecloud|vercel|netlify|coderabbitai|copilot|mergify|snyk-bot|greenkeeper|allcontributors|stale|imgbot|semantic-release-bot|pre-commit-ci|changeset-bot|gitguardian|deepsource-autofix)$|[-_]bot$/i;
     const isUserIdHandle = (w) => /^[UWB][A-Z0-9]{6,12}$/.test(w) && /\d/.test(w);   // Slack / Discord style ids ("<@U024BE7LH>")
+    // (v11.7.10) code-comment tags ("@TODO", "@FIXME", "@note") are not people
+    const COMMENT_TAG = /^(?:todo|fixme|hack|xxx|note|notes|nb|bug|bugfix|optimize|review|warning|warn|important|idea|question|wip|tbd|tba|temp|tmp|done|perf|refactor|security|safety|attention|caution|info|debug)$/i;
     function isCodeAt(word, idx, text) {
-        if (CODE_AT_WORDS.test(word)) return true;
+        if (CODE_AT_WORDS.test(word) || COMMENT_TAG.test(word)) return true;
         const ls = text.lastIndexOf("\n", idx - 1) + 1;
         let le = text.indexOf("\n", idx); if (le < 0) le = text.length;
         // (v11.7.5) a quoted JSON key ("@context": ..., "@type": ...) is not a handle
@@ -3020,7 +3023,7 @@
     // (v11.4.6) Is a labeled text a person's @handle (on this line)? Not a group mention, not code.
     function isHandleLabelText(T, line) {
         const m = /^@([A-Za-z_](?:[A-Za-z0-9_.-]{0,28}[A-Za-z0-9_])?)(?:@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})?$/.exec(T || "");
-        if (!m || (m[1].length < 2 && !T.slice(1).includes("@")) || GROUP_MENTION.test(m[1]) || BOT_HANDLE.test(m[1]) || isUserIdHandle(m[1])) return false;
+        if (!m || (m[1].length < 2 && !T.slice(1).includes("@")) || GROUP_MENTION.test(m[1]) || BOT_HANDLE.test(m[1]) || isUserIdHandle(m[1]) || COMMENT_TAG.test(m[1])) return false;
         const i = (line || "").indexOf(T);
         return !isCodeAt(m[1], i < 0 ? 0 : i, i < 0 ? T : line);
     }
@@ -3049,6 +3052,20 @@
     function emailAroundLabel(T, line) {
         for (const em of emailsIn(line)) if (em !== T && (em.includes(T) || T.includes(em))) return em;
         return null;
+    }
+    // (v11.7.10) does `token` occur in `text` only inside IP addresses (IPv4 or IPv6)?
+    function isInsideAnyIp(token, text) {
+        if (!token || !text || !/^[0-9A-Fa-f.:]+$/.test(token)) return false;
+        const ips = [];
+        const re = /(?<![\w:.])(?:(?:\d{1,3}\.){3}\d{1,3}|(?:[0-9A-Fa-f]{1,4}|:)(?::[0-9A-Fa-f]{0,4}){2,7}(?:\.\d{1,3}){0,3})(?![\w:])/g;
+        let m;
+        while ((m = re.exec(text)) !== null) { if (isIpAddressFormat(m[0].replace(/\.$/, ""))) ips.push([m.index, m.index + m[0].length]); if (!m[0].length) re.lastIndex++; }
+        if (!ips.length) return false;
+        const esc = token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const tre = new RegExp("(?<![0-9A-Za-z])" + esc + "(?![0-9A-Za-z])", "g");
+        let any = false, t;
+        while ((t = tre.exec(text)) !== null) { any = true; if (!ips.some(([a, b]) => t.index >= a && t.index + token.length <= b)) return false; }
+        return any;
     }
     function isEmailAddressFormat(str) {
         if (!str) return false;
@@ -4361,6 +4378,8 @@
 
                 // User rule: "in mail it is crtly srubbed then it should not be marked"
                 if (isInsideAnyEmail(cleanText, rightText)) return;
+                // (v11.7.10) a piece of an IP address ("fd12" of "fd12:3456:789a:1::1"): a changed IP is correct redaction
+                if (!isIpAddressFormat(cleanText) && isInsideAnyIp(cleanText, rightText)) return;
 
                 // When the ORIGINAL was ordinary text ("Transfer" -> "Galeonorb"), the business / name guards below
                 // must not apply: they guess from the synthetic replacement's position (e.g. first cell of a table

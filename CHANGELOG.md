@@ -1,5 +1,11 @@
 # Changelog
 
+## 11.7.10 - October 2026 (branch v2)
+
+Fixes reported from live use:
+- **A changed IPv6 address showed Overscrubbed pieces** (`fe80::1ff:...` -> `fd12:3456:...` gave `fd12`; an IPv4 replaced by an IPv6 gave `db8`). The diff splits an IPv6 address at its colons; a piece of a changed IP is now correct redaction, and the mistake check flags an Overscrubbed label on one. A word replaced by a whole IP stays Overscrubbed.
+- **Code-comment tags are not usernames**: `@TODO`, `@FIXME`, `@note`, `@HACK`, `@XXX` and similar were labeled Person Username. Real handles (`@RAHUL`, `@NASA`) still are.
+
 ## 11.7.9 - October 2026 (branch v2)
 
 Overscrubbed (second review, 13-chip page):
