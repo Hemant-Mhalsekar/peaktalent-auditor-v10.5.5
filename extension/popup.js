@@ -115,5 +115,7 @@ function showTeam(s) {
 $('t-on').addEventListener('change', async () => showTeam(await bg({ action: 'pt-sync-toggle', on: $('t-on').checked })));
 $('t-now').addEventListener('click', async () => { $('t-now').disabled = true; $('t-now').textContent = 'Syncing…'; showTeam(await bg({ action: 'pt-sync-now' })); $('t-now').textContent = 'Sync now'; });
 bg({ action: 'pt-sync-status' }).then(showTeam);
+// (v11.8.2) the accuracy report opens in its own tab
+$('t-acc').addEventListener('click', () => { chrome.tabs.create({ url: chrome.runtime.getURL('accuracy.html') }); });
 
 refresh();

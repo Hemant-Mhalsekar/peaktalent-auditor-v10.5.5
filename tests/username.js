@@ -62,8 +62,9 @@ no('# @FIXME broken', '@FIXME');
 no('@note this is important', '@note');
 no('/* @HACK temporary */', '@HACK');
 no('@XXX check this', '@XXX');
-yes('cc @RAHUL', '@RAHUL');
-yes('Follow @NASA for updates', '@NASA');
+// (v11.9.0) user rule (v13 fork): an all-caps word after @ is a product / code name, not a username
+no('cc @RAHUL', '@RAHUL');
+no('Follow @NASA for updates', '@NASA');
 no('user: Master', 'Master');
 notAs('Instagram - @priya.clicks', 'Instagram', 'Business Name');
 yes('Instagram - @priya.clicks', '@priya.clicks');

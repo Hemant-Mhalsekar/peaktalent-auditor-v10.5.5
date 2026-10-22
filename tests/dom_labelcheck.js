@@ -673,7 +673,7 @@ same('language', 'Languages: English, Bengali, Hindi', 'Bengali', '', 'Person Na
       const t = tags(p);
       check(t.some(([x, l]) => x === '9876543210' && l === 'Contact Number') && t.some(([x, l]) => x === '080-2345 6789' && l === 'Contact Number'),
         'old chips: phones are suggested as Contact Number', t);
-      check(!t.some(([x]) => x === '560087'), 'old chips: a postal code is not suggested', t);
+      check(t.some(([x, l]) => x === '560087' && l === 'Address'), 'old chips: a postal code on its own is suggested as Address (v11.9.0 user rule)', t);
       const m = await p.annotate('9876543210', 'Contact Number', true);
       check(p.state(m).mark === 'ok' && !/Mistake/.test(p.status()), 'old chips: a phone labeled Contact Number is correct', { st: p.state(m), status: p.status() });
       p.close();
@@ -681,7 +681,7 @@ same('language', 'Languages: English, Bengali, Hindi', 'Bengali', '', 'Person Na
     {
       const p = await page(doc, doc, OLD);
       const m = await p.annotate('560087', 'Address');
-      check(p.state(m).mark === 'wrong' && p.state(m).expected === 'No label', 'old chips: a PIN labeled Address -> mistake, no label (Postal Code is not on the page)', p.state(m));
+      check(p.state(m).mark === 'ok', 'old chips: a PIN labeled Address is correct (v11.9.0 user rule: a PIN on its own is an Address)', p.state(m));
       p.close();
     }
     {

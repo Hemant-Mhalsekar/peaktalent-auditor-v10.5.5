@@ -85,6 +85,30 @@ const asModule = (file) => { const out = path.join(tmp, path.basename(file).repl
   const out = JSON.parse(fs.readFileSync(path.join(repo, 'shared', 'bundle.json'), 'utf8'));
   check(out.labels.Address.a === 2, 'run(): totals carry over from night to night', out.labels);
 
+  // (v11.8.2) accuracy: per-label accepted / rejected / missed, per day, reviewers as a number; REPORT.md
+  {
+    const t2 = agg.emptyTotals();
+    agg.addBatch(t2, { client: 'c1', version: '11.8.2', events: [{ k: 's', l: 'Person Name', v: 'a' }, { k: 's', l: 'Person Name', v: 'a' }, { k: 's', l: 'Person Name', v: 'a' }, { k: 's', l: 'Person Name', v: 'r' }, { k: 'm', l: 'Person Name', h: '5555555555555555', task: 'aaaaaaaaaaaaaaaa' }] }, '2026-10-22');
+    agg.addBatch(t2, { client: 'c2', version: '11.8.2', events: [{ k: 's', l: 'Email Address', v: 'a' }] }, '2026-10-23');
+    const b2 = agg.buildBundle(t2, '2026-10-23T15:31:00Z');
+    const pn = b2.stats.labels['Person Name'];
+    check(pn.a === 3 && pn.r === 1 && pn.m === 1 && b2.stats.reviewers === 2, 'stats: accepted, rejected and missed per label; the number of reviewers', b2.stats);
+    check(b2.stats.days['2026-10-22'].reviewers === 1 && b2.stats.days['2026-10-23'].a === 1, 'stats: per day, by the day the batch was stored', b2.stats.days);
+    const acc = agg.accuracyOf(pn);
+    check(acc.precision === 0.75 && acc.coverage === 0.75, 'precision = a/(a+r), coverage = a/(a+m)', acc);
+    check(!JSON.stringify(b2.stats).match(/c1|c2|aaaa|5555/), 'stats hold no reviewer ids, tasks or hashes');
+    const md = agg.reportMarkdown(b2);
+    check(/\*\*2 reviewers\*\*/.test(md) && /\| Person Name \| 3 \| 1 \| 1 \| 75% \| 75% \|/.test(md) && /\| 2026-10-22 \| 1 \|/.test(md), 'REPORT.md: totals, per label and per day', md.slice(0, 400));
+    // totals written by v11.8.0 (no stats yet) keep working
+    const repo2 = fs.mkdtempSync(path.join(os.tmpdir(), 'pt-data-'));
+    fs.mkdirSync(path.join(repo2, 'state'), { recursive: true });
+    fs.writeFileSync(path.join(repo2, 'state', 'totals.json'), JSON.stringify({ version: 1, labels: {}, texts: {}, missed: {}, batches: 0 }));
+    fs.mkdirSync(path.join(repo2, 'events', '2026-10-22'), { recursive: true });
+    fs.writeFileSync(path.join(repo2, 'events', '2026-10-22', 'c1-1.json'), JSON.stringify({ client: 'c1', version: '11.8.0', events: [{ k: 's', l: 'URL/Link', v: 'a' }] }));
+    agg.run(repo2);
+    const out2 = JSON.parse(fs.readFileSync(path.join(repo2, 'shared', 'bundle.json'), 'utf8'));
+    check(out2.stats.labels['URL/Link'].a === 1 && fs.existsSync(path.join(repo2, 'REPORT.md')), 'old totals are upgraded; REPORT.md is written', out2.stats);
+  }
   console.log(`\n${pass}/${pass + fail} relay checks passed`);
   process.exit(fail ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

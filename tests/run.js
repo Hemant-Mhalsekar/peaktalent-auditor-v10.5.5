@@ -182,7 +182,9 @@ test('Mixed', 'prose: "applicant" does not make Beagenhydra a name', () => yes(r
   test('Real tasks', 'month "June" is not a Person Name', () => no(ts, 'June'));
   test('Real tasks', 'match titles ("X vs Y") are not Person Names', () => assert.ok(!ts.some(t => / vs /.test(t.text)), JSON.stringify(ts.filter(t => / vs /.test(t.text)))));
   test('Real tasks', 'no Person Name anywhere in the sports sheet', () => assert.ok(!ts.some(t => t.label === 'Person Name'), JSON.stringify(ts.filter(t => t.label === 'Person Name'))));
-  for (const w of ['Verosnim', 'Soloraopt', 'Beaiakry']) test('Real tasks', `${w} overscrubbed`, () => yes(ts, w, 'Overscrubbed'));
+  test('Real tasks', 'Verosnim overscrubbed', () => yes(ts, 'Verosnim', 'Overscrubbed'));
+  // (v11.9.0) user rule: a replaced place (a country, here a team) is correct redaction
+  for (const w of ['Soloraopt', 'Beaiakry']) test('Real tasks', `${w} (a replaced country) not labeled`, () => no(ts, w));
 }
 
 // ---------- Suite: Credentials identical vs changed (all types) ----------

@@ -1,4 +1,4 @@
-# Team sync – setup (v11.8.1)
+# Team sync – setup (v11.8.2)
 
 The team sync pools what every reviewer's extension learns, as **hashes only**. It needs three free pieces:
 
@@ -53,3 +53,7 @@ GitHub → Settings → Developer settings → Fine-grained tokens → `pt-audit
 ## Updating to a new version of the relay or the job
 - Relay: Cloudflare → `pt-auditor-relay` → **Edit code** → replace everything with the new `relay/worker.js` → **Deploy**.
 - Job: data repo → `.github/workflows/aggregate.yml` → the pencil (Edit) → replace everything with the new `relay/aggregate.yml` → **Commit changes**.
+
+## The accuracy report
+- In the extension: popup → **Accuracy report** (team and personal numbers per label and per day).
+- In the data repo: **REPORT.md**, rebuilt with every team bundle. Before showing it, run **Actions → Aggregate → Run workflow** so it includes everything up to now.

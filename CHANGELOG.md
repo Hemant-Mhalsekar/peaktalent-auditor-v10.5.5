@@ -1,5 +1,60 @@
 # Changelog
 
+## 11.11.0 - October 2026 (branch v2)
+
+Data lists taken over from the team's v13 fork (copied as they are, decoded on first use; about 2.7 MB):
+- **Companies** (stock-exchange listings + YC directory): a distinctive listed name is a Business Name on its own (`Tata Motors`, `Hindustan Unilever`); a name made of dictionary words only with its legal form or company context (`Jupiter Wagons Limited`). Aimed at the Business Name gap the accuracy report showed.
+- **Lower-case company names** (user rule): `i work at infosys`, `paid through razorpay`, `ordered lunch on swiggy`; not English words (`target`).
+- **Institutions** (~48k universities and Indian colleges; user rule: Business Name): `IIT Bombay`, `St. Xavier's College`, `Delhi Public School` - the whole name; a qualification (`Secondary School Certificate`) is not.
+- **Person names** (~108k real first names and surnames from India and 30+ countries): 2-3 capitalised real names that are not English words are a Person Name (`Lalremruata Pachuau`, `Yogeshwar Varalakshmi`) - one label, never the parts; names that are also English words (`Hope`, `Grace`) still need context.
+- **Real postal codes**: a PIN / ZIP on its own is labeled only when it exists (India Post list, US ZIP list): `Pincode: 999999` is not.
+- Speed: the lists are decoded once (about 80 ms); the large-document test runs about 15% slower in the test browser.
+- New test `tests/data.js` (31 checks).
+
+## 11.10.0 - October 2026 (branch v2)
+
+Disguised values, taken over from the team's v13 fork:
+- **Spaced characters**: `9 8 4 5 0 1 2 3 4 5`, `A B C P E 1 2 3 4 F`, `2 3 4 5 6 7 8 9 0 1 2 3` are read as the phone / PAN / Aadhaar they are and labeled as written. Before, the phone was cut at `9 8 4 5 0 1 2 3` and the others were missed.
+- **Non-Latin digits**: Devanagari, Bengali, Tamil, other Indian scripts, Arabic-Indic and fullwidth digits (`EPIC: YMS` + Devanagari digits, a phone in fullwidth digits) are read as 0-9.
+- **A value split over two lines** (`Id Passport: X486` / `5305  Status: archived`): both pieces get the label of the joined value; a replaced one gets nothing, and its pieces are never Overscrubbed.
+- How: when a document holds such a value, it is read once more in the plain form and every result is mapped back to the text as written.
+- New test `tests/disguised.js` (20 checks).
+
+## 11.9.0 - October 2026 (branch v2)
+
+Merged from the team's v13 fork (rules and fixes chosen by the user, 2026-10-22), plus four bugs the comparison exposed.
+
+Overscrubbed:
+- **A replaced place is correct redaction** (user rule): a city, state or country, or a school / college / hospital name, replaced by another word gets no label (`The Bengaluru office` -> `The Kolugonom office`). Before: Overscrubbed.
+- **Correct redaction, no label**: an id replaced by an id of the same shape (`R000001` -> `R000007`, `EMP-0042`), a machine username replaced by another (`siroju_g_892` -> `velib_q_101`), a hash / bcrypt value replaced, a person's name replaced inside a name field (`Name="Barber, Jennifer"` -> `"Mutate, Sucobevi"`).
+- **Overscrubbed**: a demographic value replaced (`Nationality - Indian` -> `Giduhi`; religion, gender, marital status, blood group), and a placeholder e-mail replaced by a real-looking one (`records.bot@example.org` -> `zelvor.bot@quarnis.org`).
+
+Person Username:
+- **Not usernames**: documentation tags (`* @package`), Ruby instance variables (`@transcript = ...`), Perl / shell arrays (`my @files`, `@ARGV`), and (user rule) any all-caps word after `@` (`@BIOS`, `@NASA`).
+- **An @-mention of a full name is one username label** (user rule): `@Himanshu Shankar`, with no separate Person Name.
+- **Found**: usernames in app / server logs (`Protected route accessed for siroju_gilivasu_892pv14134`, `User login successful: kavya_n_2024`) and behind `github_login_20 =` style keys.
+
+Names, companies, links:
+- **A role at a company** gives the company (`Firmware Engineer @ Spintly`, `Senior Engineer at Spintly`).
+- **The name in an e-mail header** is a Person Name (`From: jahnavi s <jira@...>`); team / support / bot senders are not.
+- **Example accounts are placeholders** (user rule): `testcandidate@gmail.com`, `linkedin.com/in/testcandidate`, `github.com/john-doe`. A bare `test@company.com` stays labeled.
+- **A PIN / ZIP on its own is an Address** (user rule) on the 13-chip page, suggested and accepted (`Pincode: 560087`).
+
+Small fixes:
+- A browser version (`Chrome/143.0.0.0`) is not an IP address; a bank reference chain (`BIN0001613-342606361564-NA`) is not Credentials; `user\nname@...` (escaped text) gives no broken e-mail.
+- Bugs: `Contact Venkatesh Subramanian` no longer includes "Contact"; `Austin, TX 73301` is not a person; `12 MG` in an address table is not a company; `raj --password raj` is not a name; a platform named as a tool (`Validate GitHub release`) is not a company.
+- New test `tests/merge.js` (51 checks); old tests updated to the new rules (replaced places, all-caps handles, a lone PIN on the page).
+
+## 11.8.2 - October 2026 (branch v2)
+
+**Accuracy, measured from the team's real reviews.**
+- **Accuracy report** (popup -> *Accuracy report*, opens in a tab): precision and coverage overall, per label and per day, for the whole team and for you alone, with what each number means and a warning while there are too few decisions to rely on.
+  - **Precision** = accepted / (accepted + rejected): how often a suggestion the reviewer acted on was right.
+  - **Coverage** = accepted / (accepted + missed): how many of the reviewers' labels the auditor had already suggested.
+- **REPORT.md** in the data repo: the same team report, rebuilt with every team bundle (15:30 and 21:00 IST); GitHub shows it as a page.
+- The team bundle carries the counts (accepted / rejected / missed per label and per day, and the number of reviewers): never reviewer ids, task ids or texts. Totals from 11.8.0/11.8.1 are upgraded automatically.
+- Tests: `tests/relay.js` 27 checks, `tests/dom_sync.js` 27 checks.
+
 ## 11.8.1 - October 2026 (branch v2)
 
 Team sync timed for the team's working day (11:00-20:30 IST):

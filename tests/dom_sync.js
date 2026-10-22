@@ -165,6 +165,24 @@ async function page({ storage = {}, task = 't1' } = {}) {
     check(ms < 1500, `100,000 phrase hashes in ${ms} ms`, ms);
     p.close();
   }
+  // (v11.8.2) the accuracy report page: team numbers from the bundle, your own from local learning
+  {
+    const html = fs.readFileSync(path.join(__dirname, '..', 'extension', 'accuracy.html'), 'utf8');
+    const js = fs.readFileSync(path.join(__dirname, '..', 'extension', 'accuracy.js'), 'utf8');
+    const dom = new JSDOM(html.replace('<script src="accuracy.js"></script>', ''), { runScripts: 'outside-only', url: 'chrome-extension://test/accuracy.html' });
+    const w = dom.window;
+    const stats = { labels: { 'Person Name': { a: 90, r: 10, m: 30 }, 'Email Address': { a: 50, r: 0, m: 0 } }, days: { '2026-10-22': { a: 140, r: 10, m: 30, reviewers: 4 } }, reviewers: 4 };
+    const storage = { pt_team_bundle: { fetched: Date.now(), data: { version: 1, built: '2026-10-22T15:31:00Z', labels: {}, hidden: {}, learned: {}, stats } },
+      pt_learning_v1: { labels: { 'Person Name': { a: 9, r: 1 } }, texts: {}, missed: { 'Person Name\u0001x': { tasks: ['a'] } } } };
+    w.chrome = { storage: { local: { get: (k, cb) => cb(storage) } }, runtime: { getManifest: () => ({ version: '11.8.2' }), sendMessage: (m, cb) => cb && cb({ ok: true }) } };
+    w.eval(js);
+    await settle(100);
+    const q = (id) => w.document.getElementById(id).textContent;
+    check(q('c-prec') === '93%' && q('c-cov') === '82%' && q('c-dec') === '180' && q('c-who') === '4', 'report (team): precision 140/150, coverage 140/170, decisions, reviewers', [q('c-prec'), q('c-cov'), q('c-dec'), q('c-who')]);
+    check(w.document.querySelectorAll('#rows tr').length === 3 && w.document.querySelectorAll('#days tr').length === 1, 'report: a row per label plus the total, a row per day');
+    w.document.getElementById('tab-me').click();
+    check(q('c-prec') === '90%' && q('c-cov') === '90%' && !w.document.getElementById('small').hidden, 'report (you): your own numbers, with the small-sample warning', [q('c-prec'), q('c-cov')]);
+  }
   console.log(`\n${pass}/${pass + fail} sync checks passed`);
   process.exit(fail ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });
