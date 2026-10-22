@@ -367,7 +367,7 @@ yes('Addr 2001:db8:0:0:1:0:0:1 set', '2001:db8:0:0:1:0:0:1');
 yes('Peer 2001:db8:85a3::8a2e:370:7334.', '2001:db8:85a3::8a2e:370:7334');
 notAs('At 12:30:45 today', '12:30:45');
 notAs('fp aa:bb:cc:dd:ee:ff:00:11:22:33', 'aa:bb:cc:dd:ee:ff:00:11');
-notAs('MAC 00:1A:2B:3C:4D:5E here', '00:1A:2B:3C:4D:5E');
+yes('MAC 00:1A:2B:3C:4D:5E here', '00:1A:2B:3C:4D:5E');   // (v11.7.11) user rule: a MAC address is labeled IP Address
 // (v11.4.5) a version word after the number
 notAs('pkg 10.2.0.15 build', '10.2.0.15');
 notAs('Upgrade to 4.18.0.2 release today', '4.18.0.2');
@@ -378,7 +378,7 @@ yes('"last_login_ip": "203.0.113.45"', '203.0.113.45');
 yes('host=10.1.2.3:5432', '10.1.2.3');
 yes('IPv6 2001:db8::1 configured', '2001:db8::1');
 no('Server 192.168.10.25 is down', '10.99.88.77', 'Server 10.99.88.77 is down');
-notAs('MAC 00:1A:2B:3C:4D:5E', '00:1A:2B:3C:4D:5E');
+yes('MAC 00:1A:2B:3C:4D:5E', '00:1A:2B:3C:4D:5E');   // (v11.7.11)
 notAs('Upgrade to version 1.2.3.4', '1.2.3.4');
 notAs('Score 999.999.999.999', '999.999.999.999');
 notAs('Time 10:30:45', '10:30:45');
@@ -508,7 +508,7 @@ yes('Read https://acmecorp-demo.io/policy.', 'https://acmecorp-demo.io/policy');
 yes('Profile: https://www.linkedin.com/in/rahul-verma-92', 'https://www.linkedin.com/in/rahul-verma-92');
 yes('[guide](https://wiki.initech-demo.com/x/y?a=1)', 'https://wiki.initech-demo.com/x/y?a=1');
 no('See https://jira.acmecorp-demo.io/browse/OPS-12', 'https://jira.velmoracorp.io/browse/OPS-12', 'See https://jira.velmoracorp.io/browse/OPS-12');
-notAs('Old: http://legacy.acmecorp-demo.io', 'http://legacy.acmecorp-demo.io');
+yes('Old: http://legacy.acmecorp-demo.io', 'http://legacy.acmecorp-demo.io');   // (v11.7.11) user rule: http links too
 notAs('Mirror: www.acmecorp-demo.io', 'www.acmecorp-demo.io');
 notAs('Example: https://example.com', 'https://example.com');
 notAs('Local: https://localhost:3000', 'https://localhost:3000');

@@ -24,6 +24,17 @@ yes('X-Forwarded-For: 203.0.113.45, 70.41.3.18', '70.41.3.18');
 yes('https://10.0.0.5/admin', '10.0.0.5');
 yes('  host: 172.16.0.4', '172.16.0.4');
 
+// ---------------- (v11.7.11) user rule: MAC addresses are labeled IP Address ----------------
+yes('MAC 00:1A:2B:3C:4D:5E here', '00:1A:2B:3C:4D:5E');
+yes('ether 00-1a-2b-3c-4d-5e', '00-1a-2b-3c-4d-5e');
+yes('{"mac": "a4:5e:60:d1:22:9f"}', 'a4:5e:60:d1:22:9f');
+yes('Device MAC: 0011.2233.4455', '0011.2233.4455');
+no('fp aa:bb:cc:dd:ee:ff:00:11:22:33', 'aa:bb:cc:dd:ee:ff');
+no('At 12:30:45 today', '12:30:45');
+no('MAC 00:1A:2B:3C:4D:5E', '00:1A:2B:3C:4D:99', 'MAC 00:1A:2B:3C:4D:99');
+no('MAC 00:00:00:00:00:00', '00:00:00:00:00:00');
+no('MAC ff:ff:ff:ff:ff:ff', 'ff:ff:ff:ff:ff:ff');
+
 // ---------------- user rule A: special addresses ----------------
 no('Listen on 127.0.0.1', '127.0.0.1');
 no('127.0.0.1 - - [10/Oct/2024] "GET /"', '127.0.0.1');
@@ -44,6 +55,14 @@ yes('ssh ubuntu@10.0.0.6', '10.0.0.6');
 no('Version 1.2.3.4', '1.2.3.4');
 no('Due 12.03.2025', '12.03.2025');
 no('OID 1.3.6.1.4.1', '1.3.6.1.4.1');
+
+// ---------------- (v11.7.10) a changed IPv6 address is correct redaction, never Overscrubbed pieces ----------------
+no('IPv6: fe80::1ff:fe23:4567:890a', 'fd12', 'IPv6: fd12:3456:789a:1::1');
+no('IPv6: fe80::1ff:fe23:4567:890a', '3456', 'IPv6: fd12:3456:789a:1::1');
+no('IP 10.0.0.1', 'db8', 'IP 2001:db8::1');
+no('Host 2001:db8:85a3::8a2e:370:7334 up', '1', 'Host 2001:db8:85a3::1:2:3 up');
+no('| web01 | 2001:db8::15 |', '77', '| web01 | 2001:db8::77 |');
+yes('Host 2001:db8:85a3::8a2e:370:7334 up', '2001:db8:85a3::8a2e:370:7334');
 
 // ---------------- changed ----------------
 no('Server 192.168.10.25', '10.9.8.7', 'Server 10.9.8.7');

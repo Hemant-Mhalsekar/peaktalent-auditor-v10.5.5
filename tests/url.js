@@ -40,7 +40,17 @@ no('https://{{host}}/api/v1', 'https://{{host}}/api/v1');
 no('https://<your-tenant>.auth0.com/authorize', 'https://<your-tenant>.auth0.com/authorize');
 no('"$schema": "https://json-schema.org/draft-07/schema"', 'https://json-schema.org/draft-07/schema');   // user rule B
 no('"@context": "https://schema.org"', 'https://schema.org');
-no('See http://portal.acme-demo.io/users', 'http://portal.acme-demo.io/users');
+// (v11.7.11) user rule: http:// links are labeled too
+yes('See http://portal.acme-demo.io/users', 'http://portal.acme-demo.io/users');
+yes('Source http://rubygems.org/', 'http://rubygems.org/');
+yes("source 'http://rubygems.org'", 'http://rubygems.org');
+yes('HTTP://LEGACY.ACME-DEMO.IO/OLD', 'HTTP://LEGACY.ACME-DEMO.IO/OLD');
+no('http://localhost:3000/api', 'http://localhost:3000/api');
+no('http://example.com/x', 'http://example.com/x');
+no('http://cdn.acme-demo.io/logo.png', 'http://cdn.acme-demo.io/logo.png');
+yes('http://10.0.0.5/admin', '10.0.0.5', IP);
+no('http://10.0.0.5/admin', 'http://10.0.0.5/admin');
+yes('See here', 'http://app.acme-demo.io/d/7', OVER, 'See http://app.acme-demo.io/d/7');
 no('See www.acme-demo.io/users', 'www.acme-demo.io/users');
 no('https://example.com/path', 'https://example.com/path');
 no('https://cdn.acme-demo.io/logo.png', 'https://cdn.acme-demo.io/logo.png');

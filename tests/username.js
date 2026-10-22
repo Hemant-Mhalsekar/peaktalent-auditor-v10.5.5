@@ -55,6 +55,15 @@ no('=SUM(@Table1)', '@Table1');
 no('Username: Rahul Sharma', 'Rahul');
 yes('Username: Rahul Sharma', 'Rahul Sharma', PN);
 no('@here please review', '@here');
+// (v11.7.10) code-comment tags are not people
+no('// @TODO fix this later', '@TODO');
+no('@TODO: refactor', '@TODO');
+no('# @FIXME broken', '@FIXME');
+no('@note this is important', '@note');
+no('/* @HACK temporary */', '@HACK');
+no('@XXX check this', '@XXX');
+yes('cc @RAHUL', '@RAHUL');
+yes('Follow @NASA for updates', '@NASA');
 no('user: Master', 'Master');
 notAs('Instagram - @priya.clicks', 'Instagram', 'Business Name');
 yes('Instagram - @priya.clicks', '@priya.clicks');

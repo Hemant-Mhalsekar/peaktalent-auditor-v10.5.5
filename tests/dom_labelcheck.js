@@ -164,7 +164,8 @@ same("apostrophe e-mail (v11.4.3)", "Mail sean.o'brien@initech-demo.com today", 
 same('link to a document (v11.4.2)', 'Payslip: https://hr.acmecorp-demo.io/payslips/2024-03.pdf', 'https://hr.acmecorp-demo.io/payslips/2024-03.pdf', 'URL/Link', 'Date');
 same('Google Sheets link (v11.4.2)', 'Budget: https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/edit', 'https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/edit', 'URL/Link', 'Credentials');
 same('link to a script (v11.4.1)', 'Load https://cdn.acmecorp-demo.io/app/main.js first', 'https://cdn.acmecorp-demo.io/app/main.js', '', 'URL/Link');
-same('http link', 'Old: http://legacy.acmecorp-demo.io', 'http://legacy.acmecorp-demo.io', '', 'URL/Link');
+same('http link (v11.7.11: labeled now)', 'Old: http://legacy.acmecorp-demo.io', 'http://legacy.acmecorp-demo.io', 'URL/Link', 'Date');
+same('MAC address (v11.7.11: IP Address)', 'MAC 00:1A:2B:3C:4D:5E here', '00:1A:2B:3C:4D:5E', 'IP Address', 'Credentials');
 same('language', 'Languages: English, Bengali, Hindi', 'Bengali', '', 'Person Name');
 
 (async () => {
@@ -636,6 +637,8 @@ same('language', 'Languages: English, Bengali, Hindi', 'Bengali', '', 'Person Na
       [['The Council Member approved it.'], ['The Council Manager approved it.'], 'Manager', 'Overscrubbed', 'ok', 'a normal word replaced by another normal word is Overscrubbed'],
       [['see file.txt'], ['see zelvor.txt'], 'zelvor', 'Overscrubbed', 'ok', 'a changed file name is Overscrubbed'],
       [['Hi Rahul Sharma,'], ['Hi Amit Verma,'], 'Amit Verma', 'Overscrubbed', 'No label', 'a scrubbed name is correct redaction'],
+      [['IPv6: fe80::1ff:fe23:4567:890a'], ['IPv6: fd12:3456:789a:1::1'], 'fd12', 'Overscrubbed', 'No label', 'a piece of a changed IPv6 address is correct redaction (v11.7.10)'],
+      [['// @TODO fix this later'], null, '@TODO', 'Person Username', 'No label', 'a code-comment tag is not a username (v11.7.10)'],
     ];
     for (const [l, r, word, label, exp, name] of OC) {
       const p = await page(l, r || l);

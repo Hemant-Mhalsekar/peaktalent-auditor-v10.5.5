@@ -124,7 +124,7 @@ pos('IP Address','IPv6 2001:db8::1 assigned','2001:db8::1');
 pos('IP Address','"last_login_ip": "203.0.113.45"','203.0.113.45');
 pos('IP Address','DB_HOST=10.0.4.17','10.0.4.17');
 neg('IP Address','Server 192.168.10.25','Server 172.16.9.99','172.16.9.99');
-negs('IP Address','MAC 00:1A:2B:3C:4D:5E','00:1A:2B:3C:4D:5E');
+pos('IP Address','MAC 00:1A:2B:3C:4D:5E','00:1A:2B:3C:4D:5E');   // (v11.7.11) user rule: a MAC address is labeled IP Address
 negs('IP Address','Upgrade to version 1.2.3.4','1.2.3.4');
 negs('IP Address','Value 999.300.1.1 invalid','999.300.1.1');
 negs('IP Address','Time 10:30:45','10:30:45');
@@ -181,7 +181,7 @@ pos('URL/Link','Read https://acmecorp-demo.io/policy.','https://acmecorp-demo.io
 pos('URL/Link','LinkedIn: https://www.linkedin.com/in/rahul-verma-92','https://www.linkedin.com/in/rahul-verma-92');
 pos('URL/Link','[guide](https://wiki.initech-demo.com/x?y=1)','https://wiki.initech-demo.com/x?y=1');
 neg('URL/Link','See https://jira.acmecorp-demo.io/x','See https://jira.velmoracorp.io/x','https://jira.velmoracorp.io/x');
-negs('URL/Link','Old: http://legacy.acmecorp-demo.io','http://legacy.acmecorp-demo.io');
+pos('URL/Link','Old: http://legacy.acmecorp-demo.io','http://legacy.acmecorp-demo.io');   // (v11.7.11) user rule: http links too
 negs('URL/Link','Mirror: www.acmecorp-demo.io','www.acmecorp-demo.io');
 negs('URL/Link','Example: https://example.com','https://example.com');
 negs('URL/Link','Local: https://localhost:3000','https://localhost:3000');
