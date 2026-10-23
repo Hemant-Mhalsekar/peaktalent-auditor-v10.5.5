@@ -1,5 +1,10 @@
 # Changelog
 
+## 11.11.1 - October 2026 (branch v2)
+
+- **Speed**: the rules added in 11.9.0 looked at the whole line for every change; on a 500 KB single-line JSON file that took 5.5 s instead of 1.2 s (CI failed its 8 s limit). They now look only at the text around the change: 1.35 s.
+- **`0.0.0.0` labeled IP Address is flagged** (it was accepted, while it is never suggested): like loopback, the "this host" address points to no one.
+
 ## 11.11.0 - October 2026 (branch v2)
 
 Data lists taken over from the team's v13 fork (copied as they are, decoded on first use; about 2.7 MB):

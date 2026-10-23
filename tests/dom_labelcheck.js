@@ -593,6 +593,7 @@ same('language', 'Languages: English, Bengali, Hindi', 'Bengali', '', 'Person Na
       [['Subnet 10.0.0.0/24'], null, '10.0.0.0/24', 'IP Address', 'IP Address: 10.0.0.0', 'a subnet -> only the IP part'],
       [['Listen on 127.0.0.1'], null, '127.0.0.1', 'IP Address', 'No label', 'loopback is not labeled'],
       [['Netmask 255.255.255.0'], null, '255.255.255.0', 'IP Address', 'No label', 'a netmask is not labeled'],
+      [['Listen on 0.0.0.0:8080'], null, '0.0.0.0', 'IP Address', 'No label', 'the "this host" address 0.0.0.0 is not labeled (v11.11.1)'],
       [['"dependencies": {', '  "lodash": "4.17.21.1"', '}'], null, '4.17.21.1', 'IP Address', 'No label', 'a package version is not an IP'],
       [['Server 192.168.10.25 is down'], null, '192.168.10.25', 'IP Address', 'ok', 'an IP address is an IP Address'],
       [['Doc range 192.0.2.10'], null, '192.0.2.10', 'IP Address', 'ok', 'a documentation-range IP is labeled'],

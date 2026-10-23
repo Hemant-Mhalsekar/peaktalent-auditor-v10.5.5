@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PeakTalent PII/BII Annotation Auditor
 // @namespace    https://dashboard.peaktalent.ai/
-// @version      11.11.0
+// @version      11.11.1
 // @description  Highlights PII/BII, credentials and overscrubbed text on PeakTalent review screens. Works fully offline.
 // @match        https://dashboard.peaktalent.ai/*
 // @run-at       document-start
@@ -120,7 +120,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.11.0";
+    const PT_VERSION = "11.11.1";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -762,7 +762,7 @@
                 if (isMacAddress(T, rLine)) return null;   // (v11.7.11) user rule: MAC addresses are labeled IP Address
                 if (!isIpAddressFormat(T)) return wrong(PTC_NONE, "This is not a valid IP address.");
                 // (v11.7.7) user rule: loopback, broadcast and netmask addresses are not labeled
-                if (/^127\./.test(T) || T === "::1" || isNetmask(T)) return wrong(PTC_NONE, "Loopback, broadcast and netmask addresses point to no one: they are not labeled.");
+                if (/^127\./.test(T) || T === "::1" || T === "0.0.0.0" || T === "::" || isNetmask(T)) return wrong(PTC_NONE, "Loopback, \"this host\" (0.0.0.0), broadcast and netmask addresses point to no one: they are not labeled.");   // (v11.11.1) 0.0.0.0
                 // (v11.7.7) a package version ("react-dom@18.2.0.1", a dependencies block, "version": "...")
                 if (new RegExp("version[\"']?\\s*[:=]\\s*[\"']?[\\^~>=<v]*" + escRe(T) + "|[\"']\\s*:\\s*[\"'][\\^~>=<]+" + escRe(T), "i").test(rLine) ||
                     (new RegExp("[\\w/-]@" + escRe(T)).test(rLine) && /\b(?:npm|npx|yarn|pnpm|pip|install|add|upgrade|bump(?:ed)?|update[ds]?|package|dependenc(?:y|ies)|version|release)\b/i.test(rLine)) ||
@@ -5440,7 +5440,14 @@
                     {
                         const oRaw = (diff.original || "").trim(), cRaw = (diff.changed || "").trim();
                         const oj = oRaw.replace(/\s+/g, ""), cj = cRaw.replace(/\s+/g, "");
-                        const dLine = lineContaining(cRaw.split(/\s+/)[0] || cRaw, rightText) || "";
+                        // the text AROUND the change (300 characters each way, within its line): a whole line can be 500 KB of JSON
+                        const nearIn = (text, tok) => {
+                            const ci = tok ? text.indexOf(tok) : -1;
+                            if (ci < 0) return "";
+                            const ls = text.lastIndexOf("\n", ci) + 1; let le = text.indexOf("\n", ci); if (le < 0) le = text.length;
+                            return text.slice(Math.max(ls, ci - 300), Math.min(le, ci + tok.length + 300));
+                        };
+                        const dLine = nearIn(rightText, cRaw.split(/\s+/)[0] || cRaw);
                         const setOver = (t) => { __ptOrdinaryOrigins.add(t); const ex = targetMap.get(t); if (!ex || ex.priority < 66) targetMap.set(t, { text: t, label: "Overscrubbed", cls: "pt-overscrub", priority: 66 }); };
                         // a PLACE replaced (city, state, country), or the name of a school / college / hospital: correct redaction
                         const oLow = oRaw.toLowerCase().replace(/[.,]+$/, "");
@@ -5456,10 +5463,11 @@
                         // words replaced inside a NAME field (Name="Barber, Jennifer" -> Name="Mutate, Sucobevi"): a person's name, correct redaction
                         // (only when the original looks like a person's name: "name: test locked requirements" is a CI step, ordinary words)
                         // ("Name: Team" -> "Name: Quorvel" is an ordinary word replaced: Overscrubbed, the v11.2.0 rule)
-                        const leftField = ((lineContaining(oRaw.split(/\s+/)[0] || oRaw, leftText) || "").split(/[:=]/).slice(1).join(" ") || "");
-                        if (oRaw && (leftField.split(/[^A-Za-z'-]+/).some(w => w.length > 1 && isGivenOrSurname(w) && !isCommonWord(w.toLowerCase())) ||
-                                     oRaw.split(/[\s,]+/).some(w => /^[A-Z][a-z]/.test(w) && !isCommonWord(w.toLowerCase()) && (couldBeName(w) || isGivenOrSurname(w)))) &&
-                            /\b(?:name|full[_ ]?name|first[_ ]?name|last[_ ]?name|surname|display[_ ]?name|author)\s*[:=]\s*["']?[^"'\n]*$/i.test(dLine.slice(0, Math.max(0, dLine.indexOf(cRaw.split(/\s+/)[0]))))) { markRedacted(diff); continue; }
+                        if (oRaw && /\b(?:name|full[_ ]?name|first[_ ]?name|last[_ ]?name|surname|display[_ ]?name|author)\s*[:=]\s*["']?[^"'\n]*$/i.test(dLine.slice(0, Math.max(0, dLine.indexOf(cRaw.split(/\s+/)[0]))))) {
+                            const leftField = (nearIn(leftText, oRaw.split(/\s+/)[0] || oRaw).split(/[:=]/).slice(1).join(" ") || "").slice(0, 200);
+                            if (leftField.split(/[^A-Za-z'-]+/).some(w => w.length > 1 && isGivenOrSurname(w) && !isCommonWord(w.toLowerCase())) ||
+                                oRaw.split(/[\s,]+/).some(w => /^[A-Z][a-z]/.test(w) && !isCommonWord(w.toLowerCase()) && (couldBeName(w) || isGivenOrSurname(w)))) { markRedacted(diff); continue; }
+                        }
                         // a DEMOGRAPHIC value replaced ("Nationality - Indian" -> "Giduhi", Religion / Gender / Marital status / Blood group): Overscrubbed
                         if (oRaw && cRaw && /^[A-Za-z][A-Za-z -]{1,30}$/.test(oRaw) && /^[A-Za-z][A-Za-z -]{1,30}$/.test(cRaw) &&
                             /\b(?:nationality|religion|gender|sex|marital\s*status|blood\s*group|caste|category|citizenship|ethnicity)\b\s*[:=\-\u2013]?\s*$/i.test(dLine.slice(0, Math.max(0, dLine.indexOf(cRaw))))) { setOver(cRaw); continue; }
