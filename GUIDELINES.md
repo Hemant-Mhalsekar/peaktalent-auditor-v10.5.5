@@ -301,6 +301,13 @@ The platform mandates that the following **15 categories are strictly classified
 
 ---
 
+### 5.12 Code that looks like a value (v11.11.2)
+- A constant's **name** (`CONFLUENT_CLOUD_API_KEY`) is not a credential; only its value is.
+- `@typescript-eslint`, `@echo`, `@setlocal` are code, not usernames.
+- A value replaced on a token / key / password line is correct redaction, not Overscrubbed.
+- `INCLUDING BUT NOT LIMITED` is not a company; `session.client`, `service_name='secretsmanager'` are code, not a company or a person.
+- An empty `KEY=` never takes the next line; localhost links are not labeled.
+
 ### 5.11 Built-in data lists (v11.11.0)
 The auditor knows ~108k real person names, ~48k institutions, listed companies and every real Indian PIN / US ZIP code. Institutions (schools, colleges, universities, IITs) are **Business Name**; company names written in lower case are labeled when the sentence shows a company; a postal code on its own is labeled only when it really exists.
 
