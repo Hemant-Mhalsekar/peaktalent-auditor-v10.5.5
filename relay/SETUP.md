@@ -1,4 +1,4 @@
-# Team sync – setup (v11.8.2)
+# Team sync – setup (v11.12.0)
 
 The team sync pools what every reviewer's extension learns, as **hashes only**. It needs three free pieces:
 
@@ -53,7 +53,17 @@ GitHub → Settings → Developer settings → Fine-grained tokens → `pt-audit
 ## Updating to a new version of the relay or the job
 - Relay: Cloudflare → `pt-auditor-relay` → **Edit code** → replace everything with the new `relay/worker.js` → **Deploy**.
 - Job: data repo → `.github/workflows/aggregate.yml` → the pencil (Edit) → replace everything with the new `relay/aggregate.yml` → **Commit changes**.
+- Aggregation code: data repo → `aggregate.mjs` (at the root) → the pencil (Edit) → replace everything with the new `relay/aggregate.mjs` → **Commit changes**.
 
 ## The accuracy report
 - In the extension: popup → **Accuracy report** (team and personal numbers per label and per day).
 - In the data repo: **REPORT.md**, rebuilt with every team bundle. Before showing it, run **Actions → Aggregate → Run workflow** so it includes everything up to now.
+
+## Who is up to date (v11.12.0)
+Every extension sends a small receipt after it downloads the team bundle, and at least every 6 hours: its random reviewer id,
+the extension version and the build time of the team bundle it holds. Nothing else.
+- **REPORT.md → Who is up to date**: one row per reviewer id with version, bundle, last seen and a status
+  (`up to date`, `old extension`, `old team bundle`, `not seen for N days`).
+- **Which id is whom**: each reviewer opens the popup → Team sync → **Your reviewer id** and tells you the 8 characters.
+- **Accuracy report** in the extension: the Reviewers card shows "N of M up to date".
+- Needs the new relay (`/seen`) and the new `aggregate.mjs` + `aggregate.yml` in the data repo (see Updating above).

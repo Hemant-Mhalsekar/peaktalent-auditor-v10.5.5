@@ -44,7 +44,7 @@ function render() {
   // the fourth card: how many reviewers (team) or the labels you used (you)
   $("c-who-k").textContent = view === "team" ? "Reviewers" : "Labels used";
   $("c-who").textContent = view === "team" ? fmt(s ? s.reviewers : 0) : fmt(entries.length);
-  $("c-who-h").textContent = view === "team" ? "in the team data" : "on this computer";
+  $("c-who-h").textContent = view === "team" ? (s && s.team ? `${s.team.upToDate} of ${s.team.reviewers} up to date (v${s.team.latestVersion})` : "in the team data") : "on this computer";
 
   const small = $("small");
   if (!s || dec === 0) {

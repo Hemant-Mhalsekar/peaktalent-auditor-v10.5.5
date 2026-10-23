@@ -1,4 +1,4 @@
-// PeakTalent Auditor - team relay (Cloudflare Worker, free plan). v11.8.1
+// PeakTalent Auditor - team relay (Cloudflare Worker, free plan). v11.12.0
 //
 // The extensions of all reviewers send their learning here, already HASHED (no document text ever leaves a reviewer's
 // browser). The relay checks every batch and stores it in the private data repo on GitHub; it also hands out the team
@@ -12,6 +12,8 @@
 // Endpoints:
 //   GET  /         health check
 //   POST /events   { client, version, events: [...] }  -> events/YYYY-MM-DD/<client>-<time>.json in the data repo
+//   POST /seen     { client, version, bundle }  -> seen/YYYY-MM-DD/<client>-<time>.json (v11.12.0: who runs which
+//                  extension version and which team bundle; shown in REPORT.md)
 //   GET  /bundle   the team bundle (shared/bundle.json), cached for 10 minutes
 
 export const LABELS = [
@@ -38,6 +40,13 @@ export function validBatch(b) {
   return !!b && typeof b === "object" && /^[0-9a-f]{16,40}$/.test(b.client || "") && /^\d+\.\d+\.\d+$/.test(b.version || "") &&
     Array.isArray(b.events) && b.events.length > 0 && b.events.length <= MAX_EVENTS && b.events.every(validEvent) &&
     Object.keys(b).every(k => ["client", "version", "events"].includes(k));
+}
+
+// (v11.12.0) a receipt: the random reviewer id, the extension version and the build time of the bundle it holds
+export function validSeen(b) {
+  return !!b && typeof b === "object" && !Array.isArray(b) && /^[0-9a-f]{16,40}$/.test(b.client || "") && /^\d+\.\d+\.\d+$/.test(b.version || "") &&
+    (b.bundle === null || (typeof b.bundle === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?Z$/.test(b.bundle))) &&
+    Object.keys(b).every(k => ["client", "version", "bundle"].includes(k));
 }
 
 function sameKey(a, b) {   // constant-time comparison
@@ -81,6 +90,20 @@ export default {
       const res = await github(env, "PUT", path, { message: `events ${day} (${batch.events.length})`, content: b64(JSON.stringify(batch)) });
       if (!res.ok) return json({ error: "storage failed", status: res.status }, 502);
       return json({ ok: true, stored: batch.events.length });
+    }
+
+    if (request.method === "POST" && url.pathname === "/seen") {
+      const text = await request.text();
+      if (text.length > 1024) return json({ error: "too large" }, 413);
+      let b;
+      try { b = JSON.parse(text); } catch (e) { return json({ error: "bad json" }, 400); }
+      if (!validSeen(b)) return json({ error: "invalid receipt" }, 400);
+      const now = new Date();
+      const day = now.toISOString().slice(0, 10);
+      const rec = { client: b.client, version: b.version, bundle: b.bundle, at: now.toISOString() };
+      const res = await github(env, "PUT", `seen/${day}/${b.client}-${now.getTime()}.json`, { message: `seen ${day}`, content: b64(JSON.stringify(rec)) });
+      if (!res.ok) return json({ error: "storage failed", status: res.status }, 502);
+      return json({ ok: true });
     }
 
     if (request.method === "GET" && url.pathname === "/bundle") {

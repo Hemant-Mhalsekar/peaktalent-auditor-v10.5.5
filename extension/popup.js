@@ -111,6 +111,7 @@ function showTeam(s) {
   $('t-queued').textContent = s.queued;
   $('t-built').textContent = s.bundleBuilt ? new Date(s.bundleBuilt).toLocaleDateString() + ' (fetched ' + ago(s.bundleFetched) + ')' : 'none yet';
   $('t-terms').textContent = s.teamTerms;
+  $('t-id').textContent = s.client ? s.client.slice(0, 8) : '-';   // (v11.12.0) the id in the report's "Who is up to date"
 }
 $('t-on').addEventListener('change', async () => showTeam(await bg({ action: 'pt-sync-toggle', on: $('t-on').checked })));
 $('t-now').addEventListener('click', async () => { $('t-now').disabled = true; $('t-now').textContent = 'Syncing…'; showTeam(await bg({ action: 'pt-sync-now' })); $('t-now').textContent = 'Sync now'; });
