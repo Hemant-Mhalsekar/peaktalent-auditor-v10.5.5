@@ -138,7 +138,7 @@ const asModule = (file) => { const out = path.join(tmp, path.basename(file).repl
     check(t3.clients.cccccccccccccccc.version === '11.11.0' && !fs.existsSync(path.join(repo3, 'seen', '2026-10-23')), 'a reviewer who only sent events is known by version; receipt files are consumed', t3.clients);
     const md3 = fs.readFileSync(path.join(repo3, 'REPORT.md'), 'utf8');
     check(/## Who is up to date/.test(md3) && /\| aaaaaaaa \| 11\.12\.0 \|[^\n]*\| up to date \|/.test(md3), 'REPORT.md: a reviewer on the latest version and bundle is up to date', md3.slice(md3.indexOf('## Who')));
-    check(/\| bbbbbbbb \| 11\.12\.0 \|[^\n]*old team bundle/.test(md3) && /\| cccccccc \| 11\.11\.0 \|[^\n]*old extension/.test(md3), 'REPORT.md: an old bundle and an old extension are named', md3.slice(md3.indexOf('## Who')));
+    check(/\| bbbbbbbb \| 11\.12\.0 \|[^\n]*old team bundle/.test(md3) && /\| cccccccc \| 11\.11\.0 \|[^\n]*old extension, no receipt yet/.test(md3), 'REPORT.md: an old bundle and an old extension are named', md3.slice(md3.indexOf('## Who')));
     const b3 = JSON.parse(fs.readFileSync(path.join(repo3, 'shared', 'bundle.json'), 'utf8'));
     check(b3.stats.team && b3.stats.team.reviewers === 3 && b3.stats.team.upToDate === 1 && b3.stats.team.latestVersion === '11.12.0' && !JSON.stringify(b3).includes('aaaaaaaa'), 'the bundle carries the counts only, no ids', b3.stats.team);
   }

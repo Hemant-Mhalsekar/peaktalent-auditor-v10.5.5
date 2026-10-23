@@ -59,6 +59,7 @@ const verNum = (v) => String(v || "0.0.0").split(".").reduce((n, x) => n * 1000 
 export function noteClient(totals, r) {
   if (!r || !/^[0-9a-f]{16,40}$/.test(r.client || "") && !/^c\d+$/.test(r.client || "")) return;
   const c = (totals.clients || (totals.clients = {}))[r.client] || (totals.clients[r.client] = { version: null, bundle: null, seen: null });
+  if (r.bundle !== undefined) c.receipt = true;   // a receipt (extension 11.12.0+), not just an event batch
   if (r.at && (!c.seen || r.at >= c.seen)) {
     c.seen = r.at;
     if (r.version && verNum(r.version) >= verNum(c.version)) c.version = r.version;
@@ -73,7 +74,8 @@ export function clientRows(totals, liveBundle, now = Date.now()) {
     const days = c.seen ? (now - Date.parse(c.seen)) / 864e5 : Infinity;
     const notes = [];
     if (verNum(c.version) < verNum(latest)) notes.push("old extension");
-    if (liveBundle && (!c.bundle || c.bundle < liveBundle)) notes.push(c.bundle ? "old team bundle" : "no team bundle yet");
+    if (!c.receipt) notes.push("no receipt yet (extension older than 11.12.0)");
+    else if (liveBundle && (!c.bundle || c.bundle < liveBundle)) notes.push(c.bundle ? "old team bundle" : "no team bundle yet");
     if (days > 3) notes.push("not seen for " + Math.floor(days) + " days");
     return { id, version: c.version || "-", bundle: c.bundle, seen: c.seen, status: notes.length ? notes.join(", ") : "up to date", ok: !notes.length, active: days <= 3 };
   }).sort((x, y) => (y.seen || "").localeCompare(x.seen || ""));
