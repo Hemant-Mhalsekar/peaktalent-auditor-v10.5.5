@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PeakTalent PII/BII Annotation Auditor
 // @namespace    https://dashboard.peaktalent.ai/
-// @version      11.11.0
+// @version      11.11.2
 // @description  Highlights PII/BII, credentials and overscrubbed text on PeakTalent review screens. Works fully offline.
 // @match        https://dashboard.peaktalent.ai/*
 // @run-at       document-start
@@ -120,7 +120,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.11.0";
+    const PT_VERSION = "11.11.2";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -762,7 +762,7 @@
                 if (isMacAddress(T, rLine)) return null;   // (v11.7.11) user rule: MAC addresses are labeled IP Address
                 if (!isIpAddressFormat(T)) return wrong(PTC_NONE, "This is not a valid IP address.");
                 // (v11.7.7) user rule: loopback, broadcast and netmask addresses are not labeled
-                if (/^127\./.test(T) || T === "::1" || isNetmask(T)) return wrong(PTC_NONE, "Loopback, broadcast and netmask addresses point to no one: they are not labeled.");
+                if (/^127\./.test(T) || T === "::1" || T === "0.0.0.0" || T === "::" || isNetmask(T)) return wrong(PTC_NONE, "Loopback, \"this host\" (0.0.0.0), broadcast and netmask addresses point to no one: they are not labeled.");   // (v11.11.1) 0.0.0.0
                 // (v11.7.7) a package version ("react-dom@18.2.0.1", a dependencies block, "version": "...")
                 if (new RegExp("version[\"']?\\s*[:=]\\s*[\"']?[\\^~>=<v]*" + escRe(T) + "|[\"']\\s*:\\s*[\"'][\\^~>=<]+" + escRe(T), "i").test(rLine) ||
                     (new RegExp("[\\w/-]@" + escRe(T)).test(rLine) && /\b(?:npm|npx|yarn|pnpm|pip|install|add|upgrade|bump(?:ed)?|update[ds]?|package|dependenc(?:y|ies)|version|release)\b/i.test(rLine)) ||
@@ -3221,6 +3221,14 @@
         if (CODE_AT_WORDS.test(word) || COMMENT_TAG.test(word)) return true;
         const ls = text.lastIndexOf("\n", idx - 1) + 1;
         let le = text.indexOf("\n", idx); if (le < 0) le = text.length;
+        // (v11.11.2) a batch-file command at the start of a line ("@echo off", "@setlocal", "@rem ...")
+        if (/^(?:echo|rem|setlocal|endlocal|call|set|goto|if|for|pushd|popd|cls|title|chcp|color|pause|exit|start|cd|del|copy|mkdir)$/i.test(word) && /^\s*$/.test(text.slice(ls, idx))) return true;
+        // (v11.11.2) an npm scope / plugin name ("@typescript-eslint/parser", plugins: ['@typescript-eslint'])
+        {
+            const wEsc = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            if (new RegExp("@" + wEsc + "/[A-Za-z]").test(text)) return true;
+            if (/\b(?:plugins|extends|parser|presets|dependencies|devDependencies|peerDependencies|require|from|import)\b["']?\s*[:=(]?\s*\[?[^\n]*["']$/.test(text.slice(ls, idx))) return true;
+        }
         // (v11.9.0) user rule (v13 fork): an ALL-CAPS word after "@" is a product / feature / code name ("@BIOS", "@NASA", "@ARGV")
         if (/^[A-Z][A-Z0-9_]*$/.test(word)) return true;
         {
@@ -4162,7 +4170,7 @@
         'passport(?:\\s*(?:no\\.?|number))?', 'driver\\s*licen[cs]e(?:\\s*(?:no\\.?|number))?', 'uan(?:\\s*(?:no\\.?|number))?'
     ].join('|');
     // key (optionally followed by a short "(...)" note) + separator + value, on one line
-    const CRED_LINE_RE = new RegExp('(?:^|[\\s|,{;"\'*])(?:[A-Za-z0-9]+[_-])*(' + CRED_KEY_SOURCE + '|(?<=[A-Za-z0-9][_-])key)(?:\\s*\\([^)\\n]{0,30}\\))?["\'*]*\\s*(?::|=|=>|->|\\s-\\s|\\s\\u2013\\s|\\s\\u2014\\s|\\sis\\s)\\s*["\'`]?([^\\n"\'`|]+)', 'gi');
+    const CRED_LINE_RE = new RegExp('(?:^|[\\s|,{;"\'*])(?:[A-Za-z0-9]+[_-])*(' + CRED_KEY_SOURCE + '|(?<=[A-Za-z0-9][_-])key)(?:\\s*\\([^)\\n]{0,30}\\))?["\'*]*[ \\t]*(?::|=|=>|->|\\s-\\s|\\s\\u2013\\s|\\s\\u2014\\s|\\sis\\s)[ \\t]*["\'`]?([^\\n"\'`|]+)', 'gi');
     // Code that follows a key-like word, never a secret: calls ("hashPassword(input", "function(stream"),
     // index access ("os.environ["), dotted references without digits ("config.apiKey"), template / env
     // placeholders ("${DB_PASSWORD}", "{{ token }}", "$API_KEY") and language keywords. Real passwords with
@@ -4183,12 +4191,20 @@
         const esc = v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         return new RegExp("(?:pass\\s*phrase|security\\s*(?:question\\s*)?answer|secret\\s*answer|memorable\\s*word)[\"'*]*\\s*(?::|=|-|is)\\s*[\"']?" + esc, "i").test(text || "");
     }
+    // (v11.11.2) does `v` sit right after a secret key on its line ("GIT_TOKEN: v", "INTERNAL_API_KEY=v", "password = 'v'")?
+    function onSecretKeyLine(text, v) {
+        const i = v ? text.indexOf(v) : -1; if (i < 0) return false;
+        const before = text.slice(Math.max(text.lastIndexOf("\n", i - 1) + 1, i - 120), i);
+        return /(?:token|secret|api[_-]?key|(?:^|[_\s"'-])key|password|passwd|pwd|pass|auth|credentials?|private[_-]?key|access[_-]?key)["'\]]?\s*(?::|=|=>)\s*["'`]?$/i.test(before);
+    }
     function isCodeLikeValue(v) {
         const s = (v || "").trim();
         if (/^[A-Za-z_$][\w$.]*\s*\(/.test(s) && !/\d/.test(s.split("(")[0])) return true;      // call
         if (/^[A-Za-z_$][\w$.]*\[/.test(s) && !/\d/.test(s.split("[")[0])) return true;        // index access
         if (/^(?:\$\{|%\(|\{\{|<%|\$[A-Z_][A-Z0-9_]*$)/.test(s)) return true;                   // placeholders
         if (/^[A-Za-z_$][\w$]*(?:\.[\w$]+)+$/.test(s) && !/\d/.test(s)) return true;           // dotted reference
+        // (v11.11.2) a constant's NAME used as the value ("apiKey: CONFLUENT_CLOUD_API_KEY") is a reference
+        if (/^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$/.test(s) && /(?:KEY|SECRET|TOKEN|PASSWORD|PASS|PWD|API|AUTH|CLIENT|ACCESS|PRIVATE|ID|URL|CREDENTIALS?)/.test(s)) return true;
         if (/^(?:function|new|this|self|return|await|async|require|import|process|os|env|config|settings|options|params|args|props|state|data|req|res|null|undefined|true|false)(?:[.(\[]|$)/i.test(s)) return true;
         return false;
     }
@@ -5322,13 +5338,21 @@
         {
             const putBiz = (v) => { v = v.trim().replace(/[,;:]+$/, ""); if (v.length >= 2 && leftText.includes(v) && !isFieldLabelOrHeader(v) && !/\bbank\b/i.test(v)) addTarget(v, "Business Name", "pt-business", 91, true); };
             const capsRe = /(?<![A-Z0-9])[A-Z][A-Z0-9&'.-]+(?:[ \t]+[A-Z][A-Z0-9&'.-]*){0,4}[ \t]+(?:PVT\.?[ \t]+LTD\.?|PRIVATE[ \t]+LIMITED|LTD\.?|LIMITED|INC\.?|CORP\.?|CORPORATION|LLC|LLP|PLC|GMBH)(?![A-Za-z0-9])/g;
-            for (const v of (rightText.match(capsRe) || [])) putBiz(v);
+            for (const v of (rightText.match(capsRe) || [])) {
+                // (v11.11.2) ordinary words before the legal word are a sentence, not a company ("INCLUDING BUT NOT LIMITED TO")
+                const stem = v.replace(/[ \t]+(?:PVT\.?[ \t]+LTD\.?|PRIVATE[ \t]+LIMITED|LTD\.?|LIMITED|INC\.?|CORP\.?|CORPORATION|LLC|LLP|PLC|GMBH)$/, "");
+                if (!KNOWN_BUSINESS_NAMES.has(stem.toLowerCase()) && !bizTier(stem) &&
+                    stem.split(/[ \t]+/).every(w => { const l = w.toLowerCase().replace(/[^a-z]/g, ""); return !l || isCommonWord(l) || isDictWord(l); })) continue;
+                putBiz(v);
+            }
             const ofRe = /\b(?:Ministry|Department|Government|University|Institute|College|Directorate|Commission|Board)\s+of\s+(?:the\s+)?[A-Z][\w&'-]*(?:\s+(?:&|and|of|for)?\s*[A-Z][\w&'-]*){0,5}/g;
             for (const v of (rightText.match(ofRe) || [])) putBiz(v.replace(/\s+(?:and|of|for)$/, ""));
             const keyRe = /(?:^|[\s{,"'(|])(?:company|organi[sz]ation|employer|vendor|supplier|firm|client|org|business)(?:[\s_-]*name)?["']?\s*(?::|=|-|\u2013)\s*["']?(\p{Lu}[\p{L}\p{N}&'.-]*(?:[ \t]+(?:&|\p{Lu}[\p{L}\p{N}&'.-]*)){0,5})/giu;
             let km;
             while ((km = keyRe.exec(rightText)) !== null) {
                 const v = km[1].replace(/[.,;:]+$/, (m) => /\s(?:Inc|Ltd|Corp|Co)\.$/.test(km[1]) ? "." : "");
+                // (v11.11.2) code, not a company: a lowercase identifier or a call ("client = session.client(")
+                if (!/^\p{Lu}/u.test(v) || /^\s*[(.\[]/.test(rightText.slice(km.index + km[0].length))) continue;
                 if (isPersonName(v, "") && !/\s(?:Pvt|Ltd|Inc|Corp|LLC|GmbH|Foods|Robotics|Labs|Systems)\b/i.test(v)) continue;
                 // an ordinary word in a company slot ("Vendor: Internal", "Client: Rejected", "Organisation: Draft") is not a company
                 const vw = v.replace(/\.$/, "").split(/\s+/);
@@ -5440,7 +5464,14 @@
                     {
                         const oRaw = (diff.original || "").trim(), cRaw = (diff.changed || "").trim();
                         const oj = oRaw.replace(/\s+/g, ""), cj = cRaw.replace(/\s+/g, "");
-                        const dLine = lineContaining(cRaw.split(/\s+/)[0] || cRaw, rightText) || "";
+                        // the text AROUND the change (300 characters each way, within its line): a whole line can be 500 KB of JSON
+                        const nearIn = (text, tok) => {
+                            const ci = tok ? text.indexOf(tok) : -1;
+                            if (ci < 0) return "";
+                            const ls = text.lastIndexOf("\n", ci) + 1; let le = text.indexOf("\n", ci); if (le < 0) le = text.length;
+                            return text.slice(Math.max(ls, ci - 300), Math.min(le, ci + tok.length + 300));
+                        };
+                        const dLine = nearIn(rightText, cRaw.split(/\s+/)[0] || cRaw);
                         const setOver = (t) => { __ptOrdinaryOrigins.add(t); const ex = targetMap.get(t); if (!ex || ex.priority < 66) targetMap.set(t, { text: t, label: "Overscrubbed", cls: "pt-overscrub", priority: 66 }); };
                         // a PLACE replaced (city, state, country), or the name of a school / college / hospital: correct redaction
                         const oLow = oRaw.toLowerCase().replace(/[.,]+$/, "");
@@ -5456,10 +5487,11 @@
                         // words replaced inside a NAME field (Name="Barber, Jennifer" -> Name="Mutate, Sucobevi"): a person's name, correct redaction
                         // (only when the original looks like a person's name: "name: test locked requirements" is a CI step, ordinary words)
                         // ("Name: Team" -> "Name: Quorvel" is an ordinary word replaced: Overscrubbed, the v11.2.0 rule)
-                        const leftField = ((lineContaining(oRaw.split(/\s+/)[0] || oRaw, leftText) || "").split(/[:=]/).slice(1).join(" ") || "");
-                        if (oRaw && (leftField.split(/[^A-Za-z'-]+/).some(w => w.length > 1 && isGivenOrSurname(w) && !isCommonWord(w.toLowerCase())) ||
-                                     oRaw.split(/[\s,]+/).some(w => /^[A-Z][a-z]/.test(w) && !isCommonWord(w.toLowerCase()) && (couldBeName(w) || isGivenOrSurname(w)))) &&
-                            /\b(?:name|full[_ ]?name|first[_ ]?name|last[_ ]?name|surname|display[_ ]?name|author)\s*[:=]\s*["']?[^"'\n]*$/i.test(dLine.slice(0, Math.max(0, dLine.indexOf(cRaw.split(/\s+/)[0]))))) { markRedacted(diff); continue; }
+                        if (oRaw && /\b(?:name|full[_ ]?name|first[_ ]?name|last[_ ]?name|surname|display[_ ]?name|author)\s*[:=]\s*["']?[^"'\n]*$/i.test(dLine.slice(0, Math.max(0, dLine.indexOf(cRaw.split(/\s+/)[0]))))) {
+                            const leftField = (nearIn(leftText, oRaw.split(/\s+/)[0] || oRaw).split(/[:=]/).slice(1).join(" ") || "").slice(0, 200);
+                            if (leftField.split(/[^A-Za-z'-]+/).some(w => w.length > 1 && isGivenOrSurname(w) && !isCommonWord(w.toLowerCase())) ||
+                                oRaw.split(/[\s,]+/).some(w => /^[A-Z][a-z]/.test(w) && !isCommonWord(w.toLowerCase()) && (couldBeName(w) || isGivenOrSurname(w)))) { markRedacted(diff); continue; }
+                        }
                         // a DEMOGRAPHIC value replaced ("Nationality - Indian" -> "Giduhi", Religion / Gender / Marital status / Blood group): Overscrubbed
                         if (oRaw && cRaw && /^[A-Za-z][A-Za-z -]{1,30}$/.test(oRaw) && /^[A-Za-z][A-Za-z -]{1,30}$/.test(cRaw) &&
                             /\b(?:nationality|religion|gender|sex|marital\s*status|blood\s*group|caste|category|citizenship|ethnicity)\b\s*[:=\-\u2013]?\s*$/i.test(dLine.slice(0, Math.max(0, dLine.indexOf(cRaw))))) { setOver(cRaw); continue; }
@@ -5544,6 +5576,8 @@
                         if (ow && cw && /^[A-Za-z'-]+$/.test(ow) && isCommonWord(ow.toLowerCase()) && !isGivenOrSurname(ow) && cw.length >= 6 && cw.length <= 64 &&
                             /[A-Za-z]/.test(cw) && /\d/.test(cw) && /^[\x21-\x7e]+$/.test(cw) && !/^https?:|@|^\d[\d.,\/:-]*$/.test(cw) &&
                             rightText.includes(cw) && !leftText.includes(cw) && !isVehiclePlateFormat(cw) && !isDateFormat(cw)) {
+                            // (v11.11.2) user rule: on a token / key / password line the old value was the secret: replacing it is correct redaction
+                            if (onSecretKeyLine(rightText, cw)) continue;
                             __ptOrdinaryOrigins.add(cw);
                             for (const piece of (diff.changed || "").split(/\s+/)) { const ex = targetMap.get(piece); if (ex && ex.label === "Overscrubbed") targetMap.delete(piece); }
                             const ex = targetMap.get(cw);
@@ -6087,7 +6121,7 @@
         for (const jwt of jwtMatches) {
             if (leftText.includes(jwt)) addTarget(jwt, "Credentials", "pt-credentials", 95);
         }
-        const kvSecRegex = /(?:["']?(?:api_?key|secret_?key|auth_?token|client_?secret|access_?token)["']?\s*[:=]\s*["']?)([^"'\s,;]{12,128})/gi;
+        const kvSecRegex = /(?:["']?(?:api_?key|secret_?key|auth_?token|client_?secret|access_?token)["']?[ \t]*[:=][ \t]*["']?)([^"'\s,;]{12,128})/gi;
         let secM;
         while ((secM = kvSecRegex.exec(rightText)) !== null) {
             const sVal = cleanWord(secM[1]);
@@ -6097,7 +6131,7 @@
         }
 
         // 4. Passwords, PINs, OTPs, security answers
-        const kvPwdRegex = /(?:["']?(?:password|passwd|pwd|security_?answer|secret_?answer)["']?\s*[:=]\s*["']?)([^"'\n\r,;]{3,64})/gi;
+        const kvPwdRegex = /(?:["']?(?:password|passwd|pwd|security_?answer|secret_?answer)["']?[ \t]*[:=][ \t]*["']?)([^"'\n\r,;]{3,64})/gi;   // (v11.11.2) never across a line break
         let pwdM;
         while ((pwdM = kvPwdRegex.exec(rightText)) !== null) {
             const pVal = cleanWord(pwdM[1]);
@@ -6111,7 +6145,7 @@
             }
         }
         // (v11.7.1) a PIN is 4 digits; an OTP 4-8, also in a sentence ("OTP code 482913 expires", "Use OTP 4821")
-        const kvPinOtpRegex = /(?:["']?pin["']?\s*[:=]\s*["']?)(\d{4})(?!\d)|(?:\b(?:otp|one[\s-]time\s+(?:password|passcode|code|pin))(?:\s+(?:code|number|no\.?))?(?:\s+is)?\s*[:=-]?\s*["']?)(\d{4,8})(?!\d)/gi;
+        const kvPinOtpRegex = /(?:["']?pin["']?[ \t]*[:=][ \t]*["']?)(\d{4})(?!\d)|(?:\b(?:otp|one[\s-]time\s+(?:password|passcode|code|pin))(?:\s+(?:code|number|no\.?))?(?:\s+is)?\s*[:=-]?\s*["']?)(\d{4,8})(?!\d)/gi;
         let pinM;
         while ((pinM = kvPinOtpRegex.exec(rightText)) !== null) {
             const pVal = pinM[1] || pinM[2];
@@ -6786,7 +6820,10 @@
         // 8A: Key-value patterns ("name": "...", @author: ..., Committer: ..., Applicant: ...)
         const kvNameRegex = /(?:(?:@|["'])?(?:full_?name|employee_?name|candidate_?name|patient_?name|author|committer|maintainer|applicant|assignee|owner|name|signed-off-by)[\s"']*[:=]?\s*["']?)([^"'\n\r,;|<()]+)/gi;
         let kvm;
+        // (v11.11.2) "service_name=", "bucket_name=", "regionName:" name a thing in code, not a person
+        const CODE_NAME_KEY = /(?:service|region|bucket|table|class|project|function|queue|topic|cluster|db|database|schema|index|key|field|column|model|package|module|stage|resource|role|policy|instance|container|image|tag|job|task|metric|stream|device|env|variable|param|secret|profile|bot|attr|attribute|func|method|var|zone|cache|log|org|file|host|server|app|repo|branch|domain|product|company|team|group|channel|event|plan|course|bank|brand|store|shop|city|state|country|place)[_\-.]?$/i;
         while ((kvm = kvNameRegex.exec(rightText)) !== null) {
+            if (CODE_NAME_KEY.test(rightText.slice(Math.max(0, kvm.index - 20), kvm.index))) continue;
             const pCandidate = cleanWord(kvm[1]);
             // Cheap pre-filter: a person's name is 1-5 words of letters only (no digits). On JSON exports with
             // thousands of "name": "item123" values, skipping the expensive checks keeps the scan fast.
@@ -6865,7 +6902,8 @@
                     const v = m[1];
                     const keyPart = line.slice(Math.max(0, m.index), m.index + m[0].length - v.length);
                     if (!KEY_OK.test(keyPart)) continue;
-                    if (/(?:company|business|bank|file|product|project|branch|course|batch|plan|domain|host|server|app|repo|brand|store|shop|school|college|university|hospital|city|state|country|place|event|team|group|channel|document|sheet|vendor|merchant)\s*[_\s]*name/i.test(keyPart)) continue;
+                    if (/(?:company|business|bank|file|product|project|branch|course|batch|plan|domain|host|server|app|repo|brand|store|shop|school|college|university|hospital|city|state|country|place|event|team|group|channel|document|sheet|vendor|merchant|service|region|bucket|table|class|project|function|queue|topic|cluster|db|database|schema|index|key|field|column|model|package|module|stage|resource|role|policy|instance|container|image|tag|job|task|metric|stream|device|env|variable|param|secret|profile|bot|attr|attribute|func|method|var|zone|cache|log|org)\s*[_\s]*name/i.test(keyPart)) continue;
+                    if (/^[a-z][a-z0-9-]*$/.test(v) && !KNOWN_GIVEN_NAMES.has(v)) continue;   // (v11.11.2) a lowercase identifier ("secretsmanager") is not a name
                     if (isOrdinaryPhrase(v) || PLACES.has(v.toLowerCase()) || isLanguageWord(v) || containsKnownBusiness(v) || isFieldLabelOrHeader(v)) continue;
                     if (!leftText.includes(v)) continue;
                     addTarget(v, "Person Name", "pt-person", 87, true);

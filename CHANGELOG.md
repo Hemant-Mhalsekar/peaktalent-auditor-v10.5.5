@@ -1,5 +1,22 @@
 # Changelog
 
+## 11.11.2 - October 2026 (branch v2)
+
+Fixes for issues the team reported from live use (new test `tests/reported.js`, 25 checks, one block per report):
+- **A constant's name is not the secret**: `apiKey: CONFLUENT_CLOUD_API_KEY` and the import list naming it were labeled Credentials. An ALL_CAPS name with KEY / SECRET / TOKEN / API ... is a reference; real values (`API_KEY=sk_live_...`) still are.
+- **Plugin names are not usernames**: `plugins: ['@typescript-eslint']`, `@typescript-eslint/parser` (an npm scope or a quoted entry after plugins / extends / presets / dependencies).
+- **Batch commands are not usernames**: `@echo off`, `@setlocal`, `@rem` at the start of a line.
+- **A replaced value on a token / key / password line is correct redaction**, never Overscrubbed (`GIT_TOKEN: klub_helm:TOKEN` -> `dummy_yGHMCPjD7`).
+- **"INCLUDING BUT NOT LIMITED" is not a company**: ordinary words before LIMITED / LTD / INC in capitals are a sentence; listed companies still count.
+- **An empty value never takes the next line**: `MONGO_DB_PASSWORD=` followed by `INTERNAL_API_URL=http://localhost:3000` labeled the whole next line Credentials. Key scans now stop at the line end; localhost links stay unlabeled.
+- **Code is not a company or a person**: `client = session.client(` (a call after a company key) and `service_name='secretsmanager'` / `bucket_name=` (names of things in code).
+- Speed unchanged (500 KB file: 1.38 s).
+
+## 11.11.1 - October 2026 (branch v2)
+
+- **Speed**: the rules added in 11.9.0 looked at the whole line for every change; on a 500 KB single-line JSON file that took 5.5 s instead of 1.2 s (CI failed its 8 s limit). They now look only at the text around the change: 1.35 s.
+- **`0.0.0.0` labeled IP Address is flagged** (it was accepted, while it is never suggested): like loopback, the "this host" address points to no one.
+
 ## 11.11.0 - October 2026 (branch v2)
 
 Data lists taken over from the team's v13 fork (copied as they are, decoded on first use; about 2.7 MB):
