@@ -1,5 +1,16 @@
 # Changelog
 
+## 11.12.0 - October 2026 (branch v2)
+
+**Who is up to date** - you can now see whether every reviewer has the new extension and the new team bundle:
+- After each bundle download, and at least every 6 hours, the extension sends a receipt: its random reviewer id, the extension version and the build time of the bundle it holds. Nothing else.
+- The relay stores receipts in `seen/` (new endpoint `POST /seen`, strictly checked like the events); the aggregation keeps the latest one per reviewer (also the version from event batches).
+- **REPORT.md** has a new table "Who is up to date": reviewer id, version, bundle, last seen, status (`up to date` / `old extension` / `old team bundle` / `not seen for N days`).
+- The popup shows **Your reviewer id** (8 characters), so you can match the ids to people.
+- The Accuracy report's Reviewers card shows "N of M up to date".
+- Needs the new `relay/worker.js` in Cloudflare and the new `aggregate.mjs` + `aggregate.yml` in the data repo (relay/SETUP.md, "Updating").
+- Tests: 12 new relay checks, 5 new sync checks.
+
 ## 11.11.2 - October 2026 (branch v2)
 
 Fixes for issues the team reported from live use (new test `tests/reported.js`, 25 checks, one block per report):

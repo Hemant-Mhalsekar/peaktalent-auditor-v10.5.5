@@ -109,6 +109,39 @@ const asModule = (file) => { const out = path.join(tmp, path.basename(file).repl
     const out2 = JSON.parse(fs.readFileSync(path.join(repo2, 'shared', 'bundle.json'), 'utf8'));
     check(out2.stats.labels['URL/Link'].a === 1 && fs.existsSync(path.join(repo2, 'REPORT.md')), 'old totals are upgraded; REPORT.md is written', out2.stats);
   }
+  // (v11.12.0) receipts: who runs which version and which team bundle
+  {
+    const seen = { client: 'c0ffee00c0ffee00', version: '11.12.0', bundle: '2026-10-23T10:02:11.000Z' };
+    stored.length = 0;
+    const r = await call('POST', '/seen', seen);
+    check(r.status === 200 && stored.length === 1 && /\/contents\/seen\/\d{4}-\d{2}-\d{2}\/c0ffee00c0ffee00-\d+\.json$/.test(stored[0].url), 'a receipt is stored as one file in seen/<day>/', stored[0] && stored[0].url);
+    const rec = stored[0] && JSON.parse(Buffer.from(JSON.parse(stored[0].body).content, 'base64').toString());
+    check(rec && rec.client === seen.client && rec.version === '11.12.0' && rec.bundle === seen.bundle && /^\d{4}-\d{2}-\d{2}T/.test(rec.at) && Object.keys(rec).length === 4, 'the receipt holds the id, version, bundle date and the time', rec);
+    check((await call('POST', '/seen', Object.assign({}, seen, { bundle: null }))).status === 200, 'a receipt without a bundle yet is fine');
+    for (const [name, b] of [['no key', null], ['extra field', Object.assign({}, seen, { name: 'Asha' })], ['text as bundle date', Object.assign({}, seen, { bundle: 'Rahul Sharma' })], ['bad client', Object.assign({}, seen, { client: 'Asha' })]]) {
+      stored.length = 0;
+      const res = name === 'no key' ? await call('POST', '/seen', seen, null) : await call('POST', '/seen', b);
+      check(res.status >= 400 && stored.length === 0, 'receipt refused: ' + name, res.status);
+    }
+    // aggregation: the latest receipt per reviewer, also the version from event batches; the table in REPORT.md
+    const repo3 = fs.mkdtempSync(path.join(os.tmpdir(), 'pt-data-'));
+    fs.mkdirSync(path.join(repo3, 'shared'), { recursive: true });
+    fs.writeFileSync(path.join(repo3, 'shared', 'bundle.json'), JSON.stringify({ version: 1, built: '2026-10-23T10:02:00.000Z', labels: {}, hidden: {}, learned: {} }));
+    const put = (dir, name, obj) => { fs.mkdirSync(path.join(repo3, dir, '2026-10-23'), { recursive: true }); fs.writeFileSync(path.join(repo3, dir, '2026-10-23', name), JSON.stringify(obj)); };
+    put('seen', 'aaaaaaaaaaaaaaaa-1.json', { client: 'aaaaaaaaaaaaaaaa', version: '11.11.2', bundle: '2026-10-22T15:31:00.000Z', at: '2026-10-23T06:00:00.000Z' });
+    put('seen', 'aaaaaaaaaaaaaaaa-2.json', { client: 'aaaaaaaaaaaaaaaa', version: '11.12.0', bundle: '2026-10-23T10:02:00.000Z', at: '2026-10-23T11:00:00.000Z' });
+    put('seen', 'bbbbbbbbbbbbbbbb-1.json', { client: 'bbbbbbbbbbbbbbbb', version: '11.12.0', bundle: '2026-10-22T15:31:00.000Z', at: '2026-10-23T12:00:00.000Z' });
+    put('events', 'cccccccccccccccc-1.json', { client: 'cccccccccccccccc', version: '11.11.0', events: [{ k: 's', l: 'Address', v: 'a' }] });
+    agg.run(repo3, Date.parse('2026-10-23T15:31:00Z'));
+    const t3 = JSON.parse(fs.readFileSync(path.join(repo3, 'state', 'totals.json'), 'utf8'));
+    check(t3.clients.aaaaaaaaaaaaaaaa.version === '11.12.0' && t3.clients.aaaaaaaaaaaaaaaa.bundle === '2026-10-23T10:02:00.000Z', 'totals keep the latest receipt per reviewer', t3.clients);
+    check(t3.clients.cccccccccccccccc.version === '11.11.0' && !fs.existsSync(path.join(repo3, 'seen', '2026-10-23')), 'a reviewer who only sent events is known by version; receipt files are consumed', t3.clients);
+    const md3 = fs.readFileSync(path.join(repo3, 'REPORT.md'), 'utf8');
+    check(/## Who is up to date/.test(md3) && /\| aaaaaaaa \| 11\.12\.0 \|[^\n]*\| up to date \|/.test(md3), 'REPORT.md: a reviewer on the latest version and bundle is up to date', md3.slice(md3.indexOf('## Who')));
+    check(/\| bbbbbbbb \| 11\.12\.0 \|[^\n]*old team bundle/.test(md3) && /\| cccccccc \| 11\.11\.0 \|[^\n]*old extension/.test(md3), 'REPORT.md: an old bundle and an old extension are named', md3.slice(md3.indexOf('## Who')));
+    const b3 = JSON.parse(fs.readFileSync(path.join(repo3, 'shared', 'bundle.json'), 'utf8'));
+    check(b3.stats.team && b3.stats.team.reviewers === 3 && b3.stats.team.upToDate === 1 && b3.stats.team.latestVersion === '11.12.0' && !JSON.stringify(b3).includes('aaaaaaaa'), 'the bundle carries the counts only, no ids', b3.stats.team);
+  }
   console.log(`\n${pass}/${pass + fail} relay checks passed`);
   process.exit(fail ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

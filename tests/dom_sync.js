@@ -88,6 +88,17 @@ async function page({ storage = {}, task = 't1' } = {}) {
     check(post && post.init.headers['X-Team-Key'] === TEAM.key && JSON.parse(post.init.body).events.length === 1 && b.store.pt_sync_queue.length === 0, 'flush: one POST with the team key, the queue is emptied', post && post.init.body);
     const st = await b.ask({ action: 'pt-sync-now' });
     check(st.teamTerms === 1 && b.store.pt_team_bundle && b.store.pt_team_bundle.data.labels['Person Name'].a === 30, 'the team bundle is fetched and kept', st);
+    // (v11.12.0) a receipt after the bundle download: id, version, bundle date (nothing else)
+    const seen = b.sent.filter(x => x.url === 'https://relay.test/seen');
+    const body = seen.length && JSON.parse(seen[seen.length - 1].init.body);
+    check(body && body.client === b.store.pt_sync_client && body.version === '11.8.0' && body.bundle === '2026-10-22T20:30:00Z' && Object.keys(body).length === 3 && seen[0].init.headers['X-Team-Key'] === TEAM.key, 'a receipt is sent after the bundle download', body);
+    check(st.client === b.store.pt_sync_client, 'the status shows the reviewer their own id', st.client);
+    const n0 = b.sent.filter(x => x.url === 'https://relay.test/seen').length;
+    b.listeners.alarm[0]({ name: 'pt-bundle' }); await settle(50);
+    check(b.sent.filter(x => x.url === 'https://relay.test/seen').length === n0, 'no second receipt within 6 hours');
+    b.store.pt_sync_state.lastReceipt = Date.now() - 7 * 3600e3;
+    b.listeners.alarm[0]({ name: 'pt-bundle' }); await settle(50);
+    check(b.sent.filter(x => x.url === 'https://relay.test/seen').length === n0 + 1, 'after 6 hours the hourly check sends a receipt again');
     const off = await b.ask({ action: 'pt-sync-toggle', on: false });
     await b.ask({ action: 'pt-sync-events', events: [{ k: 's', l: 'Person Name', v: 'a' }] });
     check(off.enabled === false && (b.store.pt_sync_queue || []).length === 0, 'switched off: nothing is queued or sent', off);
@@ -171,7 +182,7 @@ async function page({ storage = {}, task = 't1' } = {}) {
     const js = fs.readFileSync(path.join(__dirname, '..', 'extension', 'accuracy.js'), 'utf8');
     const dom = new JSDOM(html.replace('<script src="accuracy.js"></script>', ''), { runScripts: 'outside-only', url: 'chrome-extension://test/accuracy.html' });
     const w = dom.window;
-    const stats = { labels: { 'Person Name': { a: 90, r: 10, m: 30 }, 'Email Address': { a: 50, r: 0, m: 0 } }, days: { '2026-10-22': { a: 140, r: 10, m: 30, reviewers: 4 } }, reviewers: 4 };
+    const stats = { labels: { 'Person Name': { a: 90, r: 10, m: 30 }, 'Email Address': { a: 50, r: 0, m: 0 } }, days: { '2026-10-22': { a: 140, r: 10, m: 30, reviewers: 4 } }, reviewers: 4, team: { reviewers: 6, active: 5, upToDate: 4, latestVersion: '11.12.0' } };
     const storage = { pt_team_bundle: { fetched: Date.now(), data: { version: 1, built: '2026-10-22T15:31:00Z', labels: {}, hidden: {}, learned: {}, stats } },
       pt_learning_v1: { labels: { 'Person Name': { a: 9, r: 1 } }, texts: {}, missed: { 'Person Name\u0001x': { tasks: ['a'] } } } };
     w.chrome = { storage: { local: { get: (k, cb) => cb(storage) } }, runtime: { getManifest: () => ({ version: '11.8.2' }), sendMessage: (m, cb) => cb && cb({ ok: true }) } };
@@ -179,6 +190,7 @@ async function page({ storage = {}, task = 't1' } = {}) {
     await settle(100);
     const q = (id) => w.document.getElementById(id).textContent;
     check(q('c-prec') === '93%' && q('c-cov') === '82%' && q('c-dec') === '180' && q('c-who') === '4', 'report (team): precision 140/150, coverage 140/170, decisions, reviewers', [q('c-prec'), q('c-cov'), q('c-dec'), q('c-who')]);
+    check(q('c-who-h') === '4 of 6 up to date (v11.12.0)', 'report (team): how many reviewers run the latest version and bundle', q('c-who-h'));
     check(w.document.querySelectorAll('#rows tr').length === 3 && w.document.querySelectorAll('#days tr').length === 1, 'report: a row per label plus the total, a row per day');
     w.document.getElementById('tab-me').click();
     check(q('c-prec') === '90%' && q('c-cov') === '90%' && !w.document.getElementById('small').hidden, 'report (you): your own numbers, with the small-sample warning', [q('c-prec'), q('c-cov')]);

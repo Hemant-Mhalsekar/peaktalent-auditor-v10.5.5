@@ -33,7 +33,7 @@ jobs:
         run: |
           git config user.name "pt-auditor-aggregate"
           git config user.email "actions@users.noreply.github.com"
-          git add -A state shared events REPORT.md 2>/dev/null || git add -A
+          git add -A state shared events seen REPORT.md 2>/dev/null || git add -A
           if git diff --cached --quiet; then echo "nothing new"; exit 0; fi
           git commit -m "Team bundle"
           # the relay may have stored new batches meanwhile: put this commit on top of them

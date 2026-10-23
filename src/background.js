@@ -1,4 +1,4 @@
-// PeakTalent Auditor - team sync (extension background service worker). v11.8.1
+// PeakTalent Auditor - team sync (extension background service worker). v11.12.0
 // All network traffic of the extension happens here, never on the review page: the page only hands over small batches of
 // HASHED learning events, and reads the team bundle from extension storage. Nothing here can slow the page down.
 //
@@ -9,7 +9,7 @@ try { importScripts("team-config.js"); } catch (e) { /* no team config: sync off
 
 const TEAM = (self.PT_TEAM && /^https:\/\//.test(self.PT_TEAM.relay || "") && self.PT_TEAM.key && self.PT_TEAM.salt) ? self.PT_TEAM : null;
 const Q = "pt_sync_queue", ST = "pt_sync_state", BUNDLE = "pt_team_bundle", ON = "pt_sync_enabled", SALT = "pt_team_salt", CLIENT = "pt_sync_client";
-const MAX_QUEUE = 5000, BATCH = 1000, FLUSH_AT = 300, FLUSH_MIN = 15, BUNDLE_HOURS = 24;
+const MAX_QUEUE = 5000, BATCH = 1000, FLUSH_AT = 300, FLUSH_MIN = 15, BUNDLE_HOURS = 24, RECEIPT_HOURS = 6;
 // (v11.8.1) the team works 11:00-20:30 IST; the team bundle is built at 15:30 and 21:00 IST (10:00 and 15:30 UTC)
 const BUILD_SLOTS_UTC = [[10, 0], [15, 30]];
 // The latest build time that has passed (with 10 minutes for the job to finish), as a timestamp.
@@ -99,17 +99,36 @@ async function fetchBundle(force) {
     if (!validBundle(data)) return;
     await set({ [BUNDLE]: { fetched: Date.now(), data } });
     await state({ lastError: null });   // an older error is no longer true
+    await sendReceipt(true);
   } catch (e) {
     await state({ lastError: "offline or relay unreachable", lastErrorAt: Date.now() });
   }
 }
 
+// (v11.12.0) A RECEIPT tells the team which extension version and team bundle this reviewer runs: the random id, the
+// version and the bundle's build time - nothing else. Sent after each bundle download and at least every 6 hours.
+async function sendReceipt(force) {
+  if (!TEAM) return;
+  const s = await get([BUNDLE, ON, CLIENT]);
+  if (s[ON] === false || !s[CLIENT]) return;
+  const st = await state();
+  if (!force && Date.now() - (st.lastReceipt || 0) < RECEIPT_HOURS * 3600e3) return;
+  try {
+    const b = s[BUNDLE] && s[BUNDLE].data;
+    const res = await fetch(TEAM.relay.replace(/\/+$/, "") + "/seen", {
+      method: "POST", headers: { "Content-Type": "application/json", "X-Team-Key": TEAM.key },
+      body: JSON.stringify({ client: s[CLIENT], version: chrome.runtime.getManifest().version, bundle: (b && typeof b.built === "string" && /^\d{4}-/.test(b.built)) ? b.built : null }),
+    });
+    if (res.ok) await state({ lastReceipt: Date.now() });
+  } catch (e) { /* tried again at the next hourly check */ }
+}
+
 async function status() {
-  const s = await get([Q, ON, BUNDLE, ST]);
+  const s = await get([Q, ON, BUNDLE, ST, CLIENT]);
   const b = s[BUNDLE] && s[BUNDLE].data;
   const st = s[ST] || {};
   return {
-    configured: !!TEAM, enabled: s[ON] !== false, queued: (s[Q] || []).length, lastSent: st.lastSent || null, sentTotal: st.sentTotal || 0,
+    client: s[CLIENT] || null, configured: !!TEAM, enabled: s[ON] !== false, queued: (s[Q] || []).length, lastSent: st.lastSent || null, sentTotal: st.sentTotal || 0,
     lastError: st.lastError || null, bundleBuilt: b ? b.built : null, bundleFetched: s[BUNDLE] ? s[BUNDLE].fetched : null,
     teamTerms: b ? Object.values(b.learned).reduce((n, a) => n + a.length, 0) : 0,
     teamHidden: b ? Object.values(b.hidden).reduce((n, a) => n + a.length, 0) : 0,
@@ -118,7 +137,7 @@ async function status() {
 
 chrome.runtime.onInstalled.addListener(() => { setup().then(() => fetchBundle(true)); });
 chrome.runtime.onStartup.addListener(() => { setup().then(() => fetchBundle(false)); });
-chrome.alarms.onAlarm.addListener((a) => { if (a.name === "pt-flush") flush(); else if (a.name === "pt-bundle") fetchBundle(false); });
+chrome.alarms.onAlarm.addListener((a) => { if (a.name === "pt-flush") flush(); else if (a.name === "pt-bundle") fetchBundle(false).then(() => sendReceipt(false)); });
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (!msg || typeof msg.action !== "string" || !msg.action.startsWith("pt-sync")) return false;
   (async () => {
