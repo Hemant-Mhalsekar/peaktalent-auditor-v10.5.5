@@ -93,6 +93,7 @@ async function page({ storage = {}, task = 't1' } = {}) {
     const body = seen.length && JSON.parse(seen[seen.length - 1].init.body);
     check(body && body.client === b.store.pt_sync_client && body.version === '11.8.0' && body.bundle === '2026-10-22T20:30:00Z' && Object.keys(body).length === 3 && seen[0].init.headers['X-Team-Key'] === TEAM.key, 'a receipt is sent after the bundle download', body);
     check(st.client === b.store.pt_sync_client, 'the status shows the reviewer their own id', st.client);
+    b.store.pt_team_bundle.data.built = new Date().toISOString(); b.store.pt_team_bundle.fetched = Date.now();   // a fresh bundle: the hourly check fetches nothing
     const n0 = b.sent.filter(x => x.url === 'https://relay.test/seen').length;
     b.listeners.alarm[0]({ name: 'pt-bundle' }); await settle(50);
     check(b.sent.filter(x => x.url === 'https://relay.test/seen').length === n0, 'no second receipt within 6 hours');

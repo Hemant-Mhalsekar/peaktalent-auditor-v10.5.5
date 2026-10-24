@@ -694,6 +694,41 @@ same('language', 'Languages: English, Bengali, Hindi', 'Bengali', '', 'Person Na
     }
   }
 
+  // (v11.12.1) reported from live use
+  {
+    const d = ['This project was bootstrapped with [Create React App](https://facebook.github.io/create-react-app/) + [Ant Design](https://ant.design/).'];
+    for (const [word, name] of [['https://facebook.github.io/create-react-app', 'a link labeled without its trailing "/" is the same link (user rule)'],
+                                ['https://facebook.github.io/create-react-app/', 'a link labeled with its trailing "/" is right']]) {
+      const p = await page(d, d);
+      const m = await p.annotate(word, 'URL/Link');
+      check(p.state(m).mark === 'ok', name, p.state(m));
+      p.close();
+    }
+    {
+      const g = ['  # Graylog: https://hub.docker.com/r/graylog/graylog/'];
+      const p = await page(g, g);
+      const m = await p.annotate('https://hub.docker.com/r/graylog/graylog', 'URL/Link');
+      check(p.state(m).mark === 'ok', 'a link without its trailing "/" at the end of a line is right', p.state(m));
+      p.close();
+    }
+    // while the reviewer has text selected, the auditor does not redraw (the redraw moved the selection to other lines)
+    {
+      const g = ['  # Graylog: https://hub.docker.com/r/graylog/graylog/', '  graylog:', '    image: graylog/graylog:4.3.3', '      - GRAYLOG_PASSWORD_SECRET=somepasswordpepper'];
+      const p = await page(g, g);
+      const tag = Array.from(p.Rp.querySelectorAll('.pt-tag')).find(t => /^https:/.test(t.textContent));
+      const rg = p.w.document.createRange(); rg.selectNodeContents(tag.firstChild);
+      const sel = p.w.getSelection(); sel.removeAllRanges(); sel.addRange(rg);
+      p.w.document.dispatchEvent(new p.w.MouseEvent('mouseup', { bubbles: true }));
+      await p.settle(1200);
+      check(tag.isConnected && String(p.w.getSelection()) === 'https://hub.docker.com/r/graylog/graylog/', 'no redraw while text is selected: the selection stays on the link', { connected: tag.isConnected, sel: String(p.w.getSelection()) });
+      sel.removeAllRanges();
+      p.w.document.dispatchEvent(new p.w.MouseEvent('mouseup', { bubbles: true }));
+      await p.settle(1200);
+      check(Array.from(p.Rp.querySelectorAll('.pt-tag')).some(t => /^https:/.test(t.textContent)), 'after the selection ends the suggestions are drawn again');
+      p.close();
+    }
+  }
+
   console.log(`\n${pass}/${pass + fail} label-check checks passed`);
   process.exit(fail ? 1 : 0);
 })();

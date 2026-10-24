@@ -59,6 +59,46 @@ no(...same('@rem build script'), '@rem');
   yes(...same('Client: Infosys'), 'Infosys', 'Business Name');
 }
 
+// ---------------- 2026-10-24 (v11.12.1) ----------------
+// 1. a client object in code is not a company (fixed in 11.11.2; screenshot from 11.11.1)
+no(...same('# Create Secret Manager client using Application Default Credentials\nclient = secretmanager.SecretManagerServiceClient()'), 'secretmanager.SecretManagerServiceClient');
+// 2. a link ending in "/" does not take the next lines ("CLOUDFRONT_URL=https://x.cloudfront.net/" then "HUBSPOT_CONSUMER_KEY=")
+{
+  const env = 'EMAIL_HOST_PASSWORD=\nEMAIL_USE_TLS=False\nSNOWFLAKE_URL=\nCLOUDFRONT_URL=https://dncivszesn2ba.cloudfront.net/\nHUBSPOT_CONSUMER_KEY=\nHUBSPOT_CONSUMER_SECRET=\nRECAPTCHA_SECRET_KEY=\nSNOWFLAKE_ADMIN_USERNAME=\nSNOWFLAKE_ADMIN_PASSWORD=\nSNOWFLAKE_QUERY_USERNAME=';
+  yes(...same(env), 'https://dncivszesn2ba.cloudfront.net/', 'URL/Link');
+  for (const t of ['HUBSPOT_CONSUMER_KEY=', 'HUBSPOT_CONSUMER_SECRET=', 'RECAPTCHA_SECRET_KEY=', 'SNOWFLAKE_ADMIN_USERNAME=', 'EMAIL_USE_TLS=False', 'SNOWFLAKE_QUERY_USERNAME=', 'False']) no(...same(env), t);
+}
+// 3. "##" after a link (across a blank line) is not part of the link
+{
+  const md = 'See [Ant Design](https://ant.design/).\n\n## Learn More\n\n## The .gitignore file\n##';
+  no(...same(md), '##');
+  yes(...same(md), 'https://ant.design/', 'URL/Link');
+  no(...same(md), 'https://ant.design/).');
+}
+// 4. a link closed by ")" ends there: the next lines (CSS) are not link pieces
+{
+  const css = ' * Licensed under MIT\n(https://github.com/twbs/bootstrap/blob/master/LICENSE)\n */\n.btn-default,\n.btn-primary,\n.btn-danger {';
+  yes(...same(css), 'https://github.com/twbs/bootstrap/blob/master/LICENSE', 'URL/Link');
+  for (const t of ['https://github.com/twbs/bootstrap/blob/master/LICENSE)', '*/', '.btn-default,', '.btn-primary,', '.btn-danger']) no(...same(css), t);
+}
+// a real wrapped link is still joined (the left document has it on one line)
+{
+  const L = 'Docs: https://docs.acme-demo.io/guides/installation/steps/linux/ubuntu-22-04-lts/advanced-setup-with-proxy-and-custom-ca';
+  const R = 'Docs: https://docs.acme-demo.io/guides/installation/steps/linux/\nubuntu-22-04-lts/advanced-setup-with-proxy-and-custom-ca';
+  yes(L, R, 'https://docs.acme-demo.io/guides/installation/steps/linux/', 'URL/Link');
+  yes(L, R, 'ubuntu-22-04-lts/advanced-setup-with-proxy-and-custom-ca', 'URL/Link');
+}
+// 6. a heading made of ordinary words is not a person ("## Learn More": More is also a surname)
+no(...same('## Learn More\n\nYou can learn more in the docs.'), 'Learn More');
+no(...same('Read More about it below.'), 'Read More');
+yes(...same('Report by Rahul More, Pune'), 'Rahul More', 'Person Name');
+// 7. a link followed by a YAML key is not wrapped ("# Graylog: https://.../graylog/" then "graylog:")
+{
+  const yml = '  # Graylog: https://hub.docker.com/r/graylog/graylog/\n  graylog:\n    image: graylog/graylog:4.3.3';
+  yes(...same(yml), 'https://hub.docker.com/r/graylog/graylog/', 'URL/Link');
+  no(...same(yml), 'graylog:');
+}
+
 let pass = 0, fail = 0;
 for (const c of cases) {
   let ts;
