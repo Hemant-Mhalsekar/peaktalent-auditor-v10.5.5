@@ -15,7 +15,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.12.0";
+    const PT_VERSION = "11.12.1";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -555,6 +555,11 @@
         if (own && own.label) {
             return own.label === L ? null : wrong(own.label, `This text should be labeled ${own.label}.`);
         }
+        // (v11.12.1) user rule: a link labeled with or without its trailing "/" is the same link
+        if (/^https?:\/\/\S+$/i.test(T)) {
+            const alt = sugg(T.endsWith("/") ? T.slice(0, -1) : T + "/");
+            if (alt && alt.label) return alt.label === L ? null : wrong(alt.label, `This text should be labeled ${alt.label}.`);
+        }
 
         // d / c for Overscrubbed
         if (L === "Overscrubbed") {
@@ -622,7 +627,7 @@
         }
         const keyLike = /^["']?[A-Za-z_][\w.-]*["']?$/.test(T) && new RegExp('["\']?' + escRe(T) + '["\']?\\s*[:=]').test(rLine);
         if (keyLike && !/^@/.test(T)) return wrong(PTC_NONE, `This is a field name / key, not a ${L}.`);
-        if (isFieldLabelOrHeader(T)) return wrong(PTC_NONE, `This is a field label or column header, not a ${L}.`);
+        if (!/^https?:\/\//i.test(T) && isFieldLabelOrHeader(T)) return wrong(PTC_NONE, `This is a field label or column header, not a ${L}.`);   // (v11.12.1) never a link
         const plain = T.replace(/[^\p{L}\s'-]/gu, " ").replace(/\s+/g, " ").trim();
         const ordinaryWord = plain && plain === T.replace(/\s+/g, " ").trim() && isOrdinaryPhrase(plain);
         const digits = T.replace(/\D/g, "");
@@ -5939,10 +5944,14 @@
             const notPiece = (tok) => /^[a-z][a-z0-9+.-]*:\/\//i.test(tok) || /^(?:[-*\u2022\u2013]|\d{1,3}[.)])$/.test(tok) ||
                 /^[(\["'`<{]/.test(tok) || /^(?:e\.g\.?|i\.e\.?|etc\.?|vs\.?)[,;:]?$/i.test(tok) ||
                 /^[A-Za-z]{1,5}\/[A-Za-z]{1,5}$/.test(tok) || /^\d{1,4}(?:\/\d{1,4}){1,2}$/.test(tok) ||
-                (/^[A-Z][a-z]+[.,;:!?]?$/.test(tok));
+                (/^[A-Z][a-z]+[.,;:!?]?$/.test(tok)) ||
+                /^(?:[#*]|\/\*|\/\/|<!--)/.test(tok);   // (v11.12.1) a comment or heading marker ("##", "*/", "// x")
             const isWrapPiece = (tok, prev, lineLen) => {
                 if (notPiece(tok)) return false;
-                if (/[\/?=&#%]/.test(tok) || /^\.[A-Za-z]{2,}/.test(tok)) return true;
+                // (v11.12.1) a key on the next line ("HUBSPOT_CONSUMER_KEY=", "graylog:") is code, not the rest of the link,
+                // unless the link stopped inside its query ("?utm_source=a&" + "utm_medium=b")
+                if (/^[A-Za-z_][\w.-]*[=:]/.test(tok) && !/[?&]$/.test(prev)) return false;
+                if (/[\/?=&#%]/.test(tok) || /^\.[a-z]{2,24}(?:[\/:?#]|$)/.test(tok)) return true;   // (v11.12.1) ".io/x", not ".btn-default,"
                 if (/^[\w.~]+[-_][\w.~-]*$/.test(tok) && lineLen >= 40 && lineLen >= maxLine * 0.8) return true;
                 // (v11.4.14) a break in the middle of a word: the line ends in letters and the next starts with a lowercase piece
                 // joined by - or _ ("inst" + "allation-steps")
@@ -5963,6 +5972,8 @@
                 while (pieces.length < 8) {
                     const nx = /^[ \t]*(?:\r?\n[ \t]*)+([^\s"'<>]+)/.exec(rightText.slice(end));
                     if (!nx) break;
+                    // (v11.12.1) a link that ended with ")" "." "," ... is complete: the next line is not part of it
+                    { const pv = pieces[pieces.length - 1]; if (/[)\]}>.,;:!?"']/.test(pv.slice(trimUrlEnd(pv).length))) break; }
                     // a line that starts with a query ("?q=a&page=2", "&x=1") continues the link whatever the previous line ended with
                     const startsQuery = /^[?&][^\s]/.test(nx[1]);
                     const prev = pieces[pieces.length - 1];
@@ -6755,6 +6766,8 @@
         const nameCandidates = rightText.match(/\b[A-Z][a-z]+(?:[ \t]+[A-Z][a-z]+){1,3}\b/g) || [];
         for (const nc of nameCandidates) {
             const startsWithGiven = KNOWN_GIVEN_NAMES.has(nc.split(/\s+/)[0].toLowerCase());   // "Dhruv Bajaj": Bajaj is also a brand
+            // (v11.12.1) ordinary words only ("Learn More", "Read More": More is also a surname) are not a name
+            if (!startsWithGiven && nc.split(/\s+/).every(w => { const l = w.toLowerCase(); return isCommonWord(l) || isDictWord(l); })) continue;
             if (nc.length >= 4 && !isInfraOrServerTerm(nc) && (startsWithGiven || !isBusinessName(nc, nc, "")) && !isFieldLabelOrHeader(nc) && !hasNonEntityWord(nc)) {
                 if (isPersonName(nc, "") && leftText.includes(nc)) {
                     addTarget(nc, "Person Name", "pt-person", 85);
@@ -7703,9 +7716,20 @@
     // Adaptive pacing: a run that took N ms is not repeated by the background heartbeat for at least 4 x N ms,
     // and edits are debounced for at least N ms, so a slow document can never keep the page busy.
 
+    // (v11.12.1) the reviewer has text selected on the page: redrawing the suggestions now would move that selection
+    // (it jumped to other lines), so the redraw waits until the selection ends
+    function userIsSelecting() {
+        try {
+            const sel = window.getSelection && window.getSelection();
+            if (!sel || !sel.rangeCount || sel.isCollapsed || !String(sel).trim()) return false;
+            const n = sel.anchorNode, el = n && (n.nodeType === 1 ? n : n.parentElement);
+            return !(el && el.closest && el.closest("#pt-floating-bar"));
+        } catch (e) { return false; }
+    }
     function runDynamicAutoAnnotation() {
         if (isModifyingDOM) return;
         if (isUserMouseDown) return;
+        if (userIsSelecting()) { triggerUpdate(400); return; }
 
         const onScreen = isAnnotationReviewScreen();
 

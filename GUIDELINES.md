@@ -307,6 +307,8 @@ The platform mandates that the following **15 categories are strictly classified
 - A value replaced on a token / key / password line is correct redaction, not Overscrubbed.
 - `INCLUDING BUT NOT LIMITED` is not a company; `session.client`, `service_name='secretsmanager'` are code, not a company or a person.
 - An empty `KEY=` never takes the next line; localhost links are not labeled.
+- (v11.12.1) A link is labeled without the `)` or `.` after it, and with or without its trailing `/`. The lines below a link (`KEY=`, `##`, `*/`, CSS) are never part of it.
+- (v11.12.1) Ordinary words (`Learn More`) are not a Person Name.
 
 ### 5.11 Built-in data lists (v11.11.0)
 The auditor knows ~108k real person names, ~48k institutions, listed companies and every real Indian PIN / US ZIP code. Institutions (schools, colleges, universities, IITs) are **Business Name**; company names written in lower case are labeled when the sentence shows a company; a postal code on its own is labeled only when it really exists.

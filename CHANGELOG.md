@@ -1,5 +1,15 @@
 # Changelog
 
+## 11.12.1 - October 2026 (branch v2)
+
+Fixes for the second batch of issues the team reported (tests in `tests/reported.js`, now 50 checks, and `tests/dom_labelcheck.js`):
+- **Links no longer swallow the next lines.** A link ending in `/` took the env lines below it (`HUBSPOT_CONSUMER_KEY=`, `SNOWFLAKE_ACCOUNT=` ...), and a link closed by `)` took `*/` and the CSS classes below (`.btn-default,`). Now a key on the next line (`KEY=`, `graylog:`), a comment or heading marker (`##`, `*/`, `//`) and anything after a link that ended with `)` `.` `,` never join the link. Real wrapped links are still joined.
+- **`https://ant.design/).`** is labeled without the `).`.
+- **A link labeled without its trailing `/`** is accepted (user rule: the link works either way). It was flagged as "field label" or "label exactly the link".
+- **"Learn More" / "Read More" are not names**: ordinary words are not a Person Name, even when one of them is also a surname (`More`); `Rahul More` still is.
+- **Selecting text no longer jumps to other lines**: the auditor redrew its suggestions right after every mouse-up, which moved the reviewer's selection. It now waits until the selection ends.
+- `client = secretmanager.SecretManagerServiceClient()` as a Business Name was already fixed in 11.11.2.
+
 ## 11.12.0 - October 2026 (branch v2)
 
 **Who is up to date** - you can now see whether every reviewer has the new extension and the new team bundle:
