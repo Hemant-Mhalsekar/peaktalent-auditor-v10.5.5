@@ -60,16 +60,16 @@ const asModule = (file) => { const out = path.join(tmp, path.basename(file).repl
   for (let i = 0; i < 2; i++) ev('c2', [{ k: 't', l: 'Business Name', h: '1111111111111111', v: 'r' }]);
   // rejected 5 times by ONE reviewer -> not hidden
   for (let i = 0; i < 5; i++) ev('c3', [{ k: 't', l: 'Business Name', h: '2222222222222222', v: 'r' }]);
-  // a term labeled by 3 reviewers on 2 tasks -> learned; by 2 reviewers -> not yet
+  // a term labeled by 3 reviewers on 3 tasks -> learned (v11.13.0: 3 files, was 2); by 2 reviewers -> not yet
   ev('c1', [{ k: 'm', l: 'Person Name', h: '3333333333333333', task: 'aaaaaaaaaaaaaaaa' }]);
   ev('c2', [{ k: 'm', l: 'Person Name', h: '3333333333333333', task: 'bbbbbbbbbbbbbbbb' }]);
-  ev('c3', [{ k: 'm', l: 'Person Name', h: '3333333333333333', task: 'bbbbbbbbbbbbbbbb' }]);
+  ev('c3', [{ k: 'm', l: 'Person Name', h: '3333333333333333', task: 'cccccccccccccccc' }]);
   ev('c1', [{ k: 'm', l: 'Person Name', h: '4444444444444444', task: 'aaaaaaaaaaaaaaaa' }]);
   ev('c2', [{ k: 'm', l: 'Person Name', h: '4444444444444444', task: 'bbbbbbbbbbbbbbbb' }]);
   const b = agg.buildBundle(totals, 'test');
   check(b.labels['Person Name'].a === 2 && b.labels['Person Name'].r === 1, 'label scores are summed over the team', b.labels);
   check((b.hidden['Business Name'] || []).join() === '1111111111111111', 'hidden: 5 rejections by 2+ reviewers, never accepted (one reviewer alone is not enough)', b.hidden);
-  check((b.learned['Person Name'] || []).join() === '3333333333333333', 'learned: 3+ reviewers on 2+ tasks (2 reviewers are not enough)', b.learned);
+  check((b.learned['Person Name'] || []).join() === '3333333333333333', 'learned: 3+ reviewers on 3+ tasks (2 reviewers are not enough)', b.learned);
   check(!JSON.stringify(b).match(/c1|c2|c3|aaaa/), 'the bundle holds no reviewer or task ids');
 
   // run() on a repo folder: batch files are consumed, totals kept, bundle written
@@ -141,6 +141,50 @@ const asModule = (file) => { const out = path.join(tmp, path.basename(file).repl
     check(/\| bbbbbbbb \| 11\.12\.0 \|[^\n]*old team bundle/.test(md3) && /\| cccccccc \| 11\.11\.0 \|[^\n]*old extension, no receipt yet/.test(md3), 'REPORT.md: an old bundle and an old extension are named', md3.slice(md3.indexOf('## Who')));
     const b3 = JSON.parse(fs.readFileSync(path.join(repo3, 'shared', 'bundle.json'), 'utf8'));
     check(b3.stats.team && b3.stats.team.reviewers === 3 && b3.stats.team.upToDate === 1 && b3.stats.team.latestVersion === '11.12.0' && !JSON.stringify(b3).includes('aaaaaaaa'), 'the bundle carries the counts only, no ids', b3.stats.team);
+  }
+  // (v11.13.0) L1 / L2 events
+  {
+    const T1 = 'aaaaaaaaaaaaaaaa', T2 = 'bbbbbbbbbbbbbbbb', T3 = 'cccccccccccccccc', HH = '9999999999999999';
+    const ok = (e) => worker.validBatch({ client: 'c0ffee00c0ffee00', version: '11.13.0', events: [e] });
+    check(ok({ k: 'i', l: 'Person Name', h: HH, task: T1, st: '1' }) && ok({ k: 'w', l: 'IP Address', h: HH, task: T1, st: '2' }) &&
+      ok({ k: 'x', l: 'Person Name', h: HH, task: T1, st: '2' }) && ok({ k: 'y', l: 'Address', h: HH, task: T1, st: '2' }) &&
+      ok({ k: 's', l: 'Person Name', v: 'a', st: '1' }) && ok({ k: 'm', l: 'Person Name', h: HH, task: T1, st: '2' }), 'relay: the new kinds (i, w, x, y) and the stage are accepted');
+    check(!ok({ k: 'i', l: 'Person Name', h: HH, task: T1, st: '3' }) && !ok({ k: 'i', l: 'Person Name', h: HH }) && !ok({ k: 'x', l: 'Person Name', h: 'Rahul', task: T1 }) &&
+      !ok({ k: 'w', l: 'Person Name', h: HH, task: T1, text: 'Rahul' }), 'relay: a bad stage, a missing task, text instead of a hash, an extra field -> refused');
+    const t = agg.emptyTotals();
+    const add = (c, events) => agg.addBatch(t, { client: c, version: '11.13.0', events }, '2026-10-25');
+    // ignored by 3 reviewers on 3 files -> hidden
+    add('c1', [{ k: 'i', l: 'Person Username', h: '1010101010101010', task: T1, st: '1' }]);
+    add('c2', [{ k: 'i', l: 'Person Username', h: '1010101010101010', task: T2, st: '1' }]);
+    add('c3', [{ k: 'i', l: 'Person Username', h: '1010101010101010', task: T3, st: '1' }]);
+    // ignored by 3 on 3 files, but one reviewer accepted it -> kept
+    for (const [c, tk] of [['c1', T1], ['c2', T2], ['c3', T3]]) add(c, [{ k: 'i', l: 'Person Name', h: '2020202020202020', task: tk, st: '1' }]);
+    add('c4', [{ k: 't', l: 'Person Name', h: '2020202020202020', v: 'a', st: '1' }]);
+    // ignored by 2 reviewers only -> kept
+    add('c1', [{ k: 'i', l: 'Address', h: '3030303030303030', task: T1, st: '1' }]);
+    add('c2', [{ k: 'i', l: 'Address', h: '3030303030303030', task: T2, st: '1' }]);
+    add('c2', [{ k: 'i', l: 'Address', h: '3030303030303030', task: T3, st: '1' }]);
+    // labeled by 3 reviewers on 3 files, but the rule check marked that label wrong -> not learned
+    for (const [c, tk] of [['c1', T1], ['c2', T2], ['c3', T3]]) add(c, [{ k: 'm', l: 'IP Address', h: '4040404040404040', task: tk, st: '1' }]);
+    add('c3', [{ k: 'w', l: 'IP Address', h: '4040404040404040', task: T3, st: '2' }]);
+    // labeled by 3 on 3 files, no rule problem -> learned; L2 votes are only counted
+    for (const [c, tk] of [['c1', T1], ['c2', T2], ['c3', T3]]) add(c, [{ k: 'm', l: 'Business Name', h: '5050505050505050', task: tk, st: '1' }]);
+    add('c4', [{ k: 'x', l: 'Business Name', h: '5050505050505050', task: T1, st: '2' }, { k: 'y', l: 'Address', h: '6060606060606060', task: T1, st: '2' }]);
+    const b = agg.buildBundle(t, '2026-10-25T10:00:00.000Z');
+    check((b.hidden['Person Username'] || []).includes('1010101010101010'), 'hidden: ignored by 3+ reviewers on 3+ files', b.hidden);
+    check(!(b.hidden['Person Name'] || []).includes('2020202020202020') && !(b.hidden['Address'] || []).includes('3030303030303030'), 'kept: someone accepted it / only 2 reviewers ignored it', b.hidden);
+    check(!(b.learned['IP Address'] || []).includes('4040404040404040'), 'not learned: the rule check marked the label wrong (rules win)', b.learned);
+    check((b.learned['Business Name'] || []).includes('5050505050505050'), 'learned: 3+ reviewers on 3+ files; one L2 removal is only a vote', b.learned);
+    const st = b.stats;
+    check(st.labels['Person Username'].i === 3 && st.labels['IP Address'].w === 1 && st.labels['Business Name'].x === 1 && st.labels.Address.y === 1, 'stats: ignored, rule breaks, L2 removed and added per label', st.labels);
+    check(st.stages['1'].i === 9 && st.stages['2'].w === 1 && st.stages['2'].x === 1 && st.stages['1'].m === 6, 'stats: per stage', st.stages);
+    check(!JSON.stringify(st).match(/c1|c2|aaaa|1010/), 'stats hold no ids or hashes');
+    const md = agg.reportMarkdown(b);
+    check(/Ignored \(L1\)/.test(md) && /\| Person Username \|[^\n]*\| 3 \| 0 \| 0 \| 0 \|/.test(md) && /## By stage/.test(md) && /\| L2 \(peer review\) \|/.test(md), 'REPORT.md: the new columns and the by-stage table', md.slice(0, 900));
+    // totals from 11.12 (no ignored / wrong / l2 / stages) keep working
+    const old = { version: 1, labels: {}, texts: {}, missed: {}, batches: 0, stats: { labels: { 'Person Name': { a: 1, r: 0, m: 0 } }, days: { '2026-10-24': { a: 1, r: 0, m: 0, reviewers: ['c1'] } }, reviewers: ['c1'] }, clients: {} };
+    agg.addBatch(old, { client: 'c1', version: '11.13.0', events: [{ k: 'i', l: 'Person Name', h: HH, task: T1, st: '1' }] }, '2026-10-25');
+    check(old.stats.labels['Person Name'].i === 1 && old.stats.labels['Person Name'].a === 1 && old.ignored['Person Name|' + HH], 'old totals are upgraded', old.stats.labels);
   }
   console.log(`\n${pass}/${pass + fail} relay checks passed`);
   process.exit(fail ? 1 : 0);

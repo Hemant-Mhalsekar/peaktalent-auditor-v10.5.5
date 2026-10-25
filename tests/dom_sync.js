@@ -41,11 +41,11 @@ const PAL = { 'Person Name': [22, 119, 255], 'Business Name': [19, 194, 194], 'E
 const IDS = { 'Person Name': 'id-person', 'Business Name': 'id-business', 'Email Address': 'id-email' };
 const chips = Object.entries(PAL).map(([n, [r, g, b]]) => `<span style="background-color: rgba(${r},${g},${b},0.08)"><i style="display:inline-block;background-color: rgb(${r},${g},${b})"></i>${n}</span>`).join('');
 const LINES = ['Hi Rahul Sharma, welcome aboard.', 'We deploy with Zorblax every week.', 'Check the logs today.'];
-async function page({ storage = {}, task = 't1' } = {}) {
+async function page({ storage = {}, task = 't1', path: urlPath = '/review', right = [] } = {}) {
   const TASK = `https://api.peaktalent.ai/api/v1/tasks/${task}/annotation-review`;
   const dom = new JSDOM(`<!doctype html><body><div>${chips}<span>Reference · read-only</span><span>Annotate here</span><span>left.docx-1</span><span>right.docx-1</span></div>
     <div id="left">${LINES.map(l => `<div>${l}</div>`).join('')}</div><div id="right">${LINES.map(l => `<div>${l}</div>`).join('')}</div></body>`,
-    { runScripts: 'outside-only', url: 'https://dashboard.peaktalent.ai/review', pretendToBeVisual: true, virtualConsole: new VirtualConsole() });
+    { runScripts: 'outside-only', url: 'https://dashboard.peaktalent.ai' + urlPath, pretendToBeVisual: true, virtualConsole: new VirtualConsole() });
   const w = dom.window;
   Object.defineProperty(w, 'innerWidth', { value: 1400 }); Object.defineProperty(w, 'innerHeight', { value: 900 });
   const Lp = w.document.getElementById('left'), Rp = w.document.getElementById('right');
@@ -60,7 +60,9 @@ async function page({ storage = {}, task = 't1' } = {}) {
   };
   w.fetch = async (url) => {
     net.push(String(url));
-    if (String(url) === TASK) return new Response(JSON.stringify({ task_id: task, labels: Object.entries(IDS).map(([title, id]) => ({ id, slug: id, title, color: '#000' })), left_annotations: [], right_annotations: [] }), { status: 200 });
+    if (String(url) === TASK) return new Response(JSON.stringify({ task_id: task, labels: Object.entries(IDS).map(([title, id]) => ({ id, slug: id, title, color: '#000' })), left_annotations: [], right_annotations: right }), { status: 200 });
+    if (/\/api\/v1\/(?:submissions|reviews\/[^/]+\/approve)$/.test(String(url))) return new Response('{}', { status: 201 });
+    if (String(url).startsWith(TASK + '/annotations/')) return new Response('{}', { status: 200 });
     if (String(url) === TASK + '/annotations') return new Response(JSON.stringify({ ids: ['n1'] }), { status: 201 });
     return new Response('{}', { status: 404 });
   };
@@ -70,7 +72,17 @@ async function page({ storage = {}, task = 't1' } = {}) {
   await settle();
   const save = async (text, label) => { await w.fetch(TASK + '/annotations', { method: 'POST', body: JSON.stringify({ spans: [{ label_id: IDS[label], start: 0, end: text.length, text }] }) }); await settle(300); };
   const tags = (text) => Array.from(Rp.querySelectorAll('.pt-tag')).filter(t => t.textContent === text);
-  return { w, save, tags, messages, net, close: () => w.__pt_cleanup && w.__pt_cleanup() };
+  const remove = async (id) => { await w.fetch(TASK + '/annotations/' + id, { method: 'DELETE' }); await settle(300); };
+  const finish = async (l2) => { await w.fetch(l2 ? 'https://api.peaktalent.ai/api/v1/reviews/r9/approve' : 'https://api.peaktalent.ai/api/v1/submissions', { method: 'POST', body: '{}' }); await settle(3500); };
+  // the reviewer's label drawn the way the dashboard does (a <mark> in the label's colour), for the label check
+  const mark = async (word, label) => {
+    const [r, g, b] = PAL[label];
+    const div = Array.from(Rp.querySelectorAll('div')).find(d => d.textContent.includes(word));
+    div.innerHTML = div.innerHTML.replace(word, `<mark role="button" style="background-color: rgba(${r}, ${g}, ${b}, 0.18); background-image: linear-gradient(rgb(${r}, ${g}, ${b}), rgb(${r}, ${g}, ${b}));">${word}</mark>`);
+    await settle(900);
+  };
+  const events = () => messages.filter(m => m.action === 'pt-sync-events').flatMap(m => m.events);
+  return { w, save, remove, finish, mark, events, tags, messages, net, close: () => w.__pt_cleanup && w.__pt_cleanup() };
 }
 
 (async () => {
@@ -167,6 +179,44 @@ async function page({ storage = {}, task = 't1' } = {}) {
     await p3.save('Rahul Sharma', 'Person Name'); await settle(3500);
     check(!p3.messages.some(m => m.action === 'pt-sync-events'), 'sync switched off: nothing is sent', p3.messages);
     p3.close();
+  }
+  // (v11.13.0) L1 / L2 learning
+  {
+    // L1: a suggestion left without a label is "ignored" at Submit; a label the check marks wrong is a rule break
+    const p = await page({ storage: { pt_team_salt: TEAM.salt }, path: '/tasks/t1' });
+    await p.mark('today', 'Person Name');
+    await p.save('Zorblax', 'Business Name');
+    await p.finish(false);
+    const ev = p.events();
+    const ign = ev.filter(e => e.k === 'i');
+    check(ign.some(e => e.l === 'Person Name' && /^[0-9a-f]{16}$/.test(e.h) && /^[0-9a-f]{16}$/.test(e.task) && e.st === '1'), 'L1 submit: the unlabeled suggestion (Rahul Sharma) is sent as ignored', ev);
+    check(!ign.some(e => e.l === 'Business Name'), 'L1 submit: a labeled text is not ignored', ign);
+    check(ev.some(e => e.k === 'w' && e.l === 'Person Name' && e.st === '1'), 'L1 submit: a label the check marks wrong is sent as a rule break', ev.filter(e => e.k === 'w'));
+    check(ev.filter(e => e.k === 'm' || e.k === 's' || e.k === 't').every(e => e.st === '1'), 'L1: every event carries the stage', ev);
+    check(!/rahul|sharma|zorblax|today|t1/i.test(JSON.stringify(ev)), 'L1: no text and no task id leaves the page', JSON.stringify(ev));
+    const n = ev.length;
+    await p.finish(false);
+    check(p.events().length === n, 'a second Submit of the same file sends nothing again');
+    p.close();
+  }
+  {
+    // L2: removing L1's label -> x, adding one -> y; Approve sends no ignored events
+    const p = await page({ storage: { pt_team_salt: TEAM.salt }, path: '/internal-review', right: [{ id: 'a1', label_id: 'id-person', start: 3, end: 15, text: 'Rahul Sharma' }] });
+    await p.remove('a1');
+    await p.save('Zorblax', 'Business Name');
+    await p.finish(true);
+    const ev = p.events();
+    check(ev.some(e => e.k === 'x' && e.l === 'Person Name' && e.st === '2' && /^[0-9a-f]{16}$/.test(e.task)), 'L2: removing a label L1 made is sent as an L2 removal', ev);
+    check(ev.some(e => e.k === 'y' && e.l === 'Business Name' && e.st === '2'), 'L2: adding a label L1 did not make is sent as an L2 addition', ev);
+    check(!ev.some(e => e.k === 'i') && ev.every(e => e.st === '2'), 'L2: Approve sends no ignored events; every event is stage 2', ev);
+    p.close();
+  }
+  {
+    // on another page (no stage) and on L1, nothing is sent as an L2 vote
+    const p = await page({ storage: { pt_team_salt: TEAM.salt }, path: '/tasks/t2', right: [{ id: 'a1', label_id: 'id-person', start: 3, end: 15, text: 'Rahul Sharma' }] });
+    await p.remove('a1'); await settle(3500);
+    check(!p.events().some(e => e.k === 'x' || e.k === 'y'), 'L1: removing your own label is not an L2 vote', p.events());
+    p.close();
   }
   // speed: hashing a long page for team terms stays fast
   {

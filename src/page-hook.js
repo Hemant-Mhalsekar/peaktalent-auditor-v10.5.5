@@ -1,15 +1,25 @@
-// PeakTalent Auditor - page hook (v11.7.0).
+// PeakTalent Auditor - page hook (v11.13.0).
 // Runs inside the page (Chrome: content script with "world": "MAIN", at document_start; userscript: page context) so it can
 // see the review data the dashboard itself downloads. It reads ONLY the label list and the annotation spans of
 // GET .../annotation-review and of the dashboard's own add / change / remove requests, and hands them to the auditor with
 // window.postMessage. It never makes a request, never reads the document links (signed S3 URLs), tokens or headers, and
 // never changes what the dashboard sends or receives.
+// (v11.13.0) It also notices that a file was finished: L1 "Submit" (POST /api/v1/submissions) and L2 "Approve" / "Reject"
+// (POST /api/v1/reviews/<id>/approve|reject). Only that it happened is passed on - nothing from the request or answer.
 (function () {
     'use strict';
     if (window.__ptHookInstalled) return;
     window.__ptHookInstalled = true;
 
     const REVIEW_RE = /\/api\/v1\/tasks\/[^/]+\/annotation-review(?:\/annotations(?:\/([^/?#]+))?)?\/?(?:[?#]|$)/;
+    const SUBMIT_RE = /\/api\/v1\/(?:(submissions)|reviews\/[^/?#]+\/(approve|reject))\/?(?:[?#]|$)/;
+    function onSubmit(url, method, ok) {
+        try {
+            const m = SUBMIT_RE.exec(url || '');
+            if (!m || String(method || '').toUpperCase() !== 'POST' || !ok) return;
+            post('submitted', { stage: m[1] ? 'L1' : 'L2', action: m[1] ? 'submit' : m[2] });
+        } catch (e) {}
+    }
     const post = (type, data) => { try { window.postMessage({ source: 'pt-auditor-hook', type, data }, window.location.origin); } catch (e) {} };
     const span = (a) => ({ id: a.id || null, label_id: a.label_id, start: a.start, end: a.end, text: typeof a.text === 'string' ? a.text : '' });
 
@@ -58,6 +68,7 @@
             const method = (init && init.method) || (input && input.method) || 'GET';
             const body = init && typeof init.body === 'string' ? init.body : null;
             const p = origFetch.apply(this, arguments);
+            if (SUBMIT_RE.test(url)) p.then(res => onSubmit(url, method, res && res.ok)).catch(() => {});
             if (REVIEW_RE.test(url)) {
                 p.then(res => { try { res.clone().text().then(t => handle(url, method, body, t)).catch(() => {}); } catch (e) {} }).catch(() => {});
             }
@@ -72,6 +83,7 @@
         XHR.open = function (method, url) { this.__ptReq = { method, url: String(url || '') }; return open.apply(this, arguments); };
         XHR.send = function (body) {
             const req = this.__ptReq;
+            if (req && SUBMIT_RE.test(req.url)) this.addEventListener('load', () => onSubmit(req.url, req.method, this.status >= 200 && this.status < 300));
             if (req && REVIEW_RE.test(req.url)) {
                 req.body = typeof body === 'string' ? body : null;
                 this.addEventListener('load', () => {

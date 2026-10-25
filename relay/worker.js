@@ -1,4 +1,4 @@
-// PeakTalent Auditor - team relay (Cloudflare Worker, free plan). v11.12.0
+// PeakTalent Auditor - team relay (Cloudflare Worker, free plan). v11.13.0
 //
 // The extensions of all reviewers send their learning here, already HASHED (no document text ever leaves a reviewer's
 // browser). The relay checks every batch and stores it in the private data repo on GitHub; it also hands out the team
@@ -27,13 +27,17 @@ const MAX_BODY = 256 * 1024;
 const MAX_EVENTS = 1000;
 
 // One event, checked field by field. Anything else (above all: any text) makes the whole batch invalid.
+// Kinds: s = a label accepted / rejected; t = the same for one text; m = a text labeled that was not suggested;
+// (v11.13.0) i = a suggestion left without a label when L1 submitted; w = a label the rule check marks wrong;
+// x = L2 removed / changed a label L1 made; y = L2 added a label L1 did not make. "st" = the stage: "1" (L1) or "2" (L2).
 export function validEvent(e) {
   if (!e || typeof e !== "object" || Array.isArray(e)) return false;
   const keys = Object.keys(e);
   if (!LABELS.includes(e.l)) return false;
-  if (e.k === "s") return keys.every(k => ["k", "l", "v"].includes(k)) && (e.v === "a" || e.v === "r");
-  if (e.k === "t") return keys.every(k => ["k", "l", "h", "v"].includes(k)) && HASH.test(e.h) && (e.v === "a" || e.v === "r");
-  if (e.k === "m") return keys.every(k => ["k", "l", "h", "task"].includes(k)) && HASH.test(e.h) && HASH.test(e.task);
+  if (e.st !== undefined && e.st !== "1" && e.st !== "2") return false;
+  if (e.k === "s") return keys.every(k => ["k", "l", "v", "st"].includes(k)) && (e.v === "a" || e.v === "r");
+  if (e.k === "t") return keys.every(k => ["k", "l", "h", "v", "st"].includes(k)) && HASH.test(e.h) && (e.v === "a" || e.v === "r");
+  if (["m", "i", "w", "x", "y"].includes(e.k)) return keys.every(k => ["k", "l", "h", "task", "st"].includes(k)) && HASH.test(e.h) && HASH.test(e.task);
   return false;
 }
 export function validBatch(b) {

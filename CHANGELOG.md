@@ -1,5 +1,20 @@
 # Changelog
 
+## 11.13.0 - October 2026 (branch v2)
+
+**L1 / L2-aware learning** (user decisions of 2026-10-25). Order of authority: the rules > 3+ reviewers agreeing on 3+ files > any single person.
+- **The stage** comes from the page address: `/tasks/<id>` is L1, `/internal-review` is L2. Every event now carries it.
+- **L1 Submit** (`POST /api/v1/submissions`): each suggestion still on screen without any label is sent as *ignored* - a weak vote that it is wrong.
+- **L2**: Approve means nothing (Reject is broken), so only label changes count. L2 removing or changing a label L1 made is an *L2 removal*; L2 adding a label L1 did not make is an *L2 addition*. Both are votes only - L2 makes mistakes too.
+- **Rule breaks**: when a file is finished (Submit / Approve), every label the label check marks wrong is counted. Such a label is never learned, locally or by the team (e.g. `0.0.0.0` as IP Address).
+- **Team rules** (aggregation):
+  - a suggestion ignored by 3+ reviewers on 3+ files is hidden, unless anyone accepted it or labeled it with that label;
+  - a term is learned after 3+ reviewers on **3+ files** (was 2), and never when the rule check marked that label wrong.
+- **REPORT.md**: new columns Ignored (L1), Rule breaks, L2 removed, L2 added, and a "By stage" table.
+- Only hashes and counts, as before: no document text and no task id leaves the browser.
+- Needs the new `relay/worker.js` in Cloudflare **before** anyone runs 11.13.0 (the old relay refuses the new events), and the new `aggregate.mjs` in the data repo.
+- Tests: 11 new relay checks, 10 new sync checks.
+
 ## 11.12.1 - October 2026 (branch v2)
 
 Fixes for the second batch of issues the team reported (tests in `tests/reported.js`, now 50 checks, and `tests/dom_labelcheck.js`):
