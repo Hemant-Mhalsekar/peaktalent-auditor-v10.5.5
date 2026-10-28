@@ -1,4 +1,4 @@
-# Team sync – setup (v11.12.0)
+# Team sync – setup (v11.13.0)
 
 The team sync pools what every reviewer's extension learns, as **hashes only**. It needs three free pieces:
 
@@ -67,3 +67,11 @@ the extension version and the build time of the team bundle it holds. Nothing el
 - **Which id is whom**: each reviewer opens the popup → Team sync → **Your reviewer id** and tells you the 8 characters.
 - **Accuracy report** in the extension: the Reviewers card shows "N of M up to date".
 - Needs the new relay (`/seen`) and the new `aggregate.mjs` + `aggregate.yml` in the data repo (see Updating above).
+
+## L1 / L2 learning (v11.13.0)
+- **Update the relay first** (Cloudflare, see Updating above), then send the new extension: the old relay refuses the new
+  events, and the extension keeps them waiting (nothing is lost) until the relay is updated.
+- What is counted, per label and per stage: accepted, rejected, missed, **ignored at L1 Submit**, **rule breaks**,
+  **L2 removed**, **L2 added**. REPORT.md shows them; Approve is not counted (Reject does not work).
+- Team rules: hidden after 3+ reviewers ignored it on 3+ files (unless anyone accepted it); learned after 3+ reviewers on 3+
+  files, never when the rule check says the label is wrong.

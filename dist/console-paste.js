@@ -1,22 +1,32 @@
-// PeakTalent Auditor v11.12.1 - console build.
+// PeakTalent Auditor v11.14.0 - console build.
 // Open the PeakTalent review tab, open the browser console (Safari: Develop > Show JavaScript Console,
 // Chrome: Cmd/Ctrl+Option/Alt+J), paste this whole file and press Enter. Pasting again replaces the old copy.
 // GENERATED FILE - edit src/content.js and src/page-hook.js, then run `node scripts/build.js`.
 // Pasted after the page loaded, it reads labels from the review data only for changes made from now on; reload the
 // review and paste again to read every label exactly.
 
-// PeakTalent Auditor - page hook (v11.7.0).
+// PeakTalent Auditor - page hook (v11.13.0).
 // Runs inside the page (Chrome: content script with "world": "MAIN", at document_start; userscript: page context) so it can
 // see the review data the dashboard itself downloads. It reads ONLY the label list and the annotation spans of
 // GET .../annotation-review and of the dashboard's own add / change / remove requests, and hands them to the auditor with
 // window.postMessage. It never makes a request, never reads the document links (signed S3 URLs), tokens or headers, and
 // never changes what the dashboard sends or receives.
+// (v11.13.0) It also notices that a file was finished: L1 "Submit" (POST /api/v1/submissions) and L2 "Approve" / "Reject"
+// (POST /api/v1/reviews/<id>/approve|reject). Only that it happened is passed on - nothing from the request or answer.
 (function () {
     'use strict';
     if (window.__ptHookInstalled) return;
     window.__ptHookInstalled = true;
 
     const REVIEW_RE = /\/api\/v1\/tasks\/[^/]+\/annotation-review(?:\/annotations(?:\/([^/?#]+))?)?\/?(?:[?#]|$)/;
+    const SUBMIT_RE = /\/api\/v1\/(?:(submissions)|reviews\/[^/?#]+\/(approve|reject))\/?(?:[?#]|$)/;
+    function onSubmit(url, method, ok) {
+        try {
+            const m = SUBMIT_RE.exec(url || '');
+            if (!m || String(method || '').toUpperCase() !== 'POST' || !ok) return;
+            post('submitted', { stage: m[1] ? 'L1' : 'L2', action: m[1] ? 'submit' : m[2] });
+        } catch (e) {}
+    }
     const post = (type, data) => { try { window.postMessage({ source: 'pt-auditor-hook', type, data }, window.location.origin); } catch (e) {} };
     const span = (a) => ({ id: a.id || null, label_id: a.label_id, start: a.start, end: a.end, text: typeof a.text === 'string' ? a.text : '' });
 
@@ -65,6 +75,7 @@
             const method = (init && init.method) || (input && input.method) || 'GET';
             const body = init && typeof init.body === 'string' ? init.body : null;
             const p = origFetch.apply(this, arguments);
+            if (SUBMIT_RE.test(url)) p.then(res => onSubmit(url, method, res && res.ok)).catch(() => {});
             if (REVIEW_RE.test(url)) {
                 p.then(res => { try { res.clone().text().then(t => handle(url, method, body, t)).catch(() => {}); } catch (e) {} }).catch(() => {});
             }
@@ -79,6 +90,7 @@
         XHR.open = function (method, url) { this.__ptReq = { method, url: String(url || '') }; return open.apply(this, arguments); };
         XHR.send = function (body) {
             const req = this.__ptReq;
+            if (req && SUBMIT_RE.test(req.url)) this.addEventListener('load', () => onSubmit(req.url, req.method, this.status >= 200 && this.status < 300));
             if (req && REVIEW_RE.test(req.url)) {
                 req.body = typeof body === 'string' ? body : null;
                 this.addEventListener('load', () => {
@@ -112,7 +124,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.12.1";
+    const PT_VERSION = "11.14.0";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -1632,19 +1644,23 @@
     // Suggestions ignored by the reviewer are not counted. The label check and the fixed rules are never changed by this.
     const LEARN_KEY = "pt_learning_v1";
     const LEARN = { minLabel: 20, lowRate: 0.3, hideRejects: 3, missedTasks: 2, maxTexts: 3000 };
-    let __ptLearn = { labels: {}, texts: {}, missed: {} };
+    let __ptLearn = { labels: {}, texts: {}, missed: {}, ignored: {}, wrong: {} };
     let __ptLearnTask = null;
     const __ptLearnSeen = new Set();   // one decision per text, label and verdict on each task
     let __ptLastTargets = [];          // the engine's suggestions before learning (what accepted / rejected is judged against)
+    let __ptLastShown = [];            // (v11.13.0) the suggestions on screen (after learning): what an L1 submit leaves unlabeled
     const learnKey = (label, text) => label + "\u0001" + String(text || "").replace(/\s+/g, " ").trim();
     const learnStore = () => { try { return (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) ? chrome.storage.local : null; } catch (e) { return null; } };
     function learnValid(d) { return d && typeof d === "object" && d.labels && d.texts && d.missed; }
+    // (v11.14.0) the examples kept for "My examples" (on this computer only): suggestions left unlabeled at L1 Submit and
+    // labels the check marked wrong; stores from older versions get them empty
+    const learnFill = (d) => { if (d) { if (!d.ignored || typeof d.ignored !== "object") d.ignored = {}; if (!d.wrong || typeof d.wrong !== "object") d.wrong = {}; } return d; };
     function learnLoad() {
         try {
             const st = learnStore();
-            if (st) { st.get(LEARN_KEY, (r) => { try { if (r && learnValid(r[LEARN_KEY])) { __ptLearn = r[LEARN_KEY]; if (typeof forceRescan === "function" && window.__pt_auto_active) forceRescan(); } } catch (e) {} }); return; }
+            if (st) { st.get(LEARN_KEY, (r) => { try { if (r && learnValid(r[LEARN_KEY])) { __ptLearn = learnFill(r[LEARN_KEY]); if (typeof forceRescan === "function" && window.__pt_auto_active) forceRescan(); } } catch (e) {} }); return; }
             const d = JSON.parse(localStorage.getItem(LEARN_KEY) || "null");
-            if (learnValid(d)) __ptLearn = d;
+            if (learnValid(d)) __ptLearn = learnFill(d);
         } catch (e) {}
     }
     let __ptLearnSaveTimer = null;
@@ -1654,8 +1670,8 @@
             __ptLearnSaveTimer = null;
             try {
                 // keep the store small: drop the oldest texts first
-                for (const part of ["texts", "missed"]) {
-                    const keys = Object.keys(__ptLearn[part]);
+                for (const part of ["texts", "missed", "ignored", "wrong"]) {
+                    const keys = Object.keys(__ptLearn[part] || {});
                     if (keys.length > LEARN.maxTexts) keys.sort((a, b) => (__ptLearn[part][a].t || 0) - (__ptLearn[part][b].t || 0)).slice(0, keys.length - LEARN.maxTexts).forEach(k => delete __ptLearn[part][k]);
                 }
                 const st = learnStore();
@@ -1710,9 +1726,14 @@
         if (d && d.learned) for (const [l, hs] of Object.entries(d.learned)) if (Array.isArray(hs)) for (const h of hs) { const x = __ptTeam.learned.get(h) || []; x.push(l); __ptTeam.learned.set(h, x); }
         __ptTeam.scan = { text: null, left: null, hits: [] };
     }
+    // (v11.13.0) the review stage, from the page address: "1" = L1 (/tasks/<id>), "2" = L2 peer review (/internal-review)
+    function ptStage() { try { const p = location.pathname || ""; return /^\/internal-review/.test(p) ? "2" : /^\/tasks\//.test(p) ? "1" : null; } catch (e) { return null; } }
     function teamEmit(ev) {
         if (!__ptTeam.seeds || !__ptTeam.enabled || !TEAM_LABELS.has(ev.l)) return;
-        __ptTeam.out.push(ev);
+        if (!ev.h && ev.k !== "s") return;   // no salt yet: nothing to send
+        if (/^[miwxy]$/.test(ev.k) && !ev.task) return;   // these count per file: no task id, no event
+        const st = ev.st || ptStage();
+        __ptTeam.out.push(st ? Object.assign({}, ev, { st }) : ev);
         if (__ptTeam.timer) return;
         __ptTeam.timer = setTimeout(() => {
             __ptTeam.timer = null;
@@ -1773,6 +1794,8 @@
                 if (v) {
                     if (learnCount("labels", sug.label, v)) teamEmit({ k: "s", l: sug.label, v });
                     if (learnCount("texts", learnKey(sug.label, T), v)) teamEmit({ k: "t", l: sug.label, h: teamHash(T), v });
+                    // (v11.14.0) what the reviewer used instead (none = removed), for "My examples"
+                    if (v === "r") { const o = __ptLearn.texts[learnKey(sug.label, T)]; if (o) o.to = after || ""; }
                 }
             }
             // a label the auditor did not suggest for this text: remember it, per task
@@ -1803,7 +1826,7 @@
     // plus learned terms found in `rightText`.
     function applyLearning(targets, rightText, leftText) {
         __ptLastTargets = targets || [];
-        if (!targets) return targets;
+        if (!targets) { __ptLastShown = []; return targets; }
         const out = [];
         for (const t of targets) {
             if (learnTextHidden(t.label, t.text)) continue;
@@ -1830,6 +1853,7 @@
             shown.add(h.text.toLowerCase());
         }
         out.scrubbedNames = targets.scrubbedNames; out.ordinaryWords = targets.ordinaryWords;
+        __ptLastShown = out;
         return out;
     }
     function learnSummary() {
@@ -1842,26 +1866,88 @@
         };
     }
     function learnExport() { return JSON.stringify({ version: PT_VERSION, exported: new Date().toISOString(), learning: __ptLearn }, null, 2); }
-    function learnReset() { __ptLearn = { labels: {}, texts: {}, missed: {} }; __ptLearnSeen.clear(); learnSave(); }
+    function learnReset() { __ptLearn = { labels: {}, texts: {}, missed: {}, ignored: {}, wrong: {} }; __ptLearnSeen.clear(); learnSave(); }
     learnLoad();
-    const __ptReview = { titles: new Map(), right: [], ready: false, hits: 0, misses: 0 };
+    const __ptReview = { titles: new Map(), right: [], ready: false, hits: 0, misses: 0, initial: new Set() };
+    // ---- (v11.13.0) L1 / L2 LEARNING ----
+    // Order of authority: the rules > 3+ reviewers agreeing on 3+ files > any single person. Approve means nothing (Reject is
+    // broken), so at L2 only label changes count:
+    //   - L2 removes or changes a label L1 made          -> "x" (a vote that L1's label was wrong; L2 can be wrong too)
+    //   - L2 adds a label L1 did not make                -> "y" (a vote that L1 missed it)
+    // When a file is finished (L1 Submit, L2 Approve / Reject):
+    //   - each suggestion still on screen without any label -> "i" (ignored: a weak vote that the suggestion is wrong)
+    //   - each label the label check marks wrong             -> "w" (a rule violation: counted, never learned)
+    // Every event carries the stage ("st": "1" or "2"). Texts and task ids are hashed, as before.
+    const __ptSubmitted = new Set();
+    const teamTask = () => __ptLearnTask ? teamHash("task:" + __ptLearnTask) : null;
+    function onFileFinished(data) {
+        try {
+            const stage = data && data.stage === "L2" ? "2" : "1";
+            if (!__ptLearnTask || __ptSubmitted.has(stage + "\u0001" + __ptLearnTask)) return;
+            __ptSubmitted.add(stage + "\u0001" + __ptLearnTask);
+            const task = teamTask();
+            const norm = (x) => String(x || "").replace(/\s+/g, " ").trim();
+            // labels that break the rules: counted for the report, and never learned (the rules win over any reviewer)
+            const seenW = new Set();
+            for (const m of (__ptcMistakes || [])) {
+                const L = m && m.your, T = norm(m && m.text);
+                if (!T || !TEAM_LABELS.has(L) || seenW.has(L + "\u0001" + T)) continue;
+                seenW.add(L + "\u0001" + T);
+                teamEmit({ k: "w", l: L, h: teamHash(T), task, st: stage });
+                { const o = __ptLearn.wrong[learnKey(L, T)] || (__ptLearn.wrong[learnKey(L, T)] = { n: 0 }); o.n++; o.t = Date.now(); o.expected = String(m.expected || "").slice(0, 120); o.why = String(m.why || "").slice(0, 200); }
+                const ms = __ptLearn.missed[learnKey(L, T)];
+                if (ms && Array.isArray(ms.tasks)) ms.tasks = ms.tasks.filter(x => x !== __ptLearnTask);
+            }
+            // L1: suggestions the reviewer left without any label (only when the dashboard's own data says what was labeled)
+            if (stage === "1" && __ptReview.ready) {
+                const done = __ptReview.right.map(a => norm(a.text).toLowerCase()).filter(Boolean);
+                const seenI = new Set(); let n = 0;
+                for (const t of (__ptLastShown || [])) {
+                    if (n >= 300) break;
+                    const T = norm(t && t.text), low = T.toLowerCase();
+                    if (!T || !TEAM_LABELS.has(t.label) || seenI.has(t.label + "\u0001" + low)) continue;
+                    if (done.some(d => d === low || d.includes(low) || low.includes(d))) continue;   // labeled (maybe with another label: that is a rejection)
+                    seenI.add(t.label + "\u0001" + low); n++;
+                    teamEmit({ k: "i", l: t.label, h: teamHash(T), task, st: "1" });
+                    { const o = __ptLearn.ignored[learnKey(t.label, T)] || (__ptLearn.ignored[learnKey(t.label, T)] = { n: 0 }); o.n++; o.t = Date.now(); }
+                }
+            }
+            learnSave();
+        } catch (e) {}
+    }
+    // L2 changing L1's work
+    function l2Vote(kind, text, label) {
+        try {
+            if (ptStage() !== "2" || !label || !TEAM_LABELS.has(label)) return;
+            const T = String(text || "").replace(/\s+/g, " ").trim();
+            if (!T || T.length > 200) return;
+            teamEmit({ k: kind, l: label, h: teamHash(T), task: teamTask(), st: "2" });
+        } catch (e) {}
+    }
     function applyReviewMessage(type, data) {
         try {
+            if (type === "submitted") { onFileFinished(data); return; }
             if (type === "review" && data && Array.isArray(data.labels)) {
                 __ptReview.titles = new Map(data.labels.map(l => [l.id, l.title]));
                 __ptReview.right = (data.right || []).filter(a => a && a.label_id && typeof a.text === "string");
+                __ptReview.initial = new Set(__ptReview.right.map(a => a.id).filter(Boolean));   // (v11.13.0) at L2: L1's labels
                 __ptReview.ready = true;
                 if (data.task && data.task !== __ptLearnTask) { __ptLearnTask = String(data.task); __ptLearnSeen.clear(); }
             } else if (!__ptReview.ready) {
                 return;
             } else if (type === "added" && Array.isArray(data)) {
-                for (const a of data) if (a && a.label_id && typeof a.text === "string") { __ptReview.right.push(a); learnFromReviewer(a.text, null, __ptReview.titles.get(a.label_id)); }
+                for (const a of data) if (a && a.label_id && typeof a.text === "string") { __ptReview.right.push(a); learnFromReviewer(a.text, null, __ptReview.titles.get(a.label_id)); l2Vote("y", a.text, __ptReview.titles.get(a.label_id)); }
             } else if (type === "removed" && data && data.id) {
                 const gone = __ptReview.right.find(a => a.id === data.id);
                 if (gone) learnFromReviewer(gone.text, __ptReview.titles.get(gone.label_id), null);
+                if (gone && __ptReview.initial.has(gone.id)) l2Vote("x", gone.text, __ptReview.titles.get(gone.label_id));
                 __ptReview.right = __ptReview.right.filter(a => a.id !== data.id);
             } else if (type === "changed" && data && data.id) {
-                for (const a of __ptReview.right) if (a.id === data.id) { learnFromReviewer(a.text, __ptReview.titles.get(a.label_id), __ptReview.titles.get(data.label_id)); a.label_id = data.label_id; }
+                for (const a of __ptReview.right) if (a.id === data.id) {
+                    learnFromReviewer(a.text, __ptReview.titles.get(a.label_id), __ptReview.titles.get(data.label_id));
+                    if (__ptReview.initial.has(a.id)) { l2Vote("x", a.text, __ptReview.titles.get(a.label_id)); l2Vote("y", a.text, __ptReview.titles.get(data.label_id)); }
+                    a.label_id = data.label_id;
+                }
             }
         } catch (e) {}
     }
