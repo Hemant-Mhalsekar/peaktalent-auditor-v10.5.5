@@ -200,6 +200,23 @@ async function page({ storage = {}, task = 't1', path: urlPath = '/review', righ
     p.close();
   }
   {
+    // (v11.14.0) the same finished L1 file, kept on this computer for "My examples": what you used instead, unlabeled, marked wrong
+    const p = await page({ storage: {}, path: '/tasks/t7' });
+    await p.mark('today', 'Person Name');
+    await p.save('Rahul Sharma', 'Business Name');      // the suggestion (Person Name) rejected: another label used
+    await p.finish(false);
+    const L = p.w.__PT__.learning();
+    const rej = L.texts['Person Name\u0001Rahul Sharma'];
+    check(rej && rej.r === 1 && rej.to === 'Business Name', 'kept locally: a rejected suggestion with the label used instead', L.texts);
+    check(L.wrong['Person Name\u0001today'] && L.wrong['Person Name\u0001today'].n === 1 && L.wrong['Person Name\u0001today'].expected, 'kept locally: a label the check marked wrong, with the correction', L.wrong);
+    p.close();
+    const p2 = await page({ storage: {}, path: '/tasks/t8' });
+    await p2.finish(false);
+    const L2 = p2.w.__PT__.learning();
+    check(L2.ignored['Person Name\u0001Rahul Sharma'] && L2.ignored['Person Name\u0001Rahul Sharma'].n === 1, 'kept locally (no team sync needed): a suggestion left unlabeled at Submit', L2.ignored);
+    p2.close();
+  }
+  {
     // L2: removing L1's label -> x, adding one -> y; Approve sends no ignored events
     const p = await page({ storage: { pt_team_salt: TEAM.salt }, path: '/internal-review', right: [{ id: 'a1', label_id: 'id-person', start: 3, end: 15, text: 'Rahul Sharma' }] });
     await p.remove('a1');
@@ -245,6 +262,36 @@ async function page({ storage = {}, task = 't1', path: urlPath = '/review', righ
     check(w.document.querySelectorAll('#rows tr').length === 3 && w.document.querySelectorAll('#days tr').length === 1, 'report: a row per label plus the total, a row per day');
     w.document.getElementById('tab-me').click();
     check(q('c-prec') === '90%' && q('c-cov') === '90%' && !w.document.getElementById('small').hidden, 'report (you): your own numbers, with the small-sample warning', [q('c-prec'), q('c-cov')]);
+  }
+  // (v11.14.0) the My examples page: four lists from the local store, filters, copy as text; nothing is sent
+  {
+    const html = fs.readFileSync(path.join(__dirname, '..', 'extension', 'examples.html'), 'utf8');
+    const js = fs.readFileSync(path.join(__dirname, '..', 'extension', 'examples.js'), 'utf8');
+    const dom = new JSDOM(html.replace('<script src="examples.js"></script>', ''), { runScripts: 'outside-only', url: 'chrome-extension://test/examples.html' });
+    const w = dom.window;
+    const learning = {
+      labels: {}, texts: { 'Person Name\u0001Learn More': { a: 0, r: 3, to: '', t: 2 }, 'Person Name\u0001Asha Rao': { a: 4, r: 0, t: 1 }, 'Business Name\u0001Kafka': { a: 0, r: 1, to: 'Person Username', t: 3 } },
+      missed: { 'Business Name\u0001Zorblax Labs': { tasks: ['a', 'b'], t: 4 } },
+      ignored: { 'Person Username\u0001@echo': { n: 2, t: 5 } },
+      wrong: { 'IP Address\u00010.0.0.0': { n: 1, expected: 'No label', t: 6 } },
+    };
+    let sent = 0;
+    w.chrome = { storage: { local: { get: (k, cb) => cb({ pt_learning_v1: learning }) } }, runtime: { getManifest: () => ({ version: '11.14.0' }), sendMessage: () => { sent++; } } };
+    w.fetch = () => { sent++; return Promise.reject(new Error('no network')); };
+    w.eval(js);
+    await settle(100);
+    const rows = (id) => Array.from(w.document.querySelectorAll('#' + id + ' tr')).map(tr => Array.from(tr.children).map(td => td.textContent));
+    const rej = rows('rej');
+    check(rej.length === 2 && rej[0][0] === 'Learn More' && rej[0][2] === '(removed)' && rej[0][3] === '3' && rej[1][2] === 'Person Username', 'examples: rejected suggestions (most rejected first, with what you used); accepted-only texts are not listed', rej);
+    check(rows('mis')[0].join('|') === 'Zorblax Labs|Business Name|2' && rows('ign')[0].join('|') === '@echo|Person Username|2' && rows('wro')[0].join('|') === '0.0.0.0|IP Address|No label|1', 'examples: missed, unlabeled and marked-wrong lists', [rows('mis'), rows('ign'), rows('wro')]);
+    w.document.getElementById('label').value = 'Person Name'; w.document.getElementById('label').dispatchEvent(new w.Event('change'));
+    check(rows('rej').length === 1 && rows('mis')[0][0] === 'Nothing here yet.', 'examples: the label filter', rows('rej'));
+    w.document.getElementById('label').value = ''; w.document.getElementById('q').value = 'kaf'; w.document.getElementById('q').dispatchEvent(new w.Event('input'));
+    check(rows('rej').length === 1 && rows('rej')[0][0] === 'Kafka', 'examples: the search box', rows('rej'));
+    w.document.getElementById('q').value = ''; w.document.getElementById('q').dispatchEvent(new w.Event('input'));
+    const txt = w.__ptExamples.asText();
+    check(/## Suggestions I rejected\ntext\tsuggested\tI used\trejected\taccepted\nLearn More\tPerson Name\t\(removed\)\t3\t0/.test(txt) && /0\.0\.0\.0\tIP Address\tNo label\t1/.test(txt), 'examples: "Copy as text" gives tab-separated lists', txt);
+    check(sent === 0, 'examples: the page sends nothing anywhere');
   }
   console.log(`\n${pass}/${pass + fail} sync checks passed`);
   process.exit(fail ? 1 : 0);

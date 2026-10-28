@@ -1,5 +1,17 @@
 # Changelog
 
+## 11.14.0 - October 2026 (branch v2)
+
+**My examples** - a page with your own examples, so problems can be fixed from real cases (popup -> Team sync -> **My examples**):
+- **Suggestions you rejected**: text, the suggested label, what you used instead (or "removed"), how often.
+- **Labels the auditor missed**: text you labeled without a suggestion, and on how many files.
+- **Suggestions you left unlabeled**: still without a label when you submitted the file (L1).
+- **Labels the check marked wrong**: still marked wrong when the file was finished, with the correction.
+- Filter by label, search, and **Copy as text** (tab-separated, to paste into a chat).
+- Everything stays on this computer: the page reads the local learning store and sends nothing. The team still only gets hashes.
+- New local records: the label used instead of a rejected suggestion, unlabeled suggestions, and rule breaks (older stores are upgraded).
+- Tests: 9 new sync checks.
+
 ## 11.13.0 - October 2026 (branch v2)
 
 **L1 / L2-aware learning** (user decisions of 2026-10-25). Order of authority: the rules > 3+ reviewers agreeing on 3+ files > any single person.

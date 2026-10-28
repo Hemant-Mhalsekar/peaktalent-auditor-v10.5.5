@@ -118,5 +118,7 @@ $('t-now').addEventListener('click', async () => { $('t-now').disabled = true; $
 bg({ action: 'pt-sync-status' }).then(showTeam);
 // (v11.8.2) the accuracy report opens in its own tab
 $('t-acc').addEventListener('click', () => { chrome.tabs.create({ url: chrome.runtime.getURL('accuracy.html') }); });
+// (v11.14.0) your own examples (rejected, missed, unlabeled, marked wrong), on this computer only
+$('t-ex').addEventListener('click', () => { chrome.tabs.create({ url: chrome.runtime.getURL('examples.html') }); });
 
 refresh();

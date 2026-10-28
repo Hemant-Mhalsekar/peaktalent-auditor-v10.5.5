@@ -15,7 +15,7 @@
 
     'use strict';
 
-    const PT_VERSION = "11.13.0";
+    const PT_VERSION = "11.14.0";
 
     // Safety net (v10.5.0): every dynamic regular expression in the engine is built from document text. A pathological
     // token (a 100 KB base64 image, a minified line) can make the browser refuse the pattern ("Invalid regular
@@ -1535,7 +1535,7 @@
     // Suggestions ignored by the reviewer are not counted. The label check and the fixed rules are never changed by this.
     const LEARN_KEY = "pt_learning_v1";
     const LEARN = { minLabel: 20, lowRate: 0.3, hideRejects: 3, missedTasks: 2, maxTexts: 3000 };
-    let __ptLearn = { labels: {}, texts: {}, missed: {} };
+    let __ptLearn = { labels: {}, texts: {}, missed: {}, ignored: {}, wrong: {} };
     let __ptLearnTask = null;
     const __ptLearnSeen = new Set();   // one decision per text, label and verdict on each task
     let __ptLastTargets = [];          // the engine's suggestions before learning (what accepted / rejected is judged against)
@@ -1543,12 +1543,15 @@
     const learnKey = (label, text) => label + "\u0001" + String(text || "").replace(/\s+/g, " ").trim();
     const learnStore = () => { try { return (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) ? chrome.storage.local : null; } catch (e) { return null; } };
     function learnValid(d) { return d && typeof d === "object" && d.labels && d.texts && d.missed; }
+    // (v11.14.0) the examples kept for "My examples" (on this computer only): suggestions left unlabeled at L1 Submit and
+    // labels the check marked wrong; stores from older versions get them empty
+    const learnFill = (d) => { if (d) { if (!d.ignored || typeof d.ignored !== "object") d.ignored = {}; if (!d.wrong || typeof d.wrong !== "object") d.wrong = {}; } return d; };
     function learnLoad() {
         try {
             const st = learnStore();
-            if (st) { st.get(LEARN_KEY, (r) => { try { if (r && learnValid(r[LEARN_KEY])) { __ptLearn = r[LEARN_KEY]; if (typeof forceRescan === "function" && window.__pt_auto_active) forceRescan(); } } catch (e) {} }); return; }
+            if (st) { st.get(LEARN_KEY, (r) => { try { if (r && learnValid(r[LEARN_KEY])) { __ptLearn = learnFill(r[LEARN_KEY]); if (typeof forceRescan === "function" && window.__pt_auto_active) forceRescan(); } } catch (e) {} }); return; }
             const d = JSON.parse(localStorage.getItem(LEARN_KEY) || "null");
-            if (learnValid(d)) __ptLearn = d;
+            if (learnValid(d)) __ptLearn = learnFill(d);
         } catch (e) {}
     }
     let __ptLearnSaveTimer = null;
@@ -1558,8 +1561,8 @@
             __ptLearnSaveTimer = null;
             try {
                 // keep the store small: drop the oldest texts first
-                for (const part of ["texts", "missed"]) {
-                    const keys = Object.keys(__ptLearn[part]);
+                for (const part of ["texts", "missed", "ignored", "wrong"]) {
+                    const keys = Object.keys(__ptLearn[part] || {});
                     if (keys.length > LEARN.maxTexts) keys.sort((a, b) => (__ptLearn[part][a].t || 0) - (__ptLearn[part][b].t || 0)).slice(0, keys.length - LEARN.maxTexts).forEach(k => delete __ptLearn[part][k]);
                 }
                 const st = learnStore();
@@ -1682,6 +1685,8 @@
                 if (v) {
                     if (learnCount("labels", sug.label, v)) teamEmit({ k: "s", l: sug.label, v });
                     if (learnCount("texts", learnKey(sug.label, T), v)) teamEmit({ k: "t", l: sug.label, h: teamHash(T), v });
+                    // (v11.14.0) what the reviewer used instead (none = removed), for "My examples"
+                    if (v === "r") { const o = __ptLearn.texts[learnKey(sug.label, T)]; if (o) o.to = after || ""; }
                 }
             }
             // a label the auditor did not suggest for this text: remember it, per task
@@ -1752,7 +1757,7 @@
         };
     }
     function learnExport() { return JSON.stringify({ version: PT_VERSION, exported: new Date().toISOString(), learning: __ptLearn }, null, 2); }
-    function learnReset() { __ptLearn = { labels: {}, texts: {}, missed: {} }; __ptLearnSeen.clear(); learnSave(); }
+    function learnReset() { __ptLearn = { labels: {}, texts: {}, missed: {}, ignored: {}, wrong: {} }; __ptLearnSeen.clear(); learnSave(); }
     learnLoad();
     const __ptReview = { titles: new Map(), right: [], ready: false, hits: 0, misses: 0, initial: new Set() };
     // ---- (v11.13.0) L1 / L2 LEARNING ----
@@ -1780,6 +1785,7 @@
                 if (!T || !TEAM_LABELS.has(L) || seenW.has(L + "\u0001" + T)) continue;
                 seenW.add(L + "\u0001" + T);
                 teamEmit({ k: "w", l: L, h: teamHash(T), task, st: stage });
+                { const o = __ptLearn.wrong[learnKey(L, T)] || (__ptLearn.wrong[learnKey(L, T)] = { n: 0 }); o.n++; o.t = Date.now(); o.expected = String(m.expected || "").slice(0, 120); o.why = String(m.why || "").slice(0, 200); }
                 const ms = __ptLearn.missed[learnKey(L, T)];
                 if (ms && Array.isArray(ms.tasks)) ms.tasks = ms.tasks.filter(x => x !== __ptLearnTask);
             }
@@ -1794,6 +1800,7 @@
                     if (done.some(d => d === low || d.includes(low) || low.includes(d))) continue;   // labeled (maybe with another label: that is a rejection)
                     seenI.add(t.label + "\u0001" + low); n++;
                     teamEmit({ k: "i", l: t.label, h: teamHash(T), task, st: "1" });
+                    { const o = __ptLearn.ignored[learnKey(t.label, T)] || (__ptLearn.ignored[learnKey(t.label, T)] = { n: 0 }); o.n++; o.t = Date.now(); }
                 }
             }
             learnSave();
